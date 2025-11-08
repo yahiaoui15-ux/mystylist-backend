@@ -1,0 +1,14 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.0
+python-dotenv==1.0.0
+supabase==2.4.0
+openai==1.30.0
+httpx==0.25.0
+pydantic==2.6.0
+pytest==7.4.3
+pytest-asyncio==0.23.0
+python-multipart==0.0.6
+tenacity==8.2.3
+resend==2.0.0
+sendgrid==6.10.0
+gunicorn==21.2.0

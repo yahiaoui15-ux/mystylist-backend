@@ -1,0 +1,363 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                   ARCHITECTURE: Make.com → Stack Native                        ║
+║                                                                                ║
+║  FLUX GÉNÉRAL: Utilisateur paie → Rapport généré → Email reçu                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1️⃣  PAIEMENT UTILISATEUR (Frontend)                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ pages/payment-success.tsx                                           │  │
+│  │ ─────────────────────────────────────────────────────────────────── │  │
+│  │ - Affiche formulaire paiement (Stripe)                              │  │
+│  │ - Utilisateur entre carte de crédit                                │  │
+│  │ - Clique "Payer 39€"                                               │  │
+│  │ - Stripe traite le paiement                                        │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                  │                                           │
+│                                  ▼                                           │
+│                    ✅ Paiement réussi (charge.succeeded)                   │
+│                                  │                                           │
+└──────────────────────────────────┼────────────────────────────────────────────┘
+                                   │
+                                   ▼
+        ┌──────────────────────────────────────────────┐
+        │ 2️⃣  WEBHOOK STRIPE (Backend API)           │
+        ├──────────────────────────────────────────────┤
+        │ POST https://mystylist.io/api/webhooks/stripe
+        │                                              │
+        │ File 3: pages/api/webhooks/stripe.ts        │
+        │ ────────────────────────────────────────    │
+        │ ✓ Reçoit l'événement charge.succeeded       │
+        │ ✓ Vérifie la signature Stripe               │
+        │ ✓ Extrait metadata (user_id, email, name)  │
+        │ ✓ Crée rapport en DB (statut: processing)  │
+        │ ✓ Déclenche l'Edge Function Supabase        │
+        │ ✓ Retourne 200 à Stripe                     │
+        └─────────────────┬──────────────────────────┘
+                          │
+                          ▼
+        ┌──────────────────────────────────────────────────────┐
+        │ 3️⃣  EDGE FUNCTION SUPABASE (Serverless)            │
+        ├──────────────────────────────────────────────────────┤
+        │                                                       │
+        │ File 1: supabase/functions/generate-report/index.ts │
+        │ ───────────────────────────────────────────────────  │
+        │                                                       │
+        │ ① Récupère données utilisateur                      │
+        │    ↓                                                  │
+        │    SELECT * FROM user_profiles, colorimetry,         │
+        │    morphology, photos WHERE user_id = ?              │
+        │                                                       │
+        │ ② Appelle OpenAI (7 modules = 7 appels)             │
+        │    ↓                                                  │
+        │    POST https://api.openai.com/v1/chat/completions  │
+        │    ├─ Colorimétrie (GPT-4)                          │
+        │    ├─ Morphologie (GPT-4)                           │
+        │    ├─ Profil stylistique (GPT-4)                    │
+        │    ├─ Garde-robe capsule (GPT-4)                   │
+        │    ├─ Mix & match (GPT-4)                           │
+        │    ├─ Guide shopping (GPT-4)                        │
+        │    └─ Occasions spécifiques (GPT-4)                 │
+        │                                                       │
+        │ ③ Génère HTML complet du rapport                    │
+        │    ↓                                                  │
+        │    <html>                                            │
+        │    <h1>Rapport stylistique</h1>                      │
+        │    <section id="colorimetry">...</section>           │
+        │    ...                                               │
+        │    </html>                                           │
+        │                                                       │
+        │ ④ Convertit HTML → PDF                              │
+        │    ↓                                                  │
+        │    POST https://api.html2pdf.app/v1/generate        │
+        │    Retour: pdfBuffer (bytes)                        │
+        │                                                       │
+        │ ⑤ Upload PDF sur Supabase Storage                   │
+        │    ↓                                                  │
+        │    supabase.storage                                  │
+        │      .from('stylist-reports')                        │
+        │      .upload(`reports/${userId}_${time}.pdf`, buffer)
+        │    Retour: file_path, public_url                    │
+        │                                                       │
+        │ ⑥ Met à jour rapport en DB (statut: completed)      │
+        │    ↓                                                  │
+        │    UPDATE reports                                    │
+        │    SET status='completed', public_url=?, file_path=?│
+        │    WHERE user_id = ?                                 │
+        │                                                       │
+        │ ⑦ Envoie email avec lien téléchargement             │
+        │    ↓                                                  │
+        │    POST https://api.resend.com/emails                │
+        │    {                                                  │
+        │      to: user_email,                                 │
+        │      subject: "✨ Votre rapport stylistique",         │
+        │      html: "<a href='${public_url}'>Télécharger</a>" │
+        │    }                                                  │
+        │                                                       │
+        └──────────────────┬───────────────────────────────────┘
+                           │
+                           ▼
+        ┌────────────────────────────────────────────┐
+        │ 4️⃣  SUPABASE DATABASE (Storage)           │
+        ├────────────────────────────────────────────┤
+        │                                            │
+        │ Tables:                                    │
+        │  ├─ reports                                │
+        │  │  ├─ id (UUID)                           │
+        │  │  ├─ user_id                             │
+        │  │  ├─ status: "completed"                 │
+        │  │  ├─ public_url                          │
+        │  │  ├─ file_path                           │
+        │  │  └─ generated_at                        │
+        │  │                                         │
+        │  ├─ user_profiles                          │
+        │  ├─ colorimetry                            │
+        │  ├─ morphology                             │
+        │  └─ ...                                    │
+        │                                            │
+        │ Storage:                                   │
+        │  └─ stylist-reports/                       │
+        │     └─ reports/                            │
+        │        └─ user_123_1234567890.pdf ✓       │
+        │                                            │
+        └────────────────────┬───────────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+    │ 5️⃣  REACT    │  │ 6️⃣  EMAIL    │  │ 7️⃣  STORAGE │
+    ├──────────────┤  ├──────────────┤  ├──────────────┤
+    │              │  │              │  │              │
+    │ useReport    │  │ User reçoit  │  │ PDF dispo    │
+    │ Generation() │  │ email avec   │  │ 30 jours     │
+    │              │  │ lien         │  │              │
+    │ - Polling    │  │              │  │ URL publique:│
+    │   toutes 5s  │  │ ✉️ À recevoir│  │              │
+    │ - Affiche    │  │              │  │ https://xxx  │
+    │   progression│  │ From: Resend │  │ .supabase.co │
+    │   (30% 60%   │  │              │  │ /storage/... │
+    │    90%)      │  │ Subject:     │  │              │
+    │ - Quand 100%:│  │ "✨ Rapport" │  │ Validité:    │
+    │   Affiche    │  │              │  │ 30 jours     │
+    │   bouton     │  │ [Télécharger]│  │              │
+    │   télécharger│  │              │  │              │
+    │              │  │              │  │              │
+    └──────────────┘  └──────────────┘  └──────────────┘
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         TIMELINE D'EXÉCUTION                                   ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+T+0s    ├─ Utilisateur clique "Payer 39€"
+        │
+T+1s    ├─ Stripe traite le paiement
+        │  └─ charge.succeeded ✓
+        │
+T+2s    ├─ Webhook → pages/api/webhooks/stripe.ts
+        │  └─ Crée rapport (status: processing)
+        │
+T+3s    ├─ Edge Function démarre
+        │  ├─ Récupère profil utilisateur
+        │  └─ Appelle OpenAI (7 modules en séquence)
+        │
+T+60s   ├─ OpenAI a généré 7 sections
+        │  ├─ Colorimétrie: 12 sec
+        │  ├─ Morphologie: 10 sec
+        │  ├─ Styling: 8 sec
+        │  ├─ Capsule: 15 sec
+        │  ├─ Mix & Match: 12 sec
+        │  ├─ Shopping: 8 sec
+        │  └─ Occasions: 10 sec
+        │
+T+90s   ├─ html2pdf convertit HTML → PDF
+        │
+T+120s  ├─ PDF uploadé sur Storage
+        │  ├─ file_path: reports/user_123_xxx.pdf
+        │  └─ public_url: https://xxx.supabase.co/...
+        │
+T+125s  ├─ Rapport mis à jour en DB (status: completed)
+        │
+T+130s  ├─ Email envoyé via Resend
+        │
+T+140s  ├─ UI React affiche "Rapport généré! ✓"
+        │
+T+145s  └─ Utilisateur clique "Télécharger"
+           └─ PDF téléchargé localement
+
+⏱️  TOTAL: ~2-3 MINUTES
+
+(Vs Make.com: 5-10 min)
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                      COMPOSANTS & FICHIERS                                     ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─ FRONTEND (React) ────────────────────────────────────────────────────────────┐
+│                                                                               │
+│  📄 pages/payment-success.tsx (FILE 4 - exemple)                            │
+│  ├─ Affiche le formulaire paiement Stripe                                   │
+│  ├─ Appelle useReportGeneration() hook                                      │
+│  └─ Affiche progression (30%, 60%, 90%, puis ✓)                             │
+│                                                                               │
+│  🪝 hooks/useReportGeneration.ts (FILE 2)                                   │
+│  ├─ useCallback(startGeneration) → déclenche /api/trigger-report-generation │
+│  ├─ Polling toutes 5s: SELECT * FROM reports WHERE status=completed        │
+│  ├─ setStatus() pour mettre à jour l'UI                                     │
+│  └─ downloadReport() pour télécharger le PDF                                │
+│                                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+┌─ BACKEND API (Next.js) ────────────────────────────────────────────────────────┐
+│                                                                                │
+│  🔌 pages/api/webhooks/stripe.ts (FILE 3)                                    │
+│  ├─ Reçoit POST de Stripe avec stripe-signature                              │
+│  ├─ Vérifie signature: stripe.webhooks.constructEvent()                      │
+│  ├─ Extrait metadata: user_id, email, name                                   │
+│  ├─ Insère rapport: INSERT INTO reports (user_id, status='processing')       │
+│  └─ Déclenche Edge Function: fetch(.../functions/v1/generate-report)         │
+│     └─ Passe: { user_id, user_email, user_name, report_id }                 │
+│                                                                                │
+│  🔀 pages/api/trigger-report-generation.ts (optionnel)                      │
+│  └─ Endpoint pour React hook (si polling côté client)                        │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ EDGE FUNCTION (Supabase) ────────────────────────────────────────────────────┐
+│                                                                               │
+│  ⚡ supabase/functions/generate-report/index.ts (FILE 1)                    │
+│  ├─ Reçoit POST du webhook (ou du hook React)                              │
+│  ├─ Récupère profil: SELECT ... FROM user_profiles JOIN colorimetry ...    │
+│  ├─ Appelle OpenAI 7 fois (GPT-4 turbo)                                    │
+│  │  ├─ Génère HTML colorimétrie                                             │
+│  │  ├─ Génère HTML morphologie                                              │
+│  │  ├─ Génère HTML styling                                                  │
+│  │  ├─ Génère HTML capsule + mix & match                                   │
+│  │  ├─ Génère HTML shopping                                                 │
+│  │  └─ Génère HTML occasions + FAQ                                          │
+│  │                                                                            │
+│  ├─ Compile HTML complet (7 sections)                                       │
+│  ├─ Appelle html2pdf.app: HTML → PDF (ArrayBuffer)                         │
+│  ├─ Upload PDF: supabase.storage.upload(...)                               │
+│  ├─ Met à jour DB: UPDATE reports SET status='completed', public_url=...   │
+│  ├─ Envoie email: fetch("https://api.resend.com/emails")                   │
+│  └─ Retourne 200 (succès)                                                   │
+│                                                                               │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ DONNÉES & STORAGE (Supabase) ─────────────────────────────────────────────────┐
+│                                                                                │
+│  🗄️  Tables PostgreSQL:                                                      │
+│  ├─ reports (id, user_id, status, public_url, file_path, generated_at)      │
+│  ├─ user_profiles (id, first_name, email, photos, preferred_brands)        │
+│  ├─ colorimetry (id, user_id, season, undertone, colors)                  │
+│  ├─ morphology (id, user_id, type, measurements)                           │
+│  ├─ styling (id, user_id, archetypes)                                       │
+│  ├─ wardrobe (id, user_id, item_type, product_name, brand, url)           │
+│  ├─ mix_match_formulas (id, user_id, title, occasion, items)              │
+│  └─ recommendations (id, user_id, brand_name, description, website)        │
+│                                                                                │
+│  📦 Storage Buckets:                                                         │
+│  └─ stylist-reports/                                                         │
+│     └─ reports/                                                              │
+│        ├─ user_123_1234567890.pdf                                           │
+│        ├─ user_456_1234567891.pdf                                           │
+│        └─ ...                                                                 │
+│                                                                                │
+│  RLS Policies: Utilisateurs voient seulement leurs données                  │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌─ SERVICES EXTERNES ───────────────────────────────────────────────────────────┐
+│                                                                               │
+│  🔐 Stripe                                                                   │
+│  └─ charge.succeeded → Webhook → /api/webhooks/stripe                       │
+│                                                                               │
+│  🤖 OpenAI                                                                   │
+│  └─ POST /v1/chat/completions (GPT-4 turbo)                                │
+│     ├─ Génère sections HTML du rapport                                      │
+│     └─ max_tokens: 4000 → 3000 (pour économiser)                            │
+│                                                                               │
+│  📄 html2pdf.app                                                             │
+│  └─ POST /v1/generate (HTML → PDF)                                          │
+│     ├─ Format: A4                                                            │
+│     ├─ Margin: 10mm                                                          │
+│     └─ Retour: ArrayBuffer (pdfBuffer)                                      │
+│                                                                               │
+│  📧 Resend                                                                   │
+│  └─ POST /emails                                                             │
+│     ├─ From: reports@mystylist.io                                            │
+│     ├─ To: user_email                                                        │
+│     └─ HTML: <a href="${publicUrl}">Télécharger</a>                         │
+│                                                                               │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                          FLUX DONNÉES                                          ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+user@browser
+    │
+    ├─ Remplit questionnaire (colorimétrie, morphologie, photos)
+    │  └─ Données enregistrées: user_profiles, colorimetry, morphology, photos
+    │
+    ├─ Clique "Payer 39€"
+    │  └─ Stripe.createPaymentIntent({ metadata: { user_id, email, name } })
+    │
+    ├─ Complète paiement (carte 4242...)
+    │  └─ charge.succeeded ✓
+    │
+    └─ Reçoit email Resend
+       └─ Contient lien public pour télécharger le PDF (30 jours)
+
+=============
+
+Flux données:
+                    
+Supabase DB         ← user_profiles, colorimetry, morphology
+    ↑
+    │
+    ├─ Edge Function récupère
+    │
+    ├─ Appelle OpenAI 7x
+    │
+    ├─ Génère HTML complet du rapport
+    │
+    ├─ Convertit HTML → PDF (html2pdf.app)
+    │
+    ├─ Upload PDF → Supabase Storage
+    │  └─ public_url = https://xxx.supabase.co/storage/v1/object/public/...
+    │
+    ├─ Met à jour DB: reports.public_url = public_url
+    │
+    └─ Envoie email Resend
+       └─ user_email reçoit lien de téléchargement
+
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         COÛTS ESTIMÉS                                          ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+Par rapport généré (39€ vendu):
+
+Make.com            : €0.40
+├─ Coût scénario: €0.10
+└─ Démarrage: €0.30
+
+Stack Native        : €0.05
+├─ OpenAI (0.74€): €0.03
+├─ html2pdf (0.08€): €0.008
+├─ Supabase (inclus): €0.005
+└─ Resend (inclus): €0.012
+
+ÉCONOMIE            : €0.35/rapport
+
+Avec 50 rapports/mois:
+Make    : €20-50/mois
+Native  : €2.50/mois  ← 20x moins cher!
+
