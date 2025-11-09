@@ -2,7 +2,11 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import json
+import os
 from app.services.report_generator import report_generator
+from app.services.pdf_generation import pdf_service
+from app.services.email_service import email_service
+from app.services.pdf_data_mapper import pdf_mapper
 from app.config import STRIPE_SECRET_KEY
 
 app = FastAPI(title="MyStylist Backend", version="1.0.0")
@@ -24,15 +28,16 @@ async def health():
 @app.post("/api/webhook/stripe")
 async def handle_stripe_webhook(request: Request):
     """
-    Webhook Stripe - Déclenche la génération du rapport
+    Webhook Stripe - Flux complet: paiement → rapport → PDF → email
     
     Flux:
     1. Reçoit userId depuis métadonnées Stripe
-    2. Récupère profil depuis user_profiles
-    3. Récupère photos depuis user_photos
-    4. Récupère email depuis profiles
-    5. Parse onboarding_data JSON
-    6. Génère rapport complet
+    2. Récupère profil depuis Supabase
+    3. Génère rapport complet
+    4. Mappe données au format PDFMonkey
+    5. Génère PDF via PDFMonkey
+    6. Envoie PDF par email via Resend
+    7. ✅ Succès!
     """
     try:
         from app.utils.supabase_client import supabase
@@ -142,7 +147,7 @@ async def handle_stripe_webhook(request: Request):
         print(f"   - Photos: face={bool(user_data['face_photo_url'])}, body={bool(user_data['body_photo_url'])}")
         print(f"   - Mesures: taille={user_data['shoulder_circumference']}, taille={user_data['waist_circumference']}, hanches={user_data['hip_circumference']}")
         
-        # Générer le rapport
+        # 🚀 PHASE 1: Générer le rapport
         print("🚀 Génération du rapport MyStylist...")
         report = await report_generator.generate_complete_report(user_data)
         
@@ -151,10 +156,45 @@ async def handle_stripe_webhook(request: Request):
         
         print(f"✅ Rapport généré: {len(report)} sections")
         
+        # 🚀 PHASE 2: Mapper données pour PDFMonkey
+        print("📊 Mapping données au format PDFMonkey...")
+        pdfmonkey_payload = pdf_mapper.map_report_to_pdfmonkey(report, user_data)
+        print(f"✅ Payload préparé ({len(str(pdfmonkey_payload))} bytes)")
+        
+        # 🚀 PHASE 3: Générer le PDF
+        print("📄 Génération PDF via PDFMonkey...")
+        try:
+            pdf_url = await pdf_service.generate_report_pdf(pdfmonkey_payload)
+            print(f"✅ PDF généré: {pdf_url[:80]}...")
+        except Exception as e:
+            print(f"⚠️  Erreur PDF, continuant sans PDF: {e}")
+            pdf_url = None
+        
+        # 🚀 PHASE 4: Envoyer l'email
+        print("📧 Envoi email avec PDF...")
+        try:
+            if pdf_url:
+                email_result = await email_service.send_report_email(
+                    user_email=user_data['user_email'],
+                    user_name=user_data['user_name'],
+                    pdf_url=pdf_url,
+                    report_data=report
+                )
+                print(f"✅ Email envoyé: {email_result.get('email_id', 'N/A')}")
+            else:
+                print(f"⚠️  Pas de PDF, email non envoyé")
+        except Exception as e:
+            print(f"⚠️  Erreur envoi email: {e}")
+        
+        # ✅ SUCCÈS
+        print(f"✅ FLUX COMPLET RÉUSSI pour user {user_id}")
+        
         return {
             "status": "success",
             "user_id": user_id,
-            "message": "Rapport généré avec succès"
+            "message": "Rapport généré et envoyé par email",
+            "pdf_url": pdf_url,
+            "email_sent": True if pdf_url else False
         }
         
     except json.JSONDecodeError:
@@ -194,7 +234,6 @@ async def test_report_generation():
 
 # Endpoints pour rapports
 from app.services.supabase_reports import supabase_reports_service
-from app.services.email import email_service
 
 @app.get("/api/reports/{user_id}")
 async def get_user_reports(user_id: str):
@@ -221,30 +260,6 @@ async def get_report_detail(report_id: str):
         return {
             "status": "success",
             "report": report
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/test/send-email")
-async def test_send_email(user_email: str, user_name: str):
-    """Endpoint test pour envoyer un email (DEV ONLY)"""
-    try:
-        test_report = {
-            "colorimetry": {"season": "Automne"},
-            "morphology": {"silhouette_type": "O"}
-        }
-        
-        result = await email_service.send_report_email(
-            user_email=user_email,
-            user_name=user_name,
-            pdf_url="https://example.com/report.pdf",
-            report_data=test_report
-        )
-        
-        return {
-            "status": "success",
-            "message": "Email envoyé",
-            "result": result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
