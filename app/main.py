@@ -164,7 +164,7 @@ async def handle_stripe_webhook(request: Request):
         # 🚀 PHASE 3: Générer le PDF
         print("📄 Génération PDF via PDFMonkey...")
         try:
-            pdf_url = await pdf_service.generate_report_pdf(report_data, user_data)
+            pdf_url = await pdf_service.generate_report_pdf(report, user_data)
             print(f"✅ PDF généré: {pdf_url[:80]}...")
         except Exception as e:
             print(f"⚠️  Erreur PDF, continuant sans PDF: {e}")
