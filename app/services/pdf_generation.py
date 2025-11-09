@@ -1,5 +1,6 @@
 """
 Service de génération de PDF via PDFMonkey
+VERSION CORRIGÉE - Ajoute la méthode generate_report_pdf pour compatibilité
 """
 
 import os
@@ -22,6 +23,25 @@ class PDFGenerationService:
         
         if not self.api_key:
             print("⚠️ AVERTISSEMENT: PDFMONKEY_API_KEY non configurée")
+    
+    async def generate_report_pdf(
+        self,
+        report_data: dict,
+        user_data: dict,
+        document_name: Optional[str] = None
+    ) -> str:
+        """
+        Génère un PDF via PDFMonkey (alias pour main.py)
+        
+        Args:
+            report_data: Rapport généré par report_generator
+            user_data: Données utilisateur
+            document_name: Nom optionnel du document
+        
+        Returns:
+            str: URL du PDF généré
+        """
+        return await self.generate_pdf(report_data, user_data, document_name)
     
     async def generate_pdf(
         self,
