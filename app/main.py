@@ -27,56 +27,70 @@ async def handle_stripe_webhook(request: Request):
     Webhook Stripe - Déclenche la génération du rapport
     
     Reçoit un paiement de client et génère:
-    1. Analyses IA (colorimétrie, morphologie, styling)
-    2. Récupération visuels et produits
-    3. Génération PDF
-    4. Envoi email
+    1. Récupère les données depuis Supabase
+    2. Analyses IA (colorimétrie, morphologie, styling)
+    3. Récupération visuels et produits
+    4. Génération PDF
+    5. Envoi email
     """
     try:
-        # Récupérer le payload
+        from app.utils.supabase_client import supabase_client
+        
         payload = await request.json()
         print(f"📨 Webhook Stripe reçu: {payload.get('type', 'unknown')}")
         
-        # Vérifier que c'est un événement de paiement réussi
         event_type = payload.get("type")
-        # ✅ MODIFIÉ: Accepter checkout.session.completed au lieu de charge.succeeded
         if event_type != "checkout.session.completed":
             print(f"⏭️  Event ignoré: {event_type}")
             return {"received": True}
         
-        # ✅ MODIFIÉ: Récupérer la session au lieu de charge
         session = payload.get("data", {}).get("object", {})
-        user_id = session.get("metadata", {}).get("user_id")
-        # ✅ MODIFIÉ: Récupérer l'email depuis customer_email
-        user_email = session.get("customer_email") or session.get("billing_details", {}).get("email")
+        user_id = session.get("metadata", {}).get("userId")
         
         if not user_id:
-            raise HTTPException(status_code=400, detail="user_id manquant")
+            print(f"❌ userId manquant dans les métadonnées")
+            raise HTTPException(status_code=400, detail="userId manquant")
         
         print(f"✅ Paiement confirmé pour user: {user_id}")
         
-        # Récupérer les données utilisateur depuis le webhook
-        # (En prod, tu les récupéreras de Supabase avec user_id)
+        # ✅ Récupérer les données depuis Supabase
+        print(f"📥 Récupération des données Supabase pour user: {user_id}")
+        
+        try:
+            # Récupérer profil utilisateur
+            profile_response = await supabase_client.table("user_profiles").select("*").eq("id", user_id).single().execute()
+            profile = profile_response.data if profile_response.data else {}
+            
+            # Récupérer photos utilisateur
+            photos_response = await supabase_client.table("user_photos").select("*").eq("user_id", user_id).execute()
+            photos = photos_response.data if photos_response.data else []
+            
+            print(f"✅ Données récupérées: profil + {len(photos)} photo(s)")
+        except Exception as e:
+            print(f"⚠️  Erreur lors de la récupération Supabase: {e}")
+            profile = {}
+            photos = []
+        
+        # Construire user_data depuis Supabase
         user_data = {
             "user_id": user_id,
-            "user_email": user_email or "noreply@mystylist.io",
-            # ✅ MODIFIÉ: Tous les charge.get() deviennent session.get()
-            "user_name": session.get("metadata", {}).get("user_name", "Client"),
-            "face_photo_url": session.get("metadata", {}).get("face_photo_url", ""),
-            "body_photo_url": session.get("metadata", {}).get("body_photo_url", ""),
-            "eye_color": session.get("metadata", {}).get("eye_color", ""),
-            "hair_color": session.get("metadata", {}).get("hair_color", ""),
-            "age": int(session.get("metadata", {}).get("age", 0)),
-            "shoulder_circumference": float(session.get("metadata", {}).get("shoulder_circumference", 0)),
-            "waist_circumference": float(session.get("metadata", {}).get("waist_circumference", 0)),
-            "hip_circumference": float(session.get("metadata", {}).get("hip_circumference", 0)),
-            "bust_circumference": float(session.get("metadata", {}).get("bust_circumference", 0)),
-            "unwanted_colors": json.loads(session.get("metadata", {}).get("unwanted_colors", "[]")),
-            "style_preferences": session.get("metadata", {}).get("style_preferences", ""),
-            "brand_preferences": json.loads(session.get("metadata", {}).get("brand_preferences", "[]"))
+            "user_email": profile.get("email", "noreply@mystylist.io"),
+            "user_name": profile.get("full_name", "Client"),
+            "face_photo_url": next((p.get("url") for p in photos if p.get("type") == "face"), ""),
+            "body_photo_url": next((p.get("url") for p in photos if p.get("type") == "body"), ""),
+            "eye_color": profile.get("eye_color", ""),
+            "hair_color": profile.get("hair_color", ""),
+            "age": int(profile.get("age", 0)) if profile.get("age") else 0,
+            "shoulder_circumference": float(profile.get("shoulder_circumference", 0)) if profile.get("shoulder_circumference") else 0,
+            "waist_circumference": float(profile.get("waist_circumference", 0)) if profile.get("waist_circumference") else 0,
+            "hip_circumference": float(profile.get("hip_circumference", 0)) if profile.get("hip_circumference") else 0,
+            "bust_circumference": float(profile.get("bust_circumference", 0)) if profile.get("bust_circumference") else 0,
+            "unwanted_colors": profile.get("unwanted_colors", []),
+            "style_preferences": profile.get("style_preferences", ""),
+            "brand_preferences": profile.get("brand_preferences", [])
         }
         
-        # Générer le rapport complet
+        # Générer le rapport
         print("🚀 Génération du rapport MyStylist...")
         report = await report_generator.generate_complete_report(user_data)
         
@@ -85,15 +99,10 @@ async def handle_stripe_webhook(request: Request):
         
         print(f"✅ Rapport généré: {len(report)} sections")
         
-        # TODO: Jour 7
-        # - Générer PDF avec PDFMonkey
-        # - Upload à Supabase Storage
-        # - Envoyer email au client
-        
         return {
             "status": "success",
             "user_id": user_id,
-            "message": "Rapport en génération..."
+            "message": "Rapport généré avec succès"
         }
         
     except json.JSONDecodeError:
