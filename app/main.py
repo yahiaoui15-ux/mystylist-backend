@@ -39,38 +39,41 @@ async def handle_stripe_webhook(request: Request):
         
         # Vérifier que c'est un événement de paiement réussi
         event_type = payload.get("type")
-        if event_type != "charge.succeeded":
+        # ✅ MODIFIÉ: Accepter checkout.session.completed au lieu de charge.succeeded
+        if event_type != "checkout.session.completed":
             print(f"⏭️  Event ignoré: {event_type}")
             return {"received": True}
         
-        # Récupérer les données de paiement
-        charge = payload.get("data", {}).get("object", {})
-        user_id = charge.get("metadata", {}).get("user_id")
-        user_email = charge.get("billing_details", {}).get("email")
+        # ✅ MODIFIÉ: Récupérer la session au lieu de charge
+        session = payload.get("data", {}).get("object", {})
+        user_id = session.get("metadata", {}).get("user_id")
+        # ✅ MODIFIÉ: Récupérer l'email depuis customer_email
+        user_email = session.get("customer_email") or session.get("billing_details", {}).get("email")
         
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id manquant")
         
         print(f"✅ Paiement confirmé pour user: {user_id}")
         
-        # TEMPORAIRE: Récupérer les données utilisateur depuis le webhook
+        # Récupérer les données utilisateur depuis le webhook
         # (En prod, tu les récupéreras de Supabase avec user_id)
         user_data = {
             "user_id": user_id,
             "user_email": user_email or "noreply@mystylist.io",
-            "user_name": charge.get("metadata", {}).get("user_name", "Client"),
-            "face_photo_url": charge.get("metadata", {}).get("face_photo_url", ""),
-            "body_photo_url": charge.get("metadata", {}).get("body_photo_url", ""),
-            "eye_color": charge.get("metadata", {}).get("eye_color", ""),
-            "hair_color": charge.get("metadata", {}).get("hair_color", ""),
-            "age": int(charge.get("metadata", {}).get("age", 0)),
-            "shoulder_circumference": float(charge.get("metadata", {}).get("shoulder_circumference", 0)),
-            "waist_circumference": float(charge.get("metadata", {}).get("waist_circumference", 0)),
-            "hip_circumference": float(charge.get("metadata", {}).get("hip_circumference", 0)),
-            "bust_circumference": float(charge.get("metadata", {}).get("bust_circumference", 0)),
-            "unwanted_colors": json.loads(charge.get("metadata", {}).get("unwanted_colors", "[]")),
-            "style_preferences": charge.get("metadata", {}).get("style_preferences", ""),
-            "brand_preferences": json.loads(charge.get("metadata", {}).get("brand_preferences", "[]"))
+            # ✅ MODIFIÉ: Tous les charge.get() deviennent session.get()
+            "user_name": session.get("metadata", {}).get("user_name", "Client"),
+            "face_photo_url": session.get("metadata", {}).get("face_photo_url", ""),
+            "body_photo_url": session.get("metadata", {}).get("body_photo_url", ""),
+            "eye_color": session.get("metadata", {}).get("eye_color", ""),
+            "hair_color": session.get("metadata", {}).get("hair_color", ""),
+            "age": int(session.get("metadata", {}).get("age", 0)),
+            "shoulder_circumference": float(session.get("metadata", {}).get("shoulder_circumference", 0)),
+            "waist_circumference": float(session.get("metadata", {}).get("waist_circumference", 0)),
+            "hip_circumference": float(session.get("metadata", {}).get("hip_circumference", 0)),
+            "bust_circumference": float(session.get("metadata", {}).get("bust_circumference", 0)),
+            "unwanted_colors": json.loads(session.get("metadata", {}).get("unwanted_colors", "[]")),
+            "style_preferences": session.get("metadata", {}).get("style_preferences", ""),
+            "brand_preferences": json.loads(session.get("metadata", {}).get("brand_preferences", "[]"))
         }
         
         # Générer le rapport complet
@@ -126,7 +129,9 @@ async def test_report_generation():
             "report": report
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))# Endpoints pour rapports
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Endpoints pour rapports
 from app.services.supabase_reports import supabase_reports_service
 from app.services.email import email_service
 
