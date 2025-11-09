@@ -14,12 +14,15 @@ class EmailService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("RESEND_API_KEY")
+        # ✅ Stripper les newlines et espaces de la clé API
+        self.api_key = os.getenv("RESEND_API_KEY", "").strip()
         self.base_url = "https://api.resend.com"
         self.sender_email = "noreply@my-stylist.io"
         
         if not self.api_key:
             print("⚠️ AVERTISSEMENT: RESEND_API_KEY non configurée")
+        else:
+            print(f"✅ RESEND_API_KEY configurée (première 20 chars: {self.api_key[:20]}...)")
     
     async def send_report_email(
         self,

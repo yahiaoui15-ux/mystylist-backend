@@ -17,12 +17,15 @@ class PDFGenerationService:
     """
     
     def __init__(self):
-        self.api_key = os.getenv("PDFMONKEY_API_KEY")
-        self.template_id = os.getenv("PDFMONKEY_TEMPLATE_ID", "4D4A47D1-361F-4133-B998-188B6AB08A37")
+        # ✅ Stripper les newlines et espaces de la clé API
+        self.api_key = os.getenv("PDFMONKEY_API_KEY", "").strip()
+        self.template_id = os.getenv("PDFMONKEY_TEMPLATE_ID", "4D4A47D1-361F-4133-B998-188B6AB08A37").strip()
         self.base_url = "https://api.pdfmonkey.io/api/v1"
         
         if not self.api_key:
             print("⚠️ AVERTISSEMENT: PDFMONKEY_API_KEY non configurée")
+        else:
+            print(f"✅ PDFMONKEY_API_KEY configurée (première 20 chars: {self.api_key[:20]}...)")
     
     async def generate_report_pdf(
         self,
