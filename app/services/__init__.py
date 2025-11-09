@@ -1,0 +1,7 @@
+"""
+Services module for MyStylist backend
+"""
+
+from app.services.email_service import email_service
+
+__all__ = ["email_service"]
