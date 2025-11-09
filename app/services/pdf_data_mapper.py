@@ -1,5 +1,6 @@
 """
 PDF Data Mapper - Transforme le rapport généré en payload PDFMonkey
+VERSION CORRIGÉE - Ajoute des vérifications de type pour éviter les erreurs 'list has no attribute get'
 """
 
 from typing import Dict, Any, Optional
@@ -81,6 +82,8 @@ class PDFDataMapper:
         Prépare les variables Liquid pour le template PDFMonkey
         Format compatible avec le template existant
         
+        ⚠️ VERSION CORRIGÉE: Ajoute des vérifications de type
+        
         Args:
             report_data: Rapport complet
             user_data: Données utilisateur
@@ -89,43 +92,90 @@ class PDFDataMapper:
             dict: Variables Liquid
         """
         
+        # Extraire les sections avec sécurité
+        # Vérifier que ce sont bien des dicts avant d'appeler .get()
         colorimetry = report_data.get("colorimetry", {})
+        if not isinstance(colorimetry, dict):
+            print(f"⚠️  colorimetry n'est pas un dict: {type(colorimetry)}")
+            colorimetry = {}
+            
         morphology = report_data.get("morphology", {})
+        if not isinstance(morphology, dict):
+            print(f"⚠️  morphology n'est pas un dict: {type(morphology)}")
+            morphology = {}
+            
         styling = report_data.get("styling", {})
+        if not isinstance(styling, dict):
+            print(f"⚠️  styling n'est pas un dict: {type(styling)}")
+            styling = {}
+            
         products = report_data.get("products", {})
+        if not isinstance(products, dict):
+            print(f"⚠️  products n'est pas un dict: {type(products)}")
+            products = {}
+        
+        # Helper pour récupérer les produits d'une catégorie de manière sûre
+        def get_products_for_category(category_name: str, products_dict: dict) -> list:
+            """
+            Récupère les produits d'une catégorie de manière sûre
+            Gère les cas où la structure est inattendue
+            """
+            try:
+                if not isinstance(products_dict, dict):
+                    print(f"⚠️  products_dict n'est pas un dict pour {category_name}")
+                    return []
+                    
+                category_data = products_dict.get(category_name, {})
+                
+                if not isinstance(category_data, dict):
+                    print(f"⚠️  category_data n'est pas un dict pour {category_name}: {type(category_data)}")
+                    return []
+                    
+                products_list = category_data.get("products", [])
+                
+                if not isinstance(products_list, list):
+                    print(f"⚠️  products_list n'est pas une list pour {category_name}: {type(products_list)}")
+                    return []
+                    
+                return products_list[:5]
+                
+            except Exception as e:
+                print(f"❌ Erreur récupération produits {category_name}: {e}")
+                return []
         
         # Préparer les variables au format Liquid
         variables = {
             # Section 1: Intro
-            "client_first_name": user_data.get("first_name", ""),
-            "client_last_name": user_data.get("last_name", ""),
+            "client_first_name": user_data.get("first_name", "") if isinstance(user_data, dict) else "",
+            "client_last_name": user_data.get("last_name", "") if isinstance(user_data, dict) else "",
             "generation_date": datetime.now().strftime("%d %B %Y"),
             
             # Section 2: Colorimétrie
-            "colorimetry_season": colorimetry.get("season", ""),
-            "colorimetry_explanation": colorimetry.get("season_explanation", ""),
-            "palette_colors": colorimetry.get("palette_personnalisee", []),
+            "colorimetry_season": colorimetry.get("season", "") if isinstance(colorimetry, dict) else "",
+            "colorimetry_explanation": colorimetry.get("season_explanation", "") if isinstance(colorimetry, dict) else "",
+            "palette_colors": colorimetry.get("palette_personnalisee", []) if isinstance(colorimetry, dict) else [],
             
             # Section 3: Morphologie
-            "body_type": morphology.get("silhouette_type", ""),
-            "body_explanation": morphology.get("silhouette_explanation", ""),
+            "body_type": morphology.get("silhouette_type", "") if isinstance(morphology, dict) else "",
+            "body_explanation": morphology.get("silhouette_explanation", "") if isinstance(morphology, dict) else "",
             
             # Section 4: Styling
-            "style_archetypes": styling.get("style_archetypes", []),
-            "capsule_pieces": styling.get("capsule_wardrobe", []),
+            "style_archetypes": styling.get("style_archetypes", []) if isinstance(styling, dict) else [],
+            "capsule_pieces": styling.get("capsule_wardrobe", []) if isinstance(styling, dict) else [],
             
             # Section 5: Mix & Match
-            "formulas": styling.get("mix_and_match_formulas", []),
+            "formulas": styling.get("mix_and_match_formulas", []) if isinstance(styling, dict) else [],
             
-            # Section 6: Shopping
-            "products_tops": products.get("hauts", {}).get("products", []),
-            "products_bottoms": products.get("bas", {}).get("products", []),
-            "products_dresses": products.get("robes", {}).get("products", []),
+            # Section 6: Shopping (utiliser la fonction helper)
+            "products_tops": get_products_for_category("hauts", products),
+            "products_bottoms": get_products_for_category("bas", products),
+            "products_dresses": get_products_for_category("robes", products),
             
             # Section 7: Advice
-            "final_advice": styling.get("shopping_guide", ""),
+            "final_advice": styling.get("shopping_guide", "") if isinstance(styling, dict) else "",
         }
         
+        print(f"✅ Variables Liquid préparées: {len(variables)} champs")
         return variables
     
     @staticmethod
