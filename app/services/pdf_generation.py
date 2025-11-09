@@ -1,12 +1,12 @@
 """
 Service de génération de PDF via PDFMonkey
-VERSION CORRIGÉE - Ajoute la méthode generate_report_pdf pour compatibilité
+VERSION FINALE - Structure payload corrigée pour PDFMonkey API v1
+Clé correcte: 'document_template_id' (pas 'template_id')
 """
 
 import os
 import httpx
 from typing import Dict, Any, Optional
-import json
 
 from app.services.pdf_data_mapper import PDFDataMapper
 
@@ -25,7 +25,7 @@ class PDFGenerationService:
         if not self.api_key:
             print("⚠️ AVERTISSEMENT: PDFMONKEY_API_KEY non configurée")
         else:
-            print(f"✅ PDFMONKEY_API_KEY configurée (première 20 chars: {self.api_key[:20]}...)")
+            print(f"✅ PDFMONKEY_API_KEY configurée")
     
     async def generate_report_pdf(
         self,
@@ -72,18 +72,16 @@ class PDFGenerationService:
                 user_data
             )
             
-            # Préparer la requête
+            # Préparer la requête - STRUCTURE CORRECTE pour PDFMonkey API v1
+            # Important: Utiliser 'document_template_id' (pas 'template_id')
             payload = {
-                "document": {
-                    "template_id": self.template_id,
-                    "name": document_name or f"Rapport_MyStylist_{user_data.get('first_name', 'Client')}",
-                    "variables": liquid_variables
-                }
+                "document_template_id": self.template_id,
+                "data": liquid_variables
             }
             
             print(f"📤 Envoi à PDFMonkey...")
             print(f"   Template ID: {self.template_id}")
-            print(f"   Variables: {len(liquid_variables)} champs")
+            print(f"   Data fields: {len(liquid_variables)} champs")
             
             # Appel API PDFMonkey
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -103,16 +101,31 @@ class PDFGenerationService:
                 raise Exception(f"PDFMonkey error: {response.status_code} - {error_text}")
             
             result = response.json()
+            print(f"✅ Réponse PDFMonkey reçue")
             
             # Extraire l'URL du PDF
-            pdf_url = result.get("document", {}).get("download_url")
-            if not pdf_url:
-                # Construire l'URL si nécessaire
-                document_id = result.get("document", {}).get("id")
-                if document_id:
-                    pdf_url = f"{self.base_url}/documents/{document_id}/download"
+            # PDFMonkey retourne: {"document": {"id": "...", "download_url": "..."}}
+            pdf_url = None
+            document_id = None
             
-            print(f"✅ PDF généré: {pdf_url[:50]}...")
+            if "document" in result and isinstance(result["document"], dict):
+                pdf_url = result["document"].get("download_url")
+                document_id = result["document"].get("id")
+                print(f"   Document ID: {document_id}")
+            elif "data" in result and isinstance(result["data"], dict):
+                pdf_url = result["data"].get("download_url")
+                document_id = result["data"].get("id")
+            
+            # Si pas d'URL directe, construire depuis l'ID
+            if not pdf_url and document_id:
+                pdf_url = f"https://api.pdfmonkey.io/api/v1/documents/{document_id}/download"
+            
+            if not pdf_url:
+                print(f"⚠️  Pas d'URL trouvée dans la réponse PDFMonkey")
+                print(f"   Réponse: {result}")
+                raise Exception("PDFMonkey n'a pas retourné d'URL de téléchargement")
+            
+            print(f"✅ PDF généré: {pdf_url[:80]}...")
             return pdf_url
             
         except Exception as e:
