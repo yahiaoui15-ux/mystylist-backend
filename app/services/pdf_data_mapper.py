@@ -1,185 +1,164 @@
 """
-PDF Data Mapper - VERSION ULTRA-SAFE avec logging détaillé
-Identifie exactement où se produit l'erreur 'list has no attribute get'
+PDF Data Mapper - VERSION FLEXIBLE
+Accepte à la fois des listes et des dicts pour chaque section
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime
-import json
 
 
 class PDFDataMapper:
     """
     Mappe les données du rapport généré au format PDFMonkey
-    VERSION ULTRA-SAFE: Logs détaillés pour debug
+    VERSION FLEXIBLE: Accepte listes ET dicts
     """
+    
+    @staticmethod
+    def _ensure_dict(value: Any, default: dict = None) -> dict:
+        """
+        Convertit une liste ou n'importe quoi en dict
+        Si c'est une liste, retourne {}
+        Si c'est un dict, retourne le dict
+        Sinon retourne {}
+        """
+        if value is None:
+            return default or {}
+        if isinstance(value, dict):
+            return value
+        # Si c'est une liste ou autre, retourner {}
+        return default or {}
+    
+    @staticmethod
+    def _ensure_list(value: Any, default: list = None) -> list:
+        """
+        Convertit n'importe quoi en liste
+        Si c'est déjà une liste, retourne la liste
+        Sinon retourne []
+        """
+        if value is None:
+            return default or []
+        if isinstance(value, list):
+            return value
+        # Si c'est autre chose, retourner []
+        return default or []
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """
         Prépare les variables Liquid pour le template PDFMonkey
-        FORMAT ULTRA-SÛRE avec logging détaillé
+        VERSION FLEXIBLE: Accepte listes ET dicts
         """
         
-        print("\n" + "="*80)
-        print("🔍 DEBUG - prepare_liquid_variables START")
-        print("="*80)
+        print("\n✅ prepare_liquid_variables (FLEXIBLE VERSION)")
         
-        # 1. Vérifier le type de report_data
-        print(f"✓ Step 1: Vérifier report_data")
-        print(f"  Type: {type(report_data)}")
-        if not isinstance(report_data, dict):
-            print(f"  ❌ ERREUR: report_data n'est pas un dict!")
-            return {}
-        print(f"  Keys: {list(report_data.keys())}")
+        # Extraire les sections - peut être liste ou dict
+        colorimetry = PDFDataMapper._ensure_dict(report_data.get("colorimetry"))
+        morphology = PDFDataMapper._ensure_dict(report_data.get("morphology"))
+        styling = PDFDataMapper._ensure_dict(report_data.get("styling"))
+        products = PDFDataMapper._ensure_dict(report_data.get("products"))
+        visuals = PDFDataMapper._ensure_dict(report_data.get("visuals"))
         
-        # 2. Extraire et vérifier colorimetry
-        print(f"\n✓ Step 2: Extraire colorimetry")
-        try:
-            colorimetry = report_data.get("colorimetry", {})
-            print(f"  Type: {type(colorimetry)}")
-            if not isinstance(colorimetry, dict):
-                print(f"  ⚠️  ATTENTION: colorimetry est un {type(colorimetry)}, pas dict!")
-                colorimetry = {}
-            else:
-                print(f"  ✓ Keys: {list(colorimetry.keys())[:5]}")
-        except Exception as e:
-            print(f"  ❌ ERREUR dans colorimetry: {e}")
-            colorimetry = {}
+        print(f"   colorimetry: {type(report_data.get('colorimetry')).__name__} → dict ✅")
+        print(f"   morphology: {type(report_data.get('morphology')).__name__} → dict ✅")
+        print(f"   styling: {type(report_data.get('styling')).__name__} → dict ✅")
+        print(f"   products: {type(report_data.get('products')).__name__} → dict ✅")
+        print(f"   visuals: {type(report_data.get('visuals')).__name__} → dict ✅")
         
-        # 3. Extraire et vérifier morphology
-        print(f"\n✓ Step 3: Extraire morphology")
-        try:
-            morphology = report_data.get("morphology", {})
-            print(f"  Type: {type(morphology)}")
-            if not isinstance(morphology, dict):
-                print(f"  ⚠️  ATTENTION: morphology est un {type(morphology)}, pas dict!")
-                morphology = {}
-            else:
-                print(f"  ✓ Keys: {list(morphology.keys())[:5]}")
-        except Exception as e:
-            print(f"  ❌ ERREUR dans morphology: {e}")
-            morphology = {}
-        
-        # 4. Extraire et vérifier styling
-        print(f"\n✓ Step 4: Extraire styling")
-        try:
-            styling = report_data.get("styling", {})
-            print(f"  Type: {type(styling)}")
-            if not isinstance(styling, dict):
-                print(f"  ⚠️  ATTENTION: styling est un {type(styling)}, pas dict!")
-                styling = {}
-            else:
-                print(f"  ✓ Keys: {list(styling.keys())[:5]}")
-        except Exception as e:
-            print(f"  ❌ ERREUR dans styling: {e}")
-            styling = {}
-        
-        # 5. Extraire et vérifier products
-        print(f"\n✓ Step 5: Extraire products")
-        try:
-            products = report_data.get("products", {})
-            print(f"  Type: {type(products)}")
-            if not isinstance(products, dict):
-                print(f"  ⚠️  ATTENTION: products est un {type(products)}, pas dict!")
-                print(f"  Contenu: {products}")
-                products = {}
-            else:
-                print(f"  ✓ Keys: {list(products.keys())}")
-                # Vérifier la structure de chaque catégorie
-                for category in ["hauts", "bas", "robes"]:
-                    if category in products:
-                        cat_data = products[category]
-                        print(f"    - {category}: {type(cat_data)}")
-                        if isinstance(cat_data, dict):
-                            print(f"      Keys: {list(cat_data.keys())}")
-                            if "products" in cat_data:
-                                print(f"      products type: {type(cat_data['products'])}")
-                        else:
-                            print(f"      ⚠️  {category} n'est pas un dict!")
-        except Exception as e:
-            print(f"  ❌ ERREUR dans products: {e}")
-            products = {}
-        
-        # 6. Helper pour récupérer les produits
-        print(f"\n✓ Step 6: Helper get_products_for_category")
-        
+        # Helper pour récupérer les produits d'une catégorie
         def get_products_for_category(category_name: str, products_dict: dict) -> list:
-            """Récupère les produits avec logging détaillé"""
-            print(f"    → get_products_for_category('{category_name}')")
+            """Récupère les produits d'une catégorie de manière sûre"""
             try:
-                if not isinstance(products_dict, dict):
-                    print(f"      ⚠️  products_dict n'est pas un dict: {type(products_dict)}")
-                    return []
-                
+                # products_dict est maintenant garanti être un dict
                 category_data = products_dict.get(category_name, {})
-                print(f"      category_data type: {type(category_data)}")
                 
-                if not isinstance(category_data, dict):
-                    print(f"      ⚠️  category_data n'est pas un dict!")
+                # category_data peut être dict ou liste
+                if isinstance(category_data, dict):
+                    products_list = category_data.get("products", [])
+                    products_list = PDFDataMapper._ensure_list(products_list)
+                    return products_list[:5]
+                elif isinstance(category_data, list):
+                    # Si c'est directement une liste, retourner les 5 premiers
+                    return category_data[:5]
+                else:
                     return []
-                
-                products_list = category_data.get("products", [])
-                print(f"      products_list type: {type(products_list)}")
-                
-                if not isinstance(products_list, list):
-                    print(f"      ⚠️  products_list n'est pas une list!")
-                    return []
-                
-                print(f"      ✓ Retourne {len(products_list)} produits")
-                return products_list[:5]
             except Exception as e:
-                print(f"      ❌ ERREUR: {e}")
+                print(f"   ⚠️  {category_name}: {e}")
                 return []
         
-        # 7. Préparer les variables
-        print(f"\n✓ Step 7: Préparer les variables Liquid")
-        try:
-            variables = {
-                "client_first_name": user_data.get("first_name", "") if isinstance(user_data, dict) else "",
-                "client_last_name": user_data.get("last_name", "") if isinstance(user_data, dict) else "",
-                "generation_date": datetime.now().strftime("%d %B %Y"),
-                
-                "colorimetry_season": colorimetry.get("season", "") if isinstance(colorimetry, dict) else "",
-                "colorimetry_explanation": colorimetry.get("season_explanation", "") if isinstance(colorimetry, dict) else "",
-                "palette_colors": colorimetry.get("palette_personnalisee", []) if isinstance(colorimetry, dict) else [],
-                
-                "body_type": morphology.get("silhouette_type", "") if isinstance(morphology, dict) else "",
-                "body_explanation": morphology.get("silhouette_explanation", "") if isinstance(morphology, dict) else "",
-                
-                "style_archetypes": styling.get("style_archetypes", []) if isinstance(styling, dict) else [],
-                "capsule_pieces": styling.get("capsule_wardrobe", []) if isinstance(styling, dict) else [],
-                
-                "formulas": styling.get("mix_and_match_formulas", []) if isinstance(styling, dict) else [],
-                
-                "products_tops": get_products_for_category("hauts", products),
-                "products_bottoms": get_products_for_category("bas", products),
-                "products_dresses": get_products_for_category("robes", products),
-                
-                "final_advice": styling.get("shopping_guide", "") if isinstance(styling, dict) else "",
-            }
+        # Préparer les variables au format Liquid
+        variables = {
+            # Section 1: Intro
+            "client_first_name": user_data.get("first_name", "") if isinstance(user_data, dict) else "",
+            "client_last_name": user_data.get("last_name", "") if isinstance(user_data, dict) else "",
+            "generation_date": datetime.now().strftime("%d %B %Y"),
             
-            print(f"  ✓ Variables préparées: {len(variables)} champs")
-            print("="*80)
-            print("✅ prepare_liquid_variables SUCCESS\n")
-            return variables
+            # Section 2: Colorimétrie
+            "colorimetry_season": colorimetry.get("season", ""),
+            "colorimetry_explanation": colorimetry.get("season_explanation", ""),
+            "palette_colors": PDFDataMapper._ensure_list(colorimetry.get("palette_personnalisee")),
             
-        except Exception as e:
-            print(f"  ❌ ERREUR dans création des variables: {e}")
-            import traceback
-            traceback.print_exc()
-            return {}
+            # Section 3: Morphologie
+            "body_type": morphology.get("silhouette_type", ""),
+            "body_explanation": morphology.get("silhouette_explanation", ""),
+            
+            # Section 4: Styling
+            "style_archetypes": PDFDataMapper._ensure_list(styling.get("style_archetypes")),
+            "capsule_pieces": PDFDataMapper._ensure_list(styling.get("capsule_wardrobe")),
+            
+            # Section 5: Mix & Match
+            "formulas": PDFDataMapper._ensure_list(styling.get("mix_and_match_formulas")),
+            
+            # Section 6: Shopping (utiliser la fonction helper)
+            "products_tops": get_products_for_category("hauts", products),
+            "products_bottoms": get_products_for_category("bas", products),
+            "products_dresses": get_products_for_category("robes", products),
+            
+            # Section 7: Advice
+            "final_advice": styling.get("shopping_guide", ""),
+        }
+        
+        print(f"   ✅ Variables Liquid préparées: {len(variables)} champs")
+        return variables
     
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
         """Transforme un rapport généré en payload PDFMonkey"""
+        
+        colorimetry = PDFDataMapper._ensure_dict(report_data.get("colorimetry"))
+        morphology = PDFDataMapper._ensure_dict(report_data.get("morphology"))
+        styling = PDFDataMapper._ensure_dict(report_data.get("styling"))
+        products = PDFDataMapper._ensure_dict(report_data.get("products"))
+        
         return {
             "data": {
                 "client_name": user_data.get("first_name", "Client"),
                 "client_email": user_data.get("email", ""),
                 "generation_date": datetime.now().strftime("%d/%m/%Y"),
+                "season": colorimetry.get("season", ""),
+                "silhouette_type": morphology.get("silhouette_type", ""),
             }
         }
+    
+    @staticmethod
+    def validate_mapping(payload: dict) -> bool:
+        """Valide que le mapping est complet"""
+        required_fields = [
+            "data.client_name",
+            "data.season",
+            "data.silhouette_type"
+        ]
+        
+        for field in required_fields:
+            parts = field.split(".")
+            current = payload
+            for part in parts:
+                if isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    print(f"⚠️ Champ manquant: {field}")
+                    return False
+        
+        return True
 
 
 # Instance globale à exporter
