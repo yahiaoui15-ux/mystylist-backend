@@ -26,12 +26,13 @@ async def handle_stripe_webhook(request: Request):
     """
     Webhook Stripe - Déclenche la génération du rapport
     
-    Reçoit un paiement de client et génère:
-    1. Récupère les données depuis Supabase
-    2. Analyses IA (colorimétrie, morphologie, styling)
-    3. Récupération visuels et produits
-    4. Génération PDF
-    5. Envoi email
+    Flux:
+    1. Reçoit userId depuis métadonnées Stripe
+    2. Récupère profil depuis user_profiles
+    3. Récupère photos depuis user_photos
+    4. Récupère email depuis profiles
+    5. Parse onboarding_data JSON
+    6. Génère rapport complet
     """
     try:
         from app.utils.supabase_client import supabase
@@ -53,42 +54,93 @@ async def handle_stripe_webhook(request: Request):
         
         print(f"✅ Paiement confirmé pour user: {user_id}")
         
-        # ✅ Récupérer les données depuis Supabase
+        # ✅ Récupérer TOUTES les données depuis Supabase
         print(f"📥 Récupération des données Supabase pour user: {user_id}")
         
         try:
-            # Récupérer profil utilisateur
-            profile_response = await supabase.query_table("user_profiles", {"id": user_id})
-            profile = profile_response[0] if profile_response else {}
+            # 1. Récupérer le profil utilisateur (onboarding_data)
+            profile_response = await supabase.query_table("user_profiles", {"user_id": user_id})
+            user_profile = profile_response[0] if profile_response else {}
             
-            # Récupérer photos utilisateur
+            # 2. Récupérer les photos
             photos_response = await supabase.query_table("user_photos", {"user_id": user_id})
             photos = photos_response if photos_response else []
             
-            print(f"✅ Données récupérées: profil + {len(photos)} photo(s)")
+            # 3. Récupérer l'email depuis la table profiles
+            profile_auth_response = await supabase.query_table("profiles", {"id": user_id})
+            profile_auth = profile_auth_response[0] if profile_auth_response else {}
+            
+            print(f"✅ Données récupérées: profil + {len(photos)} photo(s) + email")
+            
         except Exception as e:
             print(f"⚠️  Erreur lors de la récupération Supabase: {e}")
-            profile = {}
+            user_profile = {}
             photos = []
+            profile_auth = {}
         
-        # Construire user_data depuis Supabase
+        # ✅ Parser onboarding_data JSON
+        onboarding_data = {}
+        if isinstance(user_profile.get("onboarding_data"), str):
+            try:
+                onboarding_data = json.loads(user_profile.get("onboarding_data", "{}"))
+            except:
+                onboarding_data = {}
+        else:
+            onboarding_data = user_profile.get("onboarding_data", {})
+        
+        # Extraire mesures
+        measurements = onboarding_data.get("measurements", {})
+        personal_info = onboarding_data.get("personal_info", {})
+        
+        # Construire user_data avec TOUS les bons champs
         user_data = {
             "user_id": user_id,
-            "user_email": profile.get("email", "noreply@mystylist.io"),
-            "user_name": profile.get("full_name", "Client"),
-            "face_photo_url": next((p.get("url") for p in photos if p.get("type") == "face"), ""),
-            "body_photo_url": next((p.get("url") for p in photos if p.get("type") == "body"), ""),
-            "eye_color": profile.get("eye_color", ""),
-            "hair_color": profile.get("hair_color", ""),
-            "age": int(profile.get("age", 0)) if profile.get("age") else 0,
-            "shoulder_circumference": float(profile.get("shoulder_circumference", 0)) if profile.get("shoulder_circumference") else 0,
-            "waist_circumference": float(profile.get("waist_circumference", 0)) if profile.get("waist_circumference") else 0,
-            "hip_circumference": float(profile.get("hip_circumference", 0)) if profile.get("hip_circumference") else 0,
-            "bust_circumference": float(profile.get("bust_circumference", 0)) if profile.get("bust_circumference") else 0,
-            "unwanted_colors": profile.get("unwanted_colors", []),
-            "style_preferences": profile.get("style_preferences", ""),
-            "brand_preferences": profile.get("brand_preferences", [])
+            "user_email": profile_auth.get("email", "noreply@mystylist.io"),
+            "user_name": f"{profile_auth.get('first_name', 'Client')} {profile_auth.get('last_name', '')}".strip(),
+            
+            # Photos
+            "face_photo_url": next(
+                (p.get("cloudinary_url") for p in photos if p.get("photo_type") == "face"),
+                ""
+            ),
+            "body_photo_url": next(
+                (p.get("cloudinary_url") for p in photos if p.get("photo_type") == "body"),
+                ""
+            ),
+            
+            # Couleurs (depuis onboarding_data ou user_profiles)
+            "eye_color": onboarding_data.get("eye_color") or user_profile.get("eye_color", ""),
+            "hair_color": onboarding_data.get("hair_color") or user_profile.get("hair_color", ""),
+            "skin_color": user_profile.get("skin_color", ""),
+            "undertone": user_profile.get("undertone", ""),
+            
+            # Morphologie
+            "body_shape": user_profile.get("body_shape", ""),
+            
+            # Mesures (depuis onboarding_data)
+            "age": int(personal_info.get("age", 0)) if personal_info.get("age") else 0,
+            "height": int(personal_info.get("height", 0)) if personal_info.get("height") else 0,
+            "weight": int(personal_info.get("weight", 0)) if personal_info.get("weight") else 0,
+            "shoulder_circumference": float(measurements.get("shoulder_circumference", 0)) if measurements.get("shoulder_circumference") else 0,
+            "waist_circumference": float(measurements.get("waist_circumference", 0)) if measurements.get("waist_circumference") else 0,
+            "hip_circumference": float(measurements.get("hip_circumference", 0)) if measurements.get("hip_circumference") else 0,
+            "bust_circumference": float(measurements.get("bust_circumference", 0)) if measurements.get("bust_circumference") else 0,
+            
+            # Préférences (depuis onboarding_data)
+            "style_preferences": onboarding_data.get("style_preferences", []),
+            "brand_preferences": onboarding_data.get("brand_preferences", {}).get("selected_brands", []),
+            "unwanted_colors": onboarding_data.get("color_preferences", {}).get("disliked_colors", []),
+            "unwanted_patterns": onboarding_data.get("pattern_preferences", {}).get("disliked_patterns", []),
+            
+            # Personnalité & morph goals
+            "personality_data": onboarding_data.get("personality_data", {}),
+            "morphology_goals": onboarding_data.get("morphology_goals", {}),
         }
+        
+        print(f"✅ Données parsées et structurées")
+        print(f"   - Email: {user_data['user_email']}")
+        print(f"   - Photos: face={bool(user_data['face_photo_url'])}, body={bool(user_data['body_photo_url'])}")
+        print(f"   - Mesures: taille={user_data['shoulder_circumference']}, taille={user_data['waist_circumference']}, hanches={user_data['hip_circumference']}")
         
         # Générer le rapport
         print("🚀 Génération du rapport MyStylist...")
@@ -127,7 +179,7 @@ async def test_report_generation():
         "hip_circumference": 95,
         "bust_circumference": 90,
         "unwanted_colors": ["Rose fluo"],
-        "style_preferences": "Classique chic",
+        "style_preferences": ["Classique chic"],
         "brand_preferences": ["Zara"]
     }
     
