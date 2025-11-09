@@ -34,7 +34,7 @@ async def handle_stripe_webhook(request: Request):
     5. Envoi email
     """
     try:
-        from app.utils.supabase_client import supabase_client
+        from app.utils.supabase_client import supabase
         
         payload = await request.json()
         print(f"📨 Webhook Stripe reçu: {payload.get('type', 'unknown')}")
@@ -58,12 +58,12 @@ async def handle_stripe_webhook(request: Request):
         
         try:
             # Récupérer profil utilisateur
-            profile_response = await supabase_client.table("user_profiles").select("*").eq("id", user_id).single().execute()
-            profile = profile_response.data if profile_response.data else {}
+            profile_response = await supabase.query_table("user_profiles", {"id": user_id})
+            profile = profile_response[0] if profile_response else {}
             
             # Récupérer photos utilisateur
-            photos_response = await supabase_client.table("user_photos").select("*").eq("user_id", user_id).execute()
-            photos = photos_response.data if photos_response.data else []
+            photos_response = await supabase.query_table("user_photos", {"user_id": user_id})
+            photos = photos_response if photos_response else []
             
             print(f"✅ Données récupérées: profil + {len(photos)} photo(s)")
         except Exception as e:
