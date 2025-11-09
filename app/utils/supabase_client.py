@@ -15,8 +15,8 @@ class SupabaseClient:
         """Récupère le profil utilisateur"""
         try:
             client = self._get_client()
-            response = client.table("user_profiles").select("*").eq("id", user_id).single()
-            return response.data
+            response = client.table("user_profiles").select("*").eq("user_id", user_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             print(f"❌ Erreur Supabase: {e}")
             return None
@@ -25,8 +25,8 @@ class SupabaseClient:
         """Récupère les visuels pédagogiques"""
         try:
             client = self._get_client()
-            response = client.table("visuels").select("*").eq("category", category).eq("cut_key", cut_key).single()
-            return response.data
+            response = client.table("visuels").select("*").eq("category", category).eq("cut_key", cut_key).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             print(f"❌ Erreur visuels: {e}")
             return None
@@ -40,10 +40,10 @@ class SupabaseClient:
                 for key, value in filters.items():
                     query = query.eq(key, value)
             response = query.execute()
-            return response.data
+            return response.data if response.data else []
         except Exception as e:
             print(f"❌ Erreur query {table}: {e}")
-            return None
+            return []
 
 # Instance globale
 supabase = SupabaseClient()
