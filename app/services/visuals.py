@@ -40,8 +40,8 @@ class VisualsService:
                         if visual:
                             visuals_by_category[category]["a_privilegier"].append({
                                 **rec,
-                                "image_url": visual.get("image_url"),
-                                "visual_id": visual.get("id")
+                                "image_url": visual.get("url_image"),
+                                "visual_id": visual.get("nom_simplifie")
                             })
                 
                 # Traiter les visuels à éviter
@@ -52,7 +52,7 @@ class VisualsService:
                         if visual:
                             visuals_by_category[category]["a_eviter"].append({
                                 **rec,
-                                "image_url": visual.get("image_url")
+                                "image_url": visual.get("url_image")
                             })
             
             print(f"✅ Visuels récupérés: {len(visuals_by_category)} catégories")
@@ -68,8 +68,8 @@ class VisualsService:
             result = await self.supabase.query_table(
                 "visuels",
                 filters={
-                    "category": category,
-                    "cut_key": cut_key
+                    "type_vetement": category,
+                    "coupe": cut_key
                 }
             )
             

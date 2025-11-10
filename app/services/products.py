@@ -23,7 +23,7 @@ class ProductsService:
             products = await self.supabase.query_table(
                 "Products place des tendances",
                 filters={
-                    "category_primary": category
+                    "category/primary": category
                 }
             )
             
@@ -40,12 +40,12 @@ class ProductsService:
                 # Vérifier si le produit correspond à la saison (optionnel si pas de tag)
                 # Pour l'instant, on prend les premiers produits
                 filtered_products.append({
-                    "name": product.get("name", ""),
+                    "name": product.get("_name", ""),
                     "brand": product.get("brand", ""),
-                    "price": product.get("retail_price", 0),
-                    "url": product.get("product_url", ""),
-                    "image_url": product.get("image_url", ""),
-                    "category": product.get("category_primary", category)
+                    "price": product.get("price/retail", 0),
+                    "url": product.get("URL/product/0", ""),
+                    "image_url": product.get("URL/productImage", ""),
+                    "category": product.get("category/primary", category)
                 })
             
             print(f"✅ {len(filtered_products)} produits pour {category}")
