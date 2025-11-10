@@ -33,6 +33,7 @@ async def handle_stripe_webhook(request: Request):
     🔧 CORRECTIONS APPLIQUÉES:
     1. Ajouter first_name et last_name à user_data
     2. Vérifier les doublons avant de générer
+    3. Sauvegarder dans la table reports après succès
     """
     try:
         from app.utils.supabase_client import supabase
@@ -60,7 +61,7 @@ async def handle_stripe_webhook(request: Request):
         try:
             existing_reports = await supabase.query_table(
                 "reports",
-                {"user_id": user_id, "payment_id": payment_id}
+                {"payment_id": payment_id}
             )
             
             if existing_reports and len(existing_reports) > 0:
@@ -214,13 +215,26 @@ async def handle_stripe_webhook(request: Request):
         except Exception as e:
             print(f"⚠️ Erreur envoi email: {e}")
         
+        # 🚀 PHASE 5: Sauvegarder le rapport en base de données
+        print("💾 Sauvegarde du rapport en base de données...")
+        try:
+            await supabase.insert_table("reports", {
+                "user_id": user_id,
+                "payment_id": payment_id,
+                "pdf_url": pdf_url,
+                "email_sent": True if pdf_url else False
+            })
+            print(f"✅ Rapport sauvegardé en base de données")
+        except Exception as e:
+            print(f"⚠️ Erreur sauvegarde rapport (continuant): {e}")
+        
         # ✅ SUCCÈS
         print(f"✅ FLUX COMPLET RÉUSSI pour user {user_id}")
         
         return {
             "status": "success",
             "user_id": user_id,
-            "payment_id": payment_id,  # ← Ajouter payment_id dans response
+            "payment_id": payment_id,
             "message": "Rapport généré et envoyé par email",
             "pdf_url": pdf_url,
             "email_sent": True if pdf_url else False
