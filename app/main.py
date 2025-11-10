@@ -30,37 +30,55 @@ async def handle_stripe_webhook(request: Request):
     """
     Webhook Stripe - Flux complet: paiement → rapport → PDF → email
     
-    Flux:
-    1. Reçoit userId depuis métadonnées Stripe
-    2. Récupère profil depuis Supabase
-    3. Génère rapport complet
-    4. Mappe données au format PDFMonkey
-    5. Génère PDF via PDFMonkey
-    6. Envoie PDF par email via Resend
-    7. ✅ Succès!
+    🔧 CORRECTIONS APPLIQUÉES:
+    1. Ajouter first_name et last_name à user_data
+    2. Vérifier les doublons avant de générer
     """
     try:
         from app.utils.supabase_client import supabase
         
         payload = await request.json()
-        print(f"📨 Webhook Stripe reçu: {payload.get('type', 'unknown')}")
+        print(f"🔨 Webhook Stripe reçu: {payload.get('type', 'unknown')}")
         
         event_type = payload.get("type")
         if event_type != "checkout.session.completed":
-            print(f"⏭️  Event ignoré: {event_type}")
+            print(f"⭐️ Event ignoré: {event_type}")
             return {"received": True}
         
         session = payload.get("data", {}).get("object", {})
         user_id = session.get("metadata", {}).get("userId")
+        payment_id = session.get("id")  # ← Ajouter payment_id pour vérifier les doublons
         
         if not user_id:
             print(f"❌ userId manquant dans les métadonnées")
             raise HTTPException(status_code=400, detail="userId manquant")
         
-        print(f"✅ Paiement confirmé pour user: {user_id}")
+        print(f"✅ Paiement confirmé pour user: {user_id}, payment_id: {payment_id}")
+        
+        # 🔧 VÉRIFICATION DOUBLON: Vérifier si ce paiement a déjà généré un rapport
+        print(f"🔍 Vérification: rapport déjà généré?")
+        try:
+            existing_reports = await supabase.query_table(
+                "reports",
+                {"user_id": user_id, "payment_id": payment_id}
+            )
+            
+            if existing_reports and len(existing_reports) > 0:
+                print(f"⚠️ DOUBLON DÉTECTÉ: Rapport déjà généré pour ce paiement")
+                print(f"   Report ID: {existing_reports[0].get('id')}")
+                print(f"   Generated at: {existing_reports[0].get('created_at')}")
+                # Retourner un succès sans régénérer
+                return {
+                    "status": "already_processed",
+                    "user_id": user_id,
+                    "payment_id": payment_id,
+                    "message": "Rapport déjà généré pour ce paiement"
+                }
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la vérification doublon (continuant): {e}")
         
         # ✅ Récupérer TOUTES les données depuis Supabase
-        print(f"📥 Récupération des données Supabase pour user: {user_id}")
+        print(f"🔥 Récupération des données Supabase pour user: {user_id}")
         
         try:
             # 1. Récupérer le profil utilisateur (onboarding_data)
@@ -78,7 +96,7 @@ async def handle_stripe_webhook(request: Request):
             print(f"✅ Données récupérées: profil + {len(photos)} photo(s) + email")
             
         except Exception as e:
-            print(f"⚠️  Erreur lors de la récupération Supabase: {e}")
+            print(f"⚠️ Erreur lors de la récupération Supabase: {e}")
             user_profile = {}
             photos = []
             profile_auth = {}
@@ -97,11 +115,20 @@ async def handle_stripe_webhook(request: Request):
         measurements = onboarding_data.get("measurements", {})
         personal_info = onboarding_data.get("personal_info", {})
         
+        # 🔧 CORRECTION: Ajouter first_name et last_name
+        first_name = profile_auth.get("first_name", "Client")
+        last_name = profile_auth.get("last_name", "")
+        
         # Construire user_data avec TOUS les bons champs
         user_data = {
             "user_id": user_id,
+            
+            # 🔧 CORRECTIONS: Ajouter les champs manquants pour PDFMonkey
+            "first_name": first_name,  # ← NOUVEAU - pour PDFMonkey
+            "last_name": last_name,    # ← NOUVEAU - pour PDFMonkey
+            
             "user_email": profile_auth.get("email", "noreply@mystylist.io"),
-            "user_name": f"{profile_auth.get('first_name', 'Client')} {profile_auth.get('last_name', '')}".strip(),
+            "user_name": f"{first_name} {last_name}".strip(),
             
             # Photos
             "face_photo_url": next(
@@ -143,9 +170,10 @@ async def handle_stripe_webhook(request: Request):
         }
         
         print(f"✅ Données parsées et structurées")
+        print(f"   - Nom: {user_data['first_name']} {user_data['last_name']}")  # ← LOG POUR VÉRIFIER
         print(f"   - Email: {user_data['user_email']}")
         print(f"   - Photos: face={bool(user_data['face_photo_url'])}, body={bool(user_data['body_photo_url'])}")
-        print(f"   - Mesures: taille={user_data['shoulder_circumference']}, taille={user_data['waist_circumference']}, hanches={user_data['hip_circumference']}")
+        print(f"   - Mesures: épaules={user_data['shoulder_circumference']}, taille={user_data['waist_circumference']}, hanches={user_data['hip_circumference']}")
         
         # 🚀 PHASE 1: Générer le rapport
         print("🚀 Génération du rapport MyStylist...")
@@ -167,7 +195,7 @@ async def handle_stripe_webhook(request: Request):
             pdf_url = await pdf_service.generate_report_pdf(report, user_data)
             print(f"✅ PDF généré: {pdf_url[:80]}...")
         except Exception as e:
-            print(f"⚠️  Erreur PDF, continuant sans PDF: {e}")
+            print(f"⚠️ Erreur PDF, continuant sans PDF: {e}")
             pdf_url = None
         
         # 🚀 PHASE 4: Envoyer l'email
@@ -182,9 +210,9 @@ async def handle_stripe_webhook(request: Request):
                 )
                 print(f"✅ Email envoyé: {email_result.get('email_id', 'N/A')}")
             else:
-                print(f"⚠️  Pas de PDF, email non envoyé")
+                print(f"⚠️ Pas de PDF, email non envoyé")
         except Exception as e:
-            print(f"⚠️  Erreur envoi email: {e}")
+            print(f"⚠️ Erreur envoi email: {e}")
         
         # ✅ SUCCÈS
         print(f"✅ FLUX COMPLET RÉUSSI pour user {user_id}")
@@ -192,6 +220,7 @@ async def handle_stripe_webhook(request: Request):
         return {
             "status": "success",
             "user_id": user_id,
+            "payment_id": payment_id,  # ← Ajouter payment_id dans response
             "message": "Rapport généré et envoyé par email",
             "pdf_url": pdf_url,
             "email_sent": True if pdf_url else False
@@ -207,6 +236,8 @@ async def handle_stripe_webhook(request: Request):
 async def test_report_generation():
     """Endpoint de test pour générer un rapport"""
     test_data = {
+        "first_name": "Test",  # ← Ajouter
+        "last_name": "User",   # ← Ajouter
         "user_name": "Test User",
         "user_email": "test@example.com",
         "face_photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Default_pfp.svg/1200px-Default_pfp.svg.png",
