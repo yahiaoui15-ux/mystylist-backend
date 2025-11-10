@@ -15,7 +15,7 @@ class ColorimetryService:
             user_data: dict avec face_photo_url, eye_color, hair_color, age, unwanted_colors
         
         Returns:
-            dict avec season, palette, guide_maquillage, etc.
+            dict avec season, palette, guide_maquillage, seasonJustification, eyeColor, hairColor
         """
         try:
             print("🎨 Analyse colorimétrie...")
@@ -44,7 +44,17 @@ class ColorimetryService:
                 print("❌ Erreur parsing JSON colorimétrie")
                 return {}
             
+            # ✅ AJOUTER les données manquantes de user_data
+            result["eye_color"] = user_data.get("eye_color", "")
+            result["hair_color"] = user_data.get("hair_color", "")
+            
+            # ✅ Ajouter la justification si absente (fallback)
+            if not result.get("season_justification"):
+                result["season_justification"] = f"Votre carnation et vos traits correspondent à la saison {result.get('season', 'indéterminée')}."
+            
             print(f"✅ Colorimétrie analysée: {result.get('season', 'Unknown')}")
+            print(f"   ✓ Eye color: {result.get('eye_color')}")
+            print(f"   ✓ Hair color: {result.get('hair_color')}")
             return result
             
         except Exception as e:
