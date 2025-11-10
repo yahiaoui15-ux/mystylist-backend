@@ -1,9 +1,9 @@
 """
-PDF Data Mapper - VERSION CORRIGÉE
+PDF Data Mapper - VERSION ENRICHIE
 Mappe les données du rapport à la STRUCTURE EXACTE attendue par le template Liquid
-✅ Structure imbriquée comme le template l'attend
-✅ Gestion robuste des cas manquants
-✅ Logs détaillés pour debug
+✅ Support nouveau prompt colorimetry avec 12 couleurs + notes détaillées
+✅ Support guide_maquillage ultra-détaillé
+✅ Support shopping_couleurs avec priorités
 """
 
 from typing import Dict, Any, Optional
@@ -34,22 +34,18 @@ class PDFDataMapper:
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """
         ✅ FONCTION PRINCIPALE - Prépare les variables Liquid pour le template PDFMonkey
-        
-        Retourne une structure EXACTEMENT comme le template l'attend:
-        - {{ user.firstName }} au lieu de {{ client_first_name }}
-        - {{ colorimetry.season }} au lieu de {{ colorimetry_season }}
-        - etc.
+        Supporte nouveau prompt colorimetry enrichi avec guide_maquillage ultra-détaillé
         
         Args:
-            report_data: Les données générées par OpenAI
-            user_data: Les données utilisateur (peut avoir first_name ou user_name)
+            report_data: Les données générées par OpenAI (nouveau format)
+            user_data: Les données utilisateur
         
         Returns:
             dict: Structure Liquid imbriquée comme le template l'attend
         """
         
         print("\n" + "="*70)
-        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES")
+        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (ENRICHI)")
         print("="*70)
         
         # Assurer que les sections sont des dicts
@@ -57,26 +53,24 @@ class PDFDataMapper:
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology"))
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling"))
         products_raw = PDFDataMapper._safe_dict(report_data.get("products"))
-        makeup_raw = PDFDataMapper._safe_dict(report_data.get("makeup"))
+        guide_maquillage_raw = PDFDataMapper._safe_dict(report_data.get("guide_maquillage"))
+        shopping_raw = PDFDataMapper._safe_dict(report_data.get("shopping_couleurs"))
         
         user_data = PDFDataMapper._safe_dict(user_data)
         
         print(f"\n📦 Données reçues:")
         print(f"   ✓ user_data: {len(user_data)} champs")
         print(f"   ✓ colorimetry: {len(colorimetry_raw)} champs")
-        print(f"   ✓ morphology: {len(morphology_raw)} champs")
-        print(f"   ✓ styling: {len(styling_raw)} champs")
+        print(f"   ✓ guide_maquillage: {len(guide_maquillage_raw)} champs")
+        print(f"   ✓ shopping_couleurs: {len(shopping_raw)} champs")
         
         # ================================================================
-        # EXTRAIRE ET PARSER LES DONNÉES
-        # ================================================================
-        
         # SECTION USER
+        # ================================================================
         print(f"\n👤 Mapping user:")
         first_name = user_data.get("first_name", "")
         last_name = user_data.get("last_name", "")
         
-        # Fallback: parser user_name si first_name/last_name n'existent pas
         if not first_name and not last_name:
             user_name = user_data.get("user_name", "Client")
             parts = user_name.split(" ", 1)
@@ -86,21 +80,42 @@ class PDFDataMapper:
         print(f"   ✓ firstName: {first_name}")
         print(f"   ✓ lastName: {last_name}")
         
-        # SECTION COLORIMETRY
-        print(f"\n🎨 Mapping colorimetry:")
+        # ================================================================
+        # SECTION COLORIMETRY (NOUVEAU FORMAT)
+        # ================================================================
+        print(f"\n🎨 Mapping colorimetry (ENRICHI):")
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee"))
-        all_colors = PDFDataMapper._safe_list(colorimetry_raw.get("all_colors_with_notes"))
+        notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite"))
         associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes"))
+        alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees"))
+        
         print(f"   ✓ palette: {len(palette)} couleurs")
-        print(f"   ✓ all_colors: {len(all_colors)} couleurs")
+        print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
         print(f"   ✓ associations: {len(associations)}")
+        print(f"   ✓ alternatives: {len(alternatives)}")
         
-        # SECTION MAKEUP
-        print(f"\n💄 Mapping makeup:")
-        nail_colors = PDFDataMapper._safe_list(makeup_raw.get("nail_colors", []))
-        print(f"   ✓ nail_colors: {len(nail_colors)}")
+        # ================================================================
+        # SECTION GUIDE MAQUILLAGE (NOUVEAU FORMAT ULTRA-DÉTAILLÉ)
+        # ================================================================
+        print(f"\n💄 Mapping guide_maquillage (ULTRA-DÉTAILLÉ):")
+        print(f"   ✓ teint: {bool(guide_maquillage_raw.get('teint'))}")
+        print(f"   ✓ blush: {bool(guide_maquillage_raw.get('blush'))}")
+        print(f"   ✓ vernis_a_ongles: {len(PDFDataMapper._safe_list(guide_maquillage_raw.get('vernis_a_ongles')))}")
         
+        # ================================================================
+        # SECTION SHOPPING (NOUVEAU)
+        # ================================================================
+        print(f"\n🛍️  Mapping shopping_couleurs:")
+        priorite_1 = PDFDataMapper._safe_list(shopping_raw.get("priorite_1"))
+        priorite_2 = PDFDataMapper._safe_list(shopping_raw.get("priorite_2"))
+        eviter = PDFDataMapper._safe_list(shopping_raw.get("eviter_absolument"))
+        print(f"   ✓ priorite_1: {len(priorite_1)}")
+        print(f"   ✓ priorite_2: {len(priorite_2)}")
+        print(f"   ✓ eviter_absolument: {len(eviter)}")
+        
+        # ================================================================
         # SECTION MORPHOLOGY
+        # ================================================================
         print(f"\n👗 Mapping morphology:")
         hauts_visuals = PDFDataMapper._safe_list(morphology_raw.get("hauts_visuals", []))
         print(f"   ✓ hauts_visuals: {len(hauts_visuals)} images")
@@ -110,7 +125,7 @@ class PDFDataMapper:
         # ================================================================
         
         liquid_data = {
-            # ✅ SECTION: USER (structure imbriquée)
+            # ✅ SECTION: USER
             "user": {
                 "firstName": first_name,
                 "lastName": last_name,
@@ -121,32 +136,41 @@ class PDFDataMapper:
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
             },
             
-            # ✅ SECTION: COLORIMETRY (structure imbriquée)
+            # ✅ SECTION: COLORIMETRY (ENRICHIE)
             "colorimetry": {
-                "season": colorimetry_raw.get("season", ""),
-                "seasonJustification": colorimetry_raw.get("season_justification", ""),
+                "season": colorimetry_raw.get("saison_confirmee", ""),
+                "soustonDetecte": colorimetry_raw.get("sous_ton_detecte", ""),
+                "seasonJustification": colorimetry_raw.get("justification_saison", ""),
                 "eyeColor": colorimetry_raw.get("eye_color", ""),
                 "hairColor": colorimetry_raw.get("hair_color", ""),
                 "palettePersonnalisee": palette,
-                "allColorsWithNotes": all_colors,
+                "notesCompatibilite": notes_compatibilite,
+                "alternativesCouleurs": alternatives,
                 "associationsGagnantes": associations,
             },
             
-            # ✅ SECTION: MAKEUP (structure imbriquée)
+            # ✅ SECTION: MAKEUP (GUIDE MAQUILLAGE ULTRA-DÉTAILLÉ)
             "makeup": {
-                "foundation": makeup_raw.get("foundation", ""),
-                "blush": makeup_raw.get("blush", ""),
-                "bronzer": makeup_raw.get("bronzer", ""),
-                "highlighter": makeup_raw.get("highlighter", ""),
-                "eyeshadows": makeup_raw.get("eyeshadows", ""),
-                "eyeliner": makeup_raw.get("eyeliner", ""),
-                "mascara": makeup_raw.get("mascara", ""),
-                "brows": makeup_raw.get("brows", ""),
-                "lipsNatural": makeup_raw.get("lips_natural", ""),
-                "lipsDay": makeup_raw.get("lips_day", ""),
-                "lipsEvening": makeup_raw.get("lips_evening", ""),
-                "lipsAvoid": makeup_raw.get("lips_avoid", ""),
-                "nailColors": nail_colors,
+                "teint": guide_maquillage_raw.get("teint", ""),
+                "blush": guide_maquillage_raw.get("blush", ""),
+                "bronzer": guide_maquillage_raw.get("bronzer", ""),
+                "highlighter": guide_maquillage_raw.get("highlighter", ""),
+                "yeux": guide_maquillage_raw.get("yeux", ""),
+                "eyeliner": guide_maquillage_raw.get("eyeliner", ""),
+                "mascara": guide_maquillage_raw.get("mascara", ""),
+                "brows": guide_maquillage_raw.get("brows", ""),
+                "lipsNude": guide_maquillage_raw.get("lipsNude", ""),
+                "lipsDay": guide_maquillage_raw.get("lipsDay", ""),
+                "lipsEvening": guide_maquillage_raw.get("lipsEvening", ""),
+                "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
+                "nailColors": PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", [])),
+            },
+            
+            # ✅ SECTION: SHOPPING COULEURS (NOUVEAU)
+            "shopping": {
+                "priorite1": priorite_1,
+                "priorite2": priorite_2,
+                "eviterAbsolument": eviter,
             },
             
             # ✅ SECTION: MORPHOLOGY_PAGE1
@@ -220,14 +244,7 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Structure Liquid complète assemblée:")
-        for key in list(liquid_data.keys())[:5]:
-            val = liquid_data[key]
-            if isinstance(val, (dict, list)):
-                print(f"   ✓ {key}: {type(val).__name__}")
-            else:
-                print(f"   ✓ {key}: {val}")
-        print(f"   ... et {len(liquid_data)-5} autres sections")
+        print(f"\n✅ Structure Liquid complète assemblée (enrichie)")
         
         return liquid_data
     
