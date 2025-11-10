@@ -78,31 +78,31 @@ Créez 5 combos 3 couleurs: professionnel, casual, soirée, weekend, famille. Ch
 - eviter_absolument: 3 couleurs qui la desservent
 
 FORMAT JSON ATTENDU:
-{{
+{
   "saison_confirmee": "Automne/Printemps/Été/Hiver",
   "sous_ton_detecte": "chaud/froid/neutre",
   "justification_saison": "6-7 phrases détaillées...",
   "palette_personnalisee": [
-    {{"name": "moutarde", "displayName": "Moutarde", "hex": "#E1AD01", "note": 10, "commentaire": "Sublime votre teint automne"}},
+    {"name": "moutarde", "displayName": "Moutarde", "hex": "#E1AD01", "note": 10, "commentaire": "Sublime votre teint automne"},
     ...12 couleurs exactement...
   ],
-  "alternatives_couleurs_refusees": {{
+  "alternatives_couleurs_refusees": {
     "couleur_refusee1": ["alternative1", "alternative2"],
     "couleur_refusee2": ["alternative1", "alternative2"]
-  }},
-  "notes_compatibilite": {{
-    "rouge": {{"note": "8", "commentaire": "Brique chaud sublime vos tons automne"}},
-    "bleu": {{"note": "3", "commentaire": "Bleu froid contraste mal avec votre carnation"}},
+  },
+  "notes_compatibilite": {
+    "rouge": {"note": "8", "commentaire": "Brique chaud sublime vos tons automne"},
+    "bleu": {"note": "3", "commentaire": "Bleu froid contraste mal avec votre carnation"},
     ...19 couleurs exactement...
-  }},
+  },
   "associations_gagnantes": [
-    {{"occasion": "professionnel", "colors": ["#C19A6B", "#E2725B", "#000080"], "effet": "Élégance naturelle et autorité douce"}},
-    {{"occasion": "casual", "colors": ["#C3B091", "#CC7722", "#D4AF76"], "effet": "Naturel chic"}},
-    {{"occasion": "soirée", "colors": ["#6D071A", "#8B8589", "#E2725B"], "effet": "Sophistication élégante"}},
-    {{"occasion": "weekend", "colors": ["#228B22", "#E1AD01", "#B87333"], "effet": "Décontracté stylé"}},
-    {{"occasion": "famille", "colors": ["#7B3F00", "#FF7F50", "#000080"], "effet": "Doux et harmonieux"}}
+    {"occasion": "professionnel", "colors": ["#C19A6B", "#E2725B", "#000080"], "effet": "Élégance naturelle et autorité douce"},
+    {"occasion": "casual", "colors": ["#C3B091", "#CC7722", "#D4AF76"], "effet": "Naturel chic"},
+    {"occasion": "soirée", "colors": ["#6D071A", "#8B8589", "#E2725B"], "effet": "Sophistication élégante"},
+    {"occasion": "weekend", "colors": ["#228B22", "#E1AD01", "#B87333"], "effet": "Décontracté stylé"},
+    {"occasion": "famille", "colors": ["#7B3F00", "#FF7F50", "#000080"], "effet": "Doux et harmonieux"}
   ],
-  "guide_maquillage": {{
+  "guide_maquillage": {
     "teint": "Fond de teint avec sous-tons dorés...",
     "blush": "pêche, abricot, corail chaud, terre cuite",
     "bronzer": "bronze doré, terracotta chaud",
@@ -116,13 +116,13 @@ FORMAT JSON ATTENDU:
     "lipsEvening": "bordeaux profond, rouge brique",
     "lipsAvoid": "roses froids, fuchsia, mauves froids",
     "vernis_a_ongles": ["#E1AD01", "#7B3F00", "#CC7722", "#6D071A", "#CD7F32"]
-  }},
-  "shopping_couleurs": {{
+  },
+  "shopping_couleurs": {
     "priorite_1": ["Moutarde", "Camel", "Bordeaux"],
     "priorite_2": ["Cuivre", "Terracotta", "Bronze"],
     "eviter_absolument": ["Rose froid", "Bleu électrique", "Blanc pur"]
-  }}
-}}
+  }
+}
 
 VÉRIFICATION FINALE AVANT ENVOI:
 ✓ palette_personnalisee = EXACTEMENT 12 objets avec {name, displayName, hex, note (8-10), commentaire}
