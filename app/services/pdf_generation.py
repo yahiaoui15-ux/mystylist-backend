@@ -73,6 +73,13 @@ class PDFGenerationService:
                 user_data
             )
             
+            # DEBUG: Afficher les variables Liquid
+            print(f"📊 Variables Liquid (premiers 15 champs):")
+            for i, (key, value) in enumerate(liquid_variables.items()):
+                if i < 15:
+                    val_str = str(value)[:100] if not isinstance(value, list) else f"[list of {len(value)} items]"
+                    print(f"   {key}: {val_str}")
+            
             # Préparer la requête - STRUCTURE CORRECTE pour PDFMonkey API v1
             # Important: Utiliser 'document_template_id' (pas 'template_id')
             payload = {
@@ -81,6 +88,12 @@ class PDFGenerationService:
             }
             
             print(f"📤 Envoi à PDFMonkey...")
+            
+            # DEBUG: Afficher le payload
+            print(f"📋 Payload:")
+            import json
+            print(json.dumps(payload, indent=2)[:800])
+            
             print(f"   Template ID: {self.template_id}")
             print(f"   Data fields: {len(liquid_variables)} champs")
             
