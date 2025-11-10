@@ -1,6 +1,6 @@
 """
 Service de génération de PDF via PDFMonkey
-VERSION FINALE - Attendre la génération du document avant de retourner l'URL
+VERSION CORRIGÉE - Structure API PDFMonkey correcte avec "document" wrapper et "payload"
 """
 
 import os
@@ -80,19 +80,25 @@ class PDFGenerationService:
                     val_str = str(value)[:100] if not isinstance(value, list) else f"[list of {len(value)} items]"
                     print(f"   {key}: {val_str}")
             
-            # Préparer la requête - STRUCTURE CORRECTE pour PDFMonkey API v1
-            # Important: Utiliser 'document_template_id' (pas 'template_id')
+            # 🔧 CORRECTION: Structure CORRECTE pour PDFMonkey API v1
+            # D'après la documentation PDFMonkey:
+            # 1. Wrapper tout dans "document": {...}
+            # 2. Utiliser "payload" au lieu de "data"
+            # 3. Ajouter "status": "pending" pour générer immédiatement
             payload = {
-                "document_template_id": self.template_id,
-                "data": liquid_variables
+                "document": {
+                    "document_template_id": self.template_id,
+                    "payload": liquid_variables,  # ← CORRIGÉ: "data" → "payload"
+                    "status": "pending"  # ← AJOUTÉ: force generation
+                }
             }
             
             print(f"📤 Envoi à PDFMonkey...")
             
             # DEBUG: Afficher le payload
-            print(f"📋 Payload:")
+            print(f"📤 Payload à envoyer:")
             import json
-            print(json.dumps(payload, indent=2)[:800])
+            print(f"   {json.dumps(payload, indent=2)[:500]}")
             
             print(f"   Template ID: {self.template_id}")
             print(f"   Data fields: {len(liquid_variables)} champs")
@@ -116,6 +122,7 @@ class PDFGenerationService:
             
             result = response.json()
             print(f"✅ Réponse PDFMonkey reçue")
+            print(f"🔍 Response complète: {result}")
             
             # Extraire l'ID du document
             document_id = None
@@ -157,7 +164,7 @@ class PDFGenerationService:
                         print(f"   ✅ Document généré avec succès!")
                         print(f"   Download URL: {pdf_url}")
                         break
-                    elif status == "processing":
+                    elif status == "processing" or status == "generating":
                         # Attendre 500ms avant de réessayer
                         await asyncio.sleep(0.5)
                         attempt += 1
