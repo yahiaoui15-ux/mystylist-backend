@@ -1,310 +1,204 @@
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import json
-import os
-from app.services.report_generator import report_generator
-from app.services.pdf_generation import pdf_service
-from app.services.email_service import email_service
-from app.services.pdf_data_mapper import pdf_mapper
-from app.config import STRIPE_SECRET_KEY
+import uuid
+from datetime import datetime
 
-app = FastAPI(title="MyStylist Backend", version="1.0.0")
+import stripe
+from fastapi import FastAPI, Request, BackgroundTasks, Header
+from fastapi.responses import JSONResponse
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+from app.config_prod import settings
+from app.services import (
+    email_service,
+    pdf_generation,
+    report_generator,
+    supabase_reports,  # gardé si tu l'utilises ailleurs
 )
+from app.utils.supabase_client import supabase
 
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    return {"status": "healthy"}
+app = FastAPI()
+stripe.api_key = settings.STRIPE_SECRET_KEY
 
+# --- Logs au boot pour vérifier l'env déployé ---
+print(f"[BOOT] Using SUPABASE_URL (masked): ...{settings.SUPABASE_URL[-16:]}")
+print(f"[BOOT] Webhook route ready: /api/webhook/stripe")
+
+
+# =====================================================
+# ENDPOINTS DEBUG (à supprimer quand tout est OK)
+# =====================================================
+@app.get("/debug/supabase/env")
+async def debug_supabase_env():
+    url = settings.SUPABASE_URL
+    return {
+        "supabase_url_tail": url[-32:],
+        "has_service_key": bool(settings.SUPABASE_KEY and len(settings.SUPABASE_KEY) > 20),
+    }
+
+
+@app.post("/debug/supabase/write")
+async def debug_supabase_write():
+    try:
+        supabase.insert_table("stripe_events", {
+            "id": f"evt_debug_{uuid.uuid4().hex[:8]}",
+            "type": "debug.test",
+            "session_id": "sess_debug",
+            "created_at": datetime.utcnow().isoformat()
+        })
+        supabase.insert_table("reports", {
+            "id": str(uuid.uuid4()),  # si ta colonne id est uuid pk avec default, tu peux retirer cette ligne
+            "user_id": "00000000-0000-0000-0000-000000000000",
+            "payment_id": f"pay_debug_{uuid.uuid4().hex[:8]}",
+            "pdf_url": "https://example.com/test.pdf",
+            "email_sent": False,
+            "created_at": datetime.utcnow().isoformat()
+        })
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
+# =====================================================
+# WEBHOOK STRIPE — IDÉMPOTENT & ACK 200 IMMÉDIAT
+# =====================================================
 @app.post("/api/webhook/stripe")
-async def handle_stripe_webhook(request: Request):
+async def handle_stripe_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    stripe_signature: str = Header(None, alias="Stripe-Signature")
+):
     """
-    Webhook Stripe - Flux complet: paiement → rapport → PDF → email
-    
-    🔧 CORRECTIONS APPLIQUÉES:
-    1. Ajouter first_name et last_name à user_data
-    2. Vérifier les doublons avant de générer
-    3. Sauvegarder dans la table reports après succès
+    On répond TOUJOURS 200 à Stripe pour éviter tout retry.
+    - Vérif signature : si invalide, on ignore mais on ACK 200.
+    - Dédup par event.id (table stripe_events).
+    - On ne traite que checkout.session.completed.
+    - Le job lourd (IA -> PDF -> Email) part en tâche de fond.
     """
     try:
-        from app.utils.supabase_client import supabase
-        
-        payload = await request.json()
-        print(f"🔨 Webhook Stripe reçu: {payload.get('type', 'unknown')}")
-        
-        event_type = payload.get("type")
-        if event_type != "checkout.session.completed":
-            print(f"⭐️ Event ignoré: {event_type}")
-            return {"received": True}
-        
-        session = payload.get("data", {}).get("object", {})
-        user_id = session.get("metadata", {}).get("userId")
-        payment_id = session.get("id")  # ← Ajouter payment_id pour vérifier les doublons
-        
-        if not user_id:
-            print(f"❌ userId manquant dans les métadonnées")
-            raise HTTPException(status_code=400, detail="userId manquant")
-        
-        print(f"✅ Paiement confirmé pour user: {user_id}, payment_id: {payment_id}")
-        
-        # 🔧 VÉRIFICATION DOUBLON: Vérifier si ce paiement a déjà généré un rapport
-        print(f"🔍 Vérification: rapport déjà généré?")
+        payload_bytes = await request.body()
+
+        # 1) Vérif signature — si mauvaise, on ACK 200 mais on ne traite pas
         try:
-            existing_reports = await supabase.query_table(
-                "reports",
-                {"payment_id": payment_id}
+            event = stripe.Webhook.construct_event(
+                payload=payload_bytes,
+                sig_header=stripe_signature,
+                secret=settings.STRIPE_WEBHOOK_SECRET
             )
-            
-            if existing_reports and len(existing_reports) > 0:
-                print(f"⚠️ DOUBLON DÉTECTÉ: Rapport déjà généré pour ce paiement")
-                print(f"   Report ID: {existing_reports[0].get('id')}")
-                print(f"   Generated at: {existing_reports[0].get('created_at')}")
-                # Retourner un succès sans régénérer
-                return {
-                    "status": "already_processed",
-                    "user_id": user_id,
-                    "payment_id": payment_id,
-                    "message": "Rapport déjà généré pour ce paiement"
-                }
-        except Exception as e:
-            print(f"⚠️ Erreur lors de la vérification doublon (continuant): {e}")
-        
-        # ✅ Récupérer TOUTES les données depuis Supabase
-        print(f"🔥 Récupération des données Supabase pour user: {user_id}")
-        
+        except Exception as sig_err:
+            print(f"[WEBHOOK] Signature invalide: {sig_err} — event ignoré (ACK 200).")
+            return JSONResponse(status_code=200, content={"ok": True, "ignored": "bad_signature"})
+
+        evt_id = event.get("id")
+        evt_type = event.get("type")
+        print(f"💬 Webhook reçu : {evt_type} ({evt_id})")
+
+        # 2) Idempotence event Stripe
         try:
-            # 1. Récupérer le profil utilisateur (onboarding_data)
-            profile_response = await supabase.query_table("user_profiles", {"user_id": user_id})
-            user_profile = profile_response[0] if profile_response else {}
-            
-            # 2. Récupérer les photos
-            photos_response = await supabase.query_table("user_photos", {"user_id": user_id})
-            photos = photos_response if photos_response else []
-            
-            # 3. Récupérer l'email depuis la table profiles
-            profile_auth_response = await supabase.query_table("profiles", {"id": user_id})
-            profile_auth = profile_auth_response[0] if profile_auth_response else {}
-            
-            print(f"✅ Données récupérées: profil + {len(photos)} photo(s) + email")
-            
+            existing_evt = supabase.client.table("stripe_events").select("id").eq("id", evt_id).execute()
+            if existing_evt.data:
+                print("🛑 Événement Stripe déjà traité → stop (ACK 200).")
+                return JSONResponse(status_code=200, content={"ok": True, "deduped": True})
+            supabase.insert_table("stripe_events", {
+                "id": evt_id,
+                "type": evt_type,
+                "session_id": event.get("data", {}).get("object", {}).get("id"),
+                "created_at": datetime.utcnow().isoformat()
+            })
         except Exception as e:
-            print(f"⚠️ Erreur lors de la récupération Supabase: {e}")
-            user_profile = {}
-            photos = []
-            profile_auth = {}
-        
-        # ✅ Parser onboarding_data JSON
-        onboarding_data = {}
-        if isinstance(user_profile.get("onboarding_data"), str):
-            try:
-                onboarding_data = json.loads(user_profile.get("onboarding_data", "{}"))
-            except:
-                onboarding_data = {}
-        else:
-            onboarding_data = user_profile.get("onboarding_data", {})
-        
-        # Extraire mesures
-        measurements = onboarding_data.get("measurements", {})
-        personal_info = onboarding_data.get("personal_info", {})
-        
-        # 🔧 CORRECTION: Ajouter first_name et last_name
-        first_name = profile_auth.get("first_name", "Client")
-        last_name = profile_auth.get("last_name", "")
-        
-        # Construire user_data avec TOUS les bons champs
+            # Ne jamais échouer le webhook → Stripe ne doit pas retenter
+            print(f"⚠️ Échec log stripe_events (on continue quand même): {e}")
+
+        # 3) On ne traite que checkout.session.completed
+        if evt_type != "checkout.session.completed":
+            return JSONResponse(status_code=200, content={"ok": True, "ignored": evt_type})
+
+        session = event["data"]["object"]
+        user_id = (session.get("metadata") or {}).get("userId")
+        payment_id = session.get("id")
+
+        if not user_id or not payment_id:
+            print("[WEBHOOK] Missing userId/payment_id — ACK 200 et on ignore.")
+            return JSONResponse(status_code=200, content={"ok": True, "ignored": "missing_fields"})
+
+        # 4) Dédoublonnage par payment_id
+        try:
+            existing = supabase.client.table("reports").select("id").eq("payment_id", payment_id).execute()
+            if existing.data:
+                print("🛑 Rapport déjà généré pour ce payment_id (ACK 200).")
+                return JSONResponse(status_code=200, content={"ok": True, "already_processed": True})
+        except Exception as e:
+            print(f"[WEBHOOK] Lookup reports failed (on continue): {e}")
+
+        # 5) Lancer le job asynchrone et ACK 200 tout de suite
+        background_tasks.add_task(process_checkout_session_job, user_id, payment_id)
+        print(f"🚀 Tâche asynchrone lancée user={user_id} payment={payment_id}")
+        return JSONResponse(status_code=200, content={"ok": True})
+
+    except Exception as e:
+        # QUOI QU’IL ARRIVE : on ACK 200 pour stopper les retries Stripe
+        print(f"❌ Webhook exception (ACK 200 quand même): {e}")
+        return JSONResponse(status_code=200, content={"ok": True, "note": "exception_caught_but_acked"})
+
+
+# =====================================================
+# TÂCHE ASYNCHRONE : IA + PDF + MAIL
+# =====================================================
+async def process_checkout_session_job(user_id: str, payment_id: str):
+    try:
+        print("📄 Début de génération du rapport IA")
+
+        # Récup infos utilisateur
+        profile_response = supabase.client.table("user_profiles").select("*").eq("user_id", user_id).execute()
+        user_profile = profile_response.data[0] if profile_response.data else {}
+
+        photos_response = supabase.client.table("user_photos").select("*").eq("user_id", user_id).execute()
+        photos = photos_response.data if photos_response.data else []
+
+        auth_response = supabase.client.table("profiles").select("*").eq("id", user_id).execute()
+        auth = auth_response.data[0] if auth_response.data else {}
+
+        user_email = auth.get("email")
+        user_name = user_profile.get("first_name", "Client(e)")
+
         user_data = {
             "user_id": user_id,
-            
-            # 🔧 CORRECTIONS: Ajouter les champs manquants pour PDFMonkey
-            "first_name": first_name,  # ← NOUVEAU - pour PDFMonkey
-            "last_name": last_name,    # ← NOUVEAU - pour PDFMonkey
-            
-            "user_email": profile_auth.get("email", "noreply@mystylist.io"),
-            "user_name": f"{first_name} {last_name}".strip(),
-            
-            # Photos
-            "face_photo_url": next(
-                (p.get("cloudinary_url") for p in photos if p.get("photo_type") == "face"),
-                ""
-            ),
-            "body_photo_url": next(
-                (p.get("cloudinary_url") for p in photos if p.get("photo_type") == "body"),
-                ""
-            ),
-            
-            # Couleurs (depuis onboarding_data ou user_profiles)
-            "eye_color": onboarding_data.get("eye_color") or user_profile.get("eye_color", ""),
-            "hair_color": onboarding_data.get("hair_color") or user_profile.get("hair_color", ""),
-            "skin_color": user_profile.get("skin_color", ""),
-            "undertone": user_profile.get("undertone", ""),
-            
-            # Morphologie
-            "body_shape": user_profile.get("body_shape", ""),
-            
-            # Mesures (depuis onboarding_data)
-            "age": int(personal_info.get("age", 0)) if personal_info.get("age") else 0,
-            "height": int(personal_info.get("height", 0)) if personal_info.get("height") else 0,
-            "weight": int(personal_info.get("weight", 0)) if personal_info.get("weight") else 0,
-            "shoulder_circumference": float(measurements.get("shoulder_circumference", 0)) if measurements.get("shoulder_circumference") else 0,
-            "waist_circumference": float(measurements.get("waist_circumference", 0)) if measurements.get("waist_circumference") else 0,
-            "hip_circumference": float(measurements.get("hip_circumference", 0)) if measurements.get("hip_circumference") else 0,
-            "bust_circumference": float(measurements.get("bust_circumference", 0)) if measurements.get("bust_circumference") else 0,
-            
-            # Préférences (depuis onboarding_data)
-            "style_preferences": onboarding_data.get("style_preferences", []),
-            "brand_preferences": onboarding_data.get("brand_preferences", {}).get("selected_brands", []),
-            "unwanted_colors": onboarding_data.get("color_preferences", {}).get("disliked_colors", []),
-            "unwanted_patterns": onboarding_data.get("pattern_preferences", {}).get("disliked_patterns", []),
-            
-            # Personnalité & morph goals
-            "personality_data": onboarding_data.get("personality_data", {}),
-            "morphology_goals": onboarding_data.get("morphology_goals", {}),
+            "user_email": user_email,
+            "user_name": user_name,
+            "profile": user_profile,
+            "photos": photos
         }
-        
-        print(f"✅ Données parsées et structurées")
-        print(f"   - Nom: {user_data['first_name']} {user_data['last_name']}")  # ← LOG POUR VÉRIFIER
-        print(f"   - Email: {user_data['user_email']}")
-        print(f"   - Photos: face={bool(user_data['face_photo_url'])}, body={bool(user_data['body_photo_url'])}")
-        print(f"   - Mesures: épaules={user_data['shoulder_circumference']}, taille={user_data['waist_circumference']}, hanches={user_data['hip_circumference']}")
-        
-        # 🚀 PHASE 1: Générer le rapport
-        print("🚀 Génération du rapport MyStylist...")
+
+        # Garde-fou email (au cas où Stripe re-tente malgré tout)
+        existing = supabase.client.table("reports").select("email_sent").eq("payment_id", payment_id).execute()
+        if existing.data and existing.data[0].get("email_sent"):
+            print("🛑 Email déjà envoyé → on arrête ici.")
+            return
+
+        # IA : Génération du rapport complet
         report = await report_generator.generate_complete_report(user_data)
-        
-        if not report:
-            raise HTTPException(status_code=500, detail="Erreur génération rapport")
-        
-        print(f"✅ Rapport généré: {len(report)} sections")
-        
-        # 🚀 PHASE 2: Mapper données pour PDFMonkey
-        print("📊 Mapping données au format PDFMonkey...")
-        pdfmonkey_payload = pdf_mapper.map_report_to_pdfmonkey(report, user_data)
-        print(f"✅ Payload préparé ({len(str(pdfmonkey_payload))} bytes)")
-        
-        # 🚀 PHASE 3: Générer le PDF
-        print("📄 Génération PDF via PDFMonkey...")
-        try:
-            pdf_url = await pdf_service.generate_report_pdf(report, user_data)
-            print(f"✅ PDF généré: {pdf_url[:80]}...")
-        except Exception as e:
-            print(f"⚠️ Erreur PDF, continuant sans PDF: {e}")
-            pdf_url = None
-        
-        # 🚀 PHASE 4: Envoyer l'email
-        print("📧 Envoi email avec PDF...")
-        try:
-            if pdf_url:
-                email_result = await email_service.send_report_email(
-                    user_email=user_data['user_email'],
-                    user_name=user_data['user_name'],
-                    pdf_url=pdf_url,
-                    report_data=report
-                )
-                print(f"✅ Email envoyé: {email_result.get('email_id', 'N/A')}")
-            else:
-                print(f"⚠️ Pas de PDF, email non envoyé")
-        except Exception as e:
-            print(f"⚠️ Erreur envoi email: {e}")
-        
-        # 🚀 PHASE 5: Sauvegarder le rapport en base de données
-        print("💾 Sauvegarde du rapport en base de données...")
-        try:
-            await supabase.insert_table("reports", {
-                "user_id": user_id,
-                "payment_id": payment_id,
-                "pdf_url": pdf_url,
-                "email_sent": True if pdf_url else False
-            })
-            print(f"✅ Rapport sauvegardé en base de données")
-        except Exception as e:
-            print(f"⚠️ Erreur sauvegarde rapport (continuant): {e}")
-        
-        # ✅ SUCCÈS
-        print(f"✅ FLUX COMPLET RÉUSSI pour user {user_id}")
-        
-        return {
-            "status": "success",
+
+        # PDF
+        pdf_url = await pdf_generation.generate_report_pdf(report, user_data)
+        print(f"✅ PDF généré : {pdf_url}")
+
+        # Email
+        if pdf_url:
+            await email_service.send_report_email(
+                user_email=user_email,
+                user_name=user_name,
+                pdf_url=pdf_url,
+                report_data=report
+            )
+            print("📧 Email envoyé au client.")
+
+        # Sauvegarde en base (clé métier = payment_id)
+        supabase.insert_table("reports", {
             "user_id": user_id,
             "payment_id": payment_id,
-            "message": "Rapport généré et envoyé par email",
             "pdf_url": pdf_url,
-            "email_sent": True if pdf_url else False
-        }
-        
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="JSON invalide")
-    except Exception as e:
-        print(f"❌ Erreur webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            "email_sent": True,
+            "created_at": datetime.utcnow().isoformat()
+        })
+        print("💾 Rapport sauvegardé dans Supabase.")
 
-@app.get("/api/test/report")
-async def test_report_generation():
-    """Endpoint de test pour générer un rapport"""
-    test_data = {
-        "first_name": "Test",  # ← Ajouter
-        "last_name": "User",   # ← Ajouter
-        "user_name": "Test User",
-        "user_email": "test@example.com",
-        "face_photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Default_pfp.svg/1200px-Default_pfp.svg.png",
-        "body_photo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Default_pfp.svg/1200px-Default_pfp.svg.png",
-        "eye_color": "Marron",
-        "hair_color": "Châtain",
-        "age": 30,
-        "shoulder_circumference": 85,
-        "waist_circumference": 75,
-        "hip_circumference": 95,
-        "bust_circumference": 90,
-        "unwanted_colors": ["Rose fluo"],
-        "style_preferences": ["Classique chic"],
-        "brand_preferences": ["Zara"]
-    }
-    
-    try:
-        report = await report_generator.generate_complete_report(test_data)
-        return {
-            "status": "success",
-            "report": report
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Endpoints pour rapports
-from app.services.supabase_reports import supabase_reports_service
-
-@app.get("/api/reports/{user_id}")
-async def get_user_reports(user_id: str):
-    """Récupère tous les rapports d'un utilisateur"""
-    try:
-        reports = await supabase_reports_service.get_user_reports(user_id)
-        return {
-            "status": "success",
-            "user_id": user_id,
-            "reports": reports,
-            "count": len(reports)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/reports/detail/{report_id}")
-async def get_report_detail(report_id: str):
-    """Récupère les détails d'un rapport spécifique"""
-    try:
-        report = await supabase_reports_service.get_report_by_id(report_id)
-        if not report:
-            raise HTTPException(status_code=404, detail="Rapport non trouvé")
-        
-        return {
-            "status": "success",
-            "report": report
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"❌ Erreur pendant la tâche de génération : {e}")
