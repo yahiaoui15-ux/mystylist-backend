@@ -19,10 +19,16 @@ class ColorimetryService:
         try:
             print("🎨 Analyse colorimétrie...")
             
+            # Vérifier que la photo existe
+            face_photo_url = user_data.get("face_photo_url")
+            if not face_photo_url:
+                print("❌ Pas de photo de visage fournie")
+                return {}
+            
             # Construire le prompt utilisateur
             unwanted_colors_str = ", ".join(user_data.get("unwanted_colors", []))
             user_prompt = COLORIMETRY_USER_PROMPT.format(
-                face_photo_url=user_data["face_photo_url"],
+                face_photo_url=face_photo_url,
                 eye_color=user_data.get("eye_color", "Non spécifié"),
                 hair_color=user_data.get("hair_color", "Non spécifié"),
                 age=user_data.get("age", 0),
@@ -32,7 +38,7 @@ class ColorimetryService:
             # Appel OpenAI Vision
             print("   📤 Envoi à OpenAI...")
             response = await self.openai.analyze_image(
-                image_urls=[user_data["face_photo_url"]],
+                image_urls=[face_photo_url],
                 prompt=user_prompt,
                 model="gpt-4-turbo"
             )

@@ -159,12 +159,41 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         user_email = auth.get("email")
         user_name = user_profile.get("first_name", "Client(e)")
 
+        # Extraire les URLs des photos par type
+        face_photo_url = None
+        body_photo_url = None
+        
+        for photo in photos:
+            photo_type = photo.get("type", "").lower()
+            photo_url = photo.get("url", photo.get("photo_url", ""))
+            
+            if "face" in photo_type and not face_photo_url:
+                face_photo_url = photo_url
+            elif "body" in photo_type and not body_photo_url:
+                body_photo_url = photo_url
+        
+        # Fallback: si pas de type, utiliser les deux premiers
+        if not face_photo_url and len(photos) > 0:
+            face_photo_url = photos[0].get("url", photos[0].get("photo_url", ""))
+        if not body_photo_url and len(photos) > 1:
+            body_photo_url = photos[1].get("url", photos[1].get("photo_url", ""))
+
         user_data = {
             "user_id": user_id,
             "user_email": user_email,
             "user_name": user_name,
             "profile": user_profile,
-            "photos": photos
+            "photos": photos,
+            "face_photo_url": face_photo_url,
+            "body_photo_url": body_photo_url,
+            "eye_color": user_profile.get("eye_color", ""),
+            "hair_color": user_profile.get("hair_color", ""),
+            "age": user_profile.get("age", 0),
+            "shoulder_circumference": user_profile.get("shoulder_circumference", 0),
+            "waist_circumference": user_profile.get("waist_circumference", 0),
+            "hip_circumference": user_profile.get("hip_circumference", 0),
+            "bust_circumference": user_profile.get("bust_circumference", 0),
+            "unwanted_colors": user_profile.get("unwanted_colors", [])
         }
 
         # Garde-fou email (au cas où Stripe re-tente malgré tout)
