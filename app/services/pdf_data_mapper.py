@@ -4,6 +4,7 @@ Mappe les données du rapport à la STRUCTURE EXACTE attendue par le template Li
 ✅ Support nouveau prompt colorimetry avec 12 couleurs + notes détaillées
 ✅ Support guide_maquillage ultra-détaillé
 ✅ Support shopping_couleurs avec priorités
+✅ Support allColorsWithNotes avec hex codes
 """
 
 from typing import Dict, Any, Optional
@@ -15,6 +16,29 @@ class PDFDataMapper:
     """
     Mappe les données du rapport généré au format PDFMonkey (structure Liquid)
     """
+    
+    # Mapping des noms de couleurs français → hex codes
+    COLOR_HEX_MAP = {
+        "rouge": "#FF0000",
+        "bleu": "#0000FF",
+        "jaune": "#FFFF00",
+        "vert": "#008000",
+        "orange": "#FFA500",
+        "violet": "#800080",
+        "blanc": "#FFFFFF",
+        "noir": "#000000",
+        "gris": "#808080",
+        "beige": "#F5F5DC",
+        "marron": "#8B4513",
+        "rose_pale": "#FFB6C1",
+        "rose_fuchsia": "#FF1493",
+        "rose_corail": "#FF7F50",
+        "camel": "#C19A6B",
+        "marine": "#000080",
+        "bordeaux": "#800020",
+        "kaki": "#C3B091",
+        "turquoise": "#40E0D0",
+    }
     
     @staticmethod
     def _safe_dict(value: Any, default: dict = None) -> dict:
@@ -29,6 +53,49 @@ class PDFDataMapper:
         if isinstance(value, list):
             return value
         return default or []
+    
+    @staticmethod
+    def _build_all_colors_with_notes(notes_compatibilite: dict) -> list:
+        """
+        Transforme notesCompatibilite (dict) en allColorsWithNotes (list)
+        avec hex codes pour chaque couleur
+        
+        Format d'entrée:
+        {
+            "rouge": {"note": "8", "commentaire": "..."},
+            "bleu": {"note": "3", "commentaire": "..."}
+        }
+        
+        Format de sortie:
+        [
+            {"name": "rouge", "note": 8, "commentaire": "...", "hex": "#FF0000"},
+            {"name": "bleu", "note": 3, "commentaire": "...", "hex": "#0000FF"}
+        ]
+        """
+        all_colors = []
+        
+        for color_name, color_data in notes_compatibilite.items():
+            if isinstance(color_data, dict):
+                # Récupérer la note et la convertir en entier
+                try:
+                    note = int(color_data.get("note", 0)) if isinstance(color_data.get("note"), str) else color_data.get("note", 0)
+                except (ValueError, TypeError):
+                    note = 0
+                
+                # Récupérer le hex code
+                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, "#CCCCCC")  # Default gray
+                
+                all_colors.append({
+                    "name": color_name,
+                    "note": note,
+                    "commentaire": color_data.get("commentaire", ""),
+                    "hex": hex_code
+                })
+        
+        # Trier par note décroissante
+        all_colors.sort(key=lambda x: x["note"], reverse=True)
+        
+        return all_colors
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
@@ -89,8 +156,12 @@ class PDFDataMapper:
         associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes"))
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees"))
         
+        # ✅ NOUVEAU: Créer allColorsWithNotes avec hex codes
+        all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        
         print(f"   ✓ palette: {len(palette)} couleurs")
         print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
+        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs (transformées)")
         print(f"   ✓ associations: {len(associations)}")
         print(f"   ✓ alternatives: {len(alternatives)}")
         
@@ -136,7 +207,7 @@ class PDFDataMapper:
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
             },
             
-            # ✅ SECTION: COLORIMETRY (ENRICHIE)
+            # ✅ SECTION: COLORIMETRY (ENRICHIE + allColorsWithNotes)
             "colorimetry": {
                 "season": colorimetry_raw.get("saison_confirmee", ""),
                 "soustonDetecte": colorimetry_raw.get("sous_ton_detecte", ""),
@@ -145,6 +216,7 @@ class PDFDataMapper:
                 "hairColor": colorimetry_raw.get("hair_color", ""),
                 "palettePersonnalisee": palette,
                 "notesCompatibilite": notes_compatibilite,
+                "allColorsWithNotes": all_colors_with_notes,  # ✅ NOUVEAU: Pour page 4
                 "alternativesCouleurs": alternatives,
                 "associationsGagnantes": associations,
             },
