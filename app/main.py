@@ -93,7 +93,7 @@ async def handle_stripe_webhook(
 
         # 2) Idempotence event Stripe
         try:
-            existing_evt = supabase.client.table("stripe_events").select("id").eq("id", evt_id).execute()
+            existing_evt = supabase.query("stripe_events", select_fields="id", filters={"id": evt_id})
             if existing_evt.data:
                 print("🛑 Événement Stripe déjà traité → stop (ACK 200).")
                 return JSONResponse(status_code=200, content={"ok": True, "deduped": True})
@@ -121,7 +121,7 @@ async def handle_stripe_webhook(
 
         # 4) Dédoublonnage par payment_id
         try:
-            existing = supabase.client.table("reports").select("id").eq("payment_id", payment_id).execute()
+            existing = supabase.query("reports", select_fields="id", filters={"payment_id": payment_id})
             if existing.data:
                 print("🛑 Rapport déjà généré pour ce payment_id (ACK 200).")
                 return JSONResponse(status_code=200, content={"ok": True, "already_processed": True})
@@ -134,7 +134,7 @@ async def handle_stripe_webhook(
         return JSONResponse(status_code=200, content={"ok": True})
 
     except Exception as e:
-        # QUOI QU’IL ARRIVE : on ACK 200 pour stopper les retries Stripe
+        # QUOI QU'IL ARRIVE : on ACK 200 pour stopper les retries Stripe
         print(f"❌ Webhook exception (ACK 200 quand même): {e}")
         return JSONResponse(status_code=200, content={"ok": True, "note": "exception_caught_but_acked"})
 
@@ -147,13 +147,13 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         print("📄 Début de génération du rapport IA")
 
         # Récup infos utilisateur
-        profile_response = supabase.client.table("user_profiles").select("*").eq("user_id", user_id).execute()
+        profile_response = supabase.query("user_profiles", select_fields="*", filters={"user_id": user_id})
         user_profile = profile_response.data[0] if profile_response.data else {}
 
-        photos_response = supabase.client.table("user_photos").select("*").eq("user_id", user_id).execute()
+        photos_response = supabase.query("user_photos", select_fields="*", filters={"user_id": user_id})
         photos = photos_response.data if photos_response.data else []
 
-        auth_response = supabase.client.table("profiles").select("*").eq("id", user_id).execute()
+        auth_response = supabase.query("profiles", select_fields="*", filters={"id": user_id})
         auth = auth_response.data[0] if auth_response.data else {}
 
         user_email = auth.get("email")
@@ -168,7 +168,7 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         }
 
         # Garde-fou email (au cas où Stripe re-tente malgré tout)
-        existing = supabase.client.table("reports").select("email_sent").eq("payment_id", payment_id).execute()
+        existing = supabase.query("reports", select_fields="email_sent", filters={"payment_id": payment_id})
         if existing.data and existing.data[0].get("email_sent"):
             print("🛑 Email déjà envoyé → on arrête ici.")
             return
