@@ -167,9 +167,9 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         print(f"   📸 Traitement de {len(photos)} photo(s) trouvée(s)...")
         
         for photo in photos:
-            # ✅ CORRECTED: utiliser "photo_type" et "cloudiinary_url"
+            # ✅ CORRECTED: utiliser "photo_type" et "cloudinary_url"
             photo_type = photo.get("photo_type", "").lower()  # ← Était "type"
-            photo_url = photo.get("cloudiinary_url", "")  # ← Était "url" ou "photo_url"
+            photo_url = photo.get("cloudinary_url", "")  # ← Était "url" ou "photo_url"
             
             print(f"      📸 Photo: type='{photo_type}', url={photo_url[:50] if photo_url else 'NONE'}...")
             
@@ -183,10 +183,10 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         # Fallback: si pas de type, utiliser les deux premiers
         if not face_photo_url and len(photos) > 0:
             print(f"   ⚠️ Fallback: Utilisation de la 1ère photo comme FACE")
-            face_photo_url = photos[0].get("cloudiinary_url", "")
+            face_photo_url = photos[0].get("cloudinary_url", "")
         if not body_photo_url and len(photos) > 1:
             print(f"   ⚠️ Fallback: Utilisation de la 2ème photo comme BODY")
-            body_photo_url = photos[1].get("cloudiinary_url", "")
+            body_photo_url = photos[1].get("cloudinary_url", "")
 
         print(f"   ✅ face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
         print(f"   ✅ body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
