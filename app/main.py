@@ -160,23 +160,36 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         user_name = user_profile.get("first_name", "Client(e)")
 
         # Extraire les URLs des photos par type
+        # ⚠️ IMPORTANT: Utiliser les vrais noms de colonnes Supabase
         face_photo_url = None
         body_photo_url = None
         
+        print(f"   📸 Traitement de {len(photos)} photo(s) trouvée(s)...")
+        
         for photo in photos:
-            photo_type = photo.get("type", "").lower()
-            photo_url = photo.get("url", photo.get("photo_url", ""))
+            # ✅ CORRECTED: utiliser "photo_type" et "cloudiinary_url"
+            photo_type = photo.get("photo_type", "").lower()  # ← Était "type"
+            photo_url = photo.get("cloudiinary_url", "")  # ← Était "url" ou "photo_url"
+            
+            print(f"      📸 Photo: type='{photo_type}', url={photo_url[:50] if photo_url else 'NONE'}...")
             
             if "face" in photo_type and not face_photo_url:
+                print(f"         ✓ Assigné comme FACE_PHOTO")
                 face_photo_url = photo_url
             elif "body" in photo_type and not body_photo_url:
+                print(f"         ✓ Assigné comme BODY_PHOTO")
                 body_photo_url = photo_url
         
         # Fallback: si pas de type, utiliser les deux premiers
         if not face_photo_url and len(photos) > 0:
-            face_photo_url = photos[0].get("url", photos[0].get("photo_url", ""))
+            print(f"   ⚠️ Fallback: Utilisation de la 1ère photo comme FACE")
+            face_photo_url = photos[0].get("cloudiinary_url", "")
         if not body_photo_url and len(photos) > 1:
-            body_photo_url = photos[1].get("url", photos[1].get("photo_url", ""))
+            print(f"   ⚠️ Fallback: Utilisation de la 2ème photo comme BODY")
+            body_photo_url = photos[1].get("cloudiinary_url", "")
+
+        print(f"   ✅ face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
+        print(f"   ✅ body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
 
         user_data = {
             "user_id": user_id,
@@ -231,3 +244,5 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
 
     except Exception as e:
         print(f"❌ Erreur pendant la tâche de génération : {e}")
+        import traceback
+        traceback.print_exc()
