@@ -157,7 +157,11 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         auth = auth_response.data[0] if auth_response.data else {}
 
         user_email = auth.get("email")
-        user_name = user_profile.get("first_name", "Client(e)")
+        
+        # ✅ Extraire les noms de la table profiles (Auth Supabase)
+        first_name = auth.get("first_name", "Client(e)")
+        last_name = auth.get("last_name", "")
+        user_name = f"{first_name} {last_name}".strip()
 
         # Extraire les URLs des photos par type
         # ⚠️ IMPORTANT: Utiliser les vrais noms de colonnes Supabase
@@ -196,10 +200,6 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         personal_info = onboarding_data.get("personal_info", {})
         measurements = onboarding_data.get("measurements", {})
         color_prefs = onboarding_data.get("color_preferences", {})
-
-        # ✅ Extraire prénom et nom
-        first_name = user_name.split()[0] if user_name else "Client(e)"
-        last_name = " ".join(user_name.split()[1:]) if user_name and len(user_name.split()) > 1 else ""
 
         user_data = {
             "user_id": user_id,
