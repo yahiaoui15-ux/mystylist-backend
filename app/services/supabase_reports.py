@@ -37,11 +37,11 @@ class SupabaseReportsService:
                 "status": "completed"
             }
             
-            # Insérer dans la table reports
-            response = self.supabase.client.table("reports").insert(report_record).execute()
+            # Insérer dans la table reports - UTILISER supabase.insert_table()
+            result = self.supabase.insert_table("reports", report_record)
             
-            if response.data and len(response.data) > 0:
-                report_id = response.data[0].get("id")
+            if result:
+                report_id = result[0].get("id") if isinstance(result, list) else result.get("id")
                 print(f"✅ Rapport sauvegardé: {report_id}")
                 return {
                     "report_id": report_id,
@@ -58,7 +58,7 @@ class SupabaseReportsService:
     async def get_user_reports(self, user_id: str) -> list:
         """Récupère tous les rapports d'un utilisateur"""
         try:
-            response = self.supabase.client.table("reports").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+            response = self.supabase.query("reports", select_fields="*", filters={"user_id": user_id})
             return response.data or []
         except Exception as e:
             print(f"❌ Erreur récupération rapports: {e}")
@@ -67,8 +67,8 @@ class SupabaseReportsService:
     async def get_report_by_id(self, report_id: str) -> dict:
         """Récupère un rapport spécifique"""
         try:
-            response = self.supabase.client.table("reports").select("*").eq("id", report_id).single().execute()
-            return response.data or {}
+            response = self.supabase.query("reports", select_fields="*", filters={"id": report_id})
+            return response.data[0] if response.data else {}
         except Exception as e:
             print(f"❌ Erreur récupération rapport {report_id}: {e}")
             return {}

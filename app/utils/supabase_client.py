@@ -1,5 +1,6 @@
 from supabase import create_client
-from app.config import SUPABASE_URL, SUPABASE_KEY
+from app.config_prod import settings
+
 
 class SupabaseClient:
     def __init__(self):
@@ -8,42 +9,56 @@ class SupabaseClient:
     def _get_client(self):
         """Initialise le client à la première utilisation"""
         if self.client is None:
-            self.client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            try:
+                self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                print(f"✅ Client Supabase initialisé avec succès")
+            except Exception as e:
+                print(f"❌ Erreur lors de l'initialisation Supabase: {e}")
+                self.client = None
         return self.client
     
-    async def get_user_profile(self, user_id: str):
-        """Récupère le profil utilisateur"""
+    def query(self, table: str, select_fields: str = "*", filters: dict = None):
+        """
+        Exécute une query SELECT avec filtres optionnels.
+        Retourne la response complète (avec .data et .error).
+        
+        Exemple:
+            response = supabase.query("user_profiles", "*", {"user_id": "123"})
+            if response.data:
+                user = response.data[0]
+        """
         try:
             client = self._get_client()
-            response = client.table("user_profiles").select("*").eq("user_id", user_id).execute()
-            return response.data[0] if response.data else None
-        except Exception as e:
-            print(f"❌ Erreur Supabase: {e}")
-            return None
-    
-    async def get_visuels(self, category: str, cut_key: str):
-        """Récupère les visuels pédagogiques"""
-        try:
-            client = self._get_client()
-            response = client.table("visuels").select("*").eq("category", category).eq("cut_key", cut_key).execute()
-            return response.data[0] if response.data else None
-        except Exception as e:
-            print(f"❌ Erreur visuels: {e}")
-            return None
-    
-    async def query_table(self, table: str, filters: dict = None):
-        """Requête générique sur une table"""
-        try:
-            client = self._get_client()
-            query = client.table(table).select("*")
+            if client is None:
+                raise Exception("Client Supabase non initialisé")
+            
+            query_obj = client.table(table).select(select_fields)
+            
             if filters:
                 for key, value in filters.items():
-                    query = query.eq(key, value)
-            response = query.execute()
-            return response.data if response.data else []
+                    query_obj = query_obj.eq(key, value)
+            
+            response = query_obj.execute()
+            return response
         except Exception as e:
             print(f"❌ Erreur query {table}: {e}")
-            return []
+            raise
+    
+    def insert_table(self, table: str, data: dict):
+        """
+        Insère des données dans une table.
+        Retourne les données insérées ou None en cas d'erreur.
+        """
+        try:
+            client = self._get_client()
+            if client is None:
+                raise Exception("Client Supabase non initialisé")
+            response = client.table(table).insert(data).execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"❌ Erreur insert {table}: {e}")
+            raise
+
 
 # Instance globale
 supabase = SupabaseClient()

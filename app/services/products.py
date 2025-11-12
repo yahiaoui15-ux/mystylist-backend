@@ -19,13 +19,16 @@ class ProductsService:
         try:
             print(f"🛍️  Récupération produits {category}...")
             
-            # Récupérer les produits de la catégorie
-            products = await self.supabase.query_table(
+            # Récupérer les produits de la catégorie - UTILISER supabase.query()
+            response = self.supabase.query(
                 "Products place des tendances",
+                select_fields="*",
                 filters={
                     "category/primary": category
                 }
             )
+            
+            products = response.data if response.data else []
             
             if not products:
                 print(f"⚠️  Aucun produit trouvé pour {category}")
