@@ -168,8 +168,8 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         
         for photo in photos:
             # ✅ CORRECTED: utiliser "photo_type" et "cloudinary_url"
-            photo_type = photo.get("photo_type", "").lower()  # ← Était "type"
-            photo_url = photo.get("cloudinary_url", "")  # ← Était "url" ou "photo_url"
+            photo_type = photo.get("photo_type", "").lower()
+            photo_url = photo.get("cloudinary_url", "")
             
             print(f"      📸 Photo: type='{photo_type}', url={photo_url[:50] if photo_url else 'NONE'}...")
             
@@ -191,23 +191,48 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         print(f"   ✅ face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
         print(f"   ✅ body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
 
+        # ✅ CORRECTION: Extraire les données du JSONB imbriqué (structure onboarding_data)
+        onboarding_data = user_profile.get("onboarding_data", {})
+        personal_info = onboarding_data.get("personal_info", {})
+        measurements = onboarding_data.get("measurements", {})
+        color_prefs = onboarding_data.get("color_preferences", {})
+
+        # ✅ Extraire prénom et nom
+        first_name = user_name.split()[0] if user_name else "Client(e)"
+        last_name = " ".join(user_name.split()[1:]) if user_name and len(user_name.split()) > 1 else ""
+
         user_data = {
             "user_id": user_id,
             "user_email": user_email,
             "user_name": user_name,
+            "first_name": first_name,
+            "last_name": last_name,
             "profile": user_profile,
             "photos": photos,
             "face_photo_url": face_photo_url,
             "body_photo_url": body_photo_url,
-            "eye_color": user_profile.get("eye_color", ""),
-            "hair_color": user_profile.get("hair_color", ""),
-            "age": user_profile.get("age", 0),
-            "shoulder_circumference": user_profile.get("shoulder_circumference", 0),
-            "waist_circumference": user_profile.get("waist_circumference", 0),
-            "hip_circumference": user_profile.get("hip_circumference", 0),
-            "bust_circumference": user_profile.get("bust_circumference", 0),
-            "unwanted_colors": user_profile.get("unwanted_colors", [])
+            # ✅ EXTRACTION CORRECTE DU JSONB
+            "eye_color": onboarding_data.get("eye_color", ""),
+            "hair_color": onboarding_data.get("hair_color", ""),
+            "age": personal_info.get("age", 0),
+            "height": personal_info.get("height", 0),
+            "weight": personal_info.get("weight", 0),
+            "shoulder_circumference": measurements.get("shoulder_circumference", 0),
+            "waist_circumference": measurements.get("waist_circumference", 0),
+            "hip_circumference": measurements.get("hip_circumference", 0),
+            "bust_circumference": measurements.get("shoulder_circumference", 0),  # Approximation
+            "unwanted_colors": color_prefs.get("disliked_colors", [])
         }
+
+        print(f"   👤 User data extrait du JSONB:")
+        print(f"      ✓ first_name: {user_data['first_name']}")
+        print(f"      ✓ last_name: {user_data['last_name']}")
+        print(f"      ✓ age: {user_data['age']}")
+        print(f"      ✓ height: {user_data['height']}")
+        print(f"      ✓ weight: {user_data['weight']}")
+        print(f"      ✓ eye_color: {user_data['eye_color']}")
+        print(f"      ✓ hair_color: {user_data['hair_color']}")
+        print(f"      ✓ shoulder_circumference: {user_data['shoulder_circumference']}")
 
         # Garde-fou email (au cas où Stripe re-tente malgré tout)
         existing = supabase.query("reports", select_fields="email_sent", filters={"payment_id": payment_id})
