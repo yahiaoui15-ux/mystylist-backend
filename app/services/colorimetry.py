@@ -1,6 +1,8 @@
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_prompt import COLORIMETRY_SYSTEM_PROMPT, COLORIMETRY_USER_PROMPT
+from app.utils.json_cleaner import clean_json_response  # ← NOUVEAU
+
 
 class ColorimetryService:
     def __init__(self):
@@ -44,41 +46,44 @@ class ColorimetryService:
             )
             
             print(f"   📨 Réponse reçue ({len(response)} chars)")
+            print(f"   📋 Débuts: {response[:100]}...")
             
-            # ✅ NETTOYAGE ROBUSTE: Extraire JSON valide
-            response_text = response.strip()
+            # ✅ NOUVEAU: Nettoyage robuste JSON (gère les caractères de contrôle invalides)
+            response_cleaned = clean_json_response(response)
             
-            # Chercher le début du JSON
-            json_start = response_text.find('{')
-            if json_start == -1:
-                print(f"❌ Pas de {{ trouvé dans réponse: {response_text[:100]}")
+            if not response_cleaned or response_cleaned == "{}":
+                print("❌ Impossible de nettoyer la réponse JSON")
                 return {}
             
-            response_text = response_text[json_start:]
-            
-            # Chercher la fin du JSON
-            json_end = response_text.rfind('}')
-            if json_end == -1:
-                print(f"❌ Pas de }} trouvé dans réponse nettoyée")
-                return {}
-            
-            response_text = response_text[:json_end+1]
-            
-            print(f"   ✓ JSON extrait ({len(response_text)} chars)")
-            print(f"   📋 Débuts: {response_text[:80]}...")
-            
-            # Parser la réponse JSON
+            # Parser la réponse JSON nettoyée
             try:
-                result = json.loads(response_text)
-                print(f"   ✅ JSON parsé avec succès")
+                result = json.loads(response_cleaned)
+                print(f"   ✅ JSON parsé avec succès ({len(result)} clés)")
             except json.JSONDecodeError as e:
-                print(f"❌ Erreur parsing JSON: {e}")
-                print(f"   Contenu: {response_text[:200]}")
+                print(f"❌ Erreur parsing JSON après nettoyage: {e}")
+                print(f"   Position: {e.pos}")
+                # Afficher un snippet du problème
+                start = max(0, e.pos - 50)
+                end = min(len(response_cleaned), e.pos + 50)
+                print(f"   Snippet: ...{response_cleaned[start:end]}...")
                 return {}
             
             if not result:
                 print("❌ Résultat vide après parsing")
                 return {}
+            
+            # ✅ Valider que les données colorimétrie sont présentes
+            palette = result.get('palette_personnalisee', [])
+            colors_with_notes = result.get('allColorsWithNotes', [])
+            associations = result.get('associationsGagnantes', [])
+            
+            print(f"   ✓ Palette: {len(palette)} couleurs")
+            print(f"   ✓ All Colors: {len(colors_with_notes)} couleurs")
+            print(f"   ✓ Associations: {len(associations)} associations")
+            
+            if not palette and not colors_with_notes:
+                print("⚠️ ATTENTION: Pas de couleurs dans la réponse GPT!")
+                print(f"   Clés disponibles: {list(result.keys())}")
             
             # ✅ AJOUTER les données utilisateur manquantes
             result["eye_color"] = user_data.get("eye_color", "")
@@ -87,6 +92,7 @@ class ColorimetryService:
             # Fallback saison si absente
             if not result.get("saison_confirmee"):
                 result["saison_confirmee"] = "Indéterminée"
+                print(f"⚠️ Saison manquante, utilisation fallback")
             
             # Fallback justification
             if not result.get("justification_saison"):
@@ -96,7 +102,8 @@ class ColorimetryService:
             print(f"✅ Colorimétrie analysée: {saison}")
             print(f"   ✓ Yeux: {result.get('eye_color')}")
             print(f"   ✓ Cheveux: {result.get('hair_color')}")
-            print(f"   ✓ Palette: {len(result.get('palette_personnalisee', []))} couleurs")
+            print(f"   ✓ Palette personnalisée: {len(palette)} couleurs")
+            print(f"   ✓ Guide Maquillage: {bool(result.get('guide_maquillage'))}")
             
             return result
             
@@ -105,6 +112,7 @@ class ColorimetryService:
             import traceback
             traceback.print_exc()
             raise
+
 
 # Instance globale
 colorimetry_service = ColorimetryService()
