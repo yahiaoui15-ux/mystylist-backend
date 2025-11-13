@@ -1,10 +1,9 @@
 """
-PDF Data Mapper - VERSION ENRICHIE
-Mappe les données du rapport à la STRUCTURE EXACTE attendue par le template Liquid
-✅ Support nouveau prompt colorimetry avec 12 couleurs + notes détaillées
-✅ Support guide_maquillage ultra-détaillé
-✅ Support shopping_couleurs avec priorités
-✅ Support allColorsWithNotes avec hex codes
+PDF Data Mapper - VERSION CORRIGÉE
+✅ Guide_maquillage extrait depuis colorimetry (pas niveau racine)
+✅ Mapping des clés Liquid EXACT: teint→foundation, yeux→eyeshadows, lipsNude→lipsNatural
+✅ Associations: "colors" → "combo" pour template
+✅ Shopping_couleurs extrait depuis colorimetry
 """
 
 from typing import Dict, Any, Optional
@@ -59,31 +58,17 @@ class PDFDataMapper:
         """
         Transforme notesCompatibilite (dict) en allColorsWithNotes (list)
         avec hex codes pour chaque couleur
-        
-        Format d'entrée:
-        {
-            "rouge": {"note": "8", "commentaire": "..."},
-            "bleu": {"note": "3", "commentaire": "..."}
-        }
-        
-        Format de sortie:
-        [
-            {"name": "rouge", "note": 8, "commentaire": "...", "hex": "#FF0000"},
-            {"name": "bleu", "note": 3, "commentaire": "...", "hex": "#0000FF"}
-        ]
         """
         all_colors = []
         
         for color_name, color_data in notes_compatibilite.items():
             if isinstance(color_data, dict):
-                # Récupérer la note et la convertir en entier
                 try:
                     note = int(color_data.get("note", 0)) if isinstance(color_data.get("note"), str) else color_data.get("note", 0)
                 except (ValueError, TypeError):
                     note = 0
                 
-                # Récupérer le hex code
-                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, "#CCCCCC")  # Default gray
+                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, "#CCCCCC")
                 
                 all_colors.append({
                     "name": color_name,
@@ -92,36 +77,34 @@ class PDFDataMapper:
                     "hex": hex_code
                 })
         
-        # Trier par note décroissante
         all_colors.sort(key=lambda x: x["note"], reverse=True)
-        
         return all_colors
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """
         ✅ FONCTION PRINCIPALE - Prépare les variables Liquid pour le template PDFMonkey
-        Supporte nouveau prompt colorimetry enrichi avec guide_maquillage ultra-détaillé
         
-        Args:
-            report_data: Les données générées par OpenAI (nouveau format)
-            user_data: Les données utilisateur
-        
-        Returns:
-            dict: Structure Liquid imbriquée comme le template l'attend
+        CORRECTIONS APPORTÉES:
+        1. guide_maquillage extrait depuis colorimetry (pas niveau racine)
+        2. Mapping exact des clés Liquid pour le makeup
+        3. Associations: "colors" → "combo"
+        4. Shopping_couleurs extrait depuis colorimetry
         """
         
         print("\n" + "="*70)
-        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (ENRICHI)")
+        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (CORRIGÉ)")
         print("="*70)
         
-        # Assurer que les sections sont des dicts
+        # ✅ CORRECTION: Extraire depuis colorimetry_raw
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry"))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology"))
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling"))
         products_raw = PDFDataMapper._safe_dict(report_data.get("products"))
-        guide_maquillage_raw = PDFDataMapper._safe_dict(report_data.get("guide_maquillage"))
-        shopping_raw = PDFDataMapper._safe_dict(report_data.get("shopping_couleurs"))
+        
+        # ✅ CORRECTION: guide_maquillage et shopping_couleurs DANS colorimetry_raw
+        guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
+        shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
         
         user_data = PDFDataMapper._safe_dict(user_data)
         
@@ -148,33 +131,58 @@ class PDFDataMapper:
         print(f"   ✓ lastName: {last_name}")
         
         # ================================================================
-        # SECTION COLORIMETRY (NOUVEAU FORMAT)
+        # SECTION COLORIMETRY
         # ================================================================
-        print(f"\n🎨 Mapping colorimetry (ENRICHI):")
+        print(f"\n🎨 Mapping colorimetry:")
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee"))
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite"))
-        associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes"))
+        
+        # ✅ CORRECTION: Transformer "colors" en "combo" pour le template
+        raw_associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes"))
+        associations = [
+            {
+                **assoc,
+                "combo": assoc.get("colors", [])
+            }
+            for assoc in raw_associations
+        ]
+        
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees"))
         
-        # ✅ NOUVEAU: Créer allColorsWithNotes avec hex codes
         all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         
         print(f"   ✓ palette: {len(palette)} couleurs")
         print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
-        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs (transformées)")
+        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs")
         print(f"   ✓ associations: {len(associations)}")
         print(f"   ✓ alternatives: {len(alternatives)}")
         
         # ================================================================
-        # SECTION GUIDE MAQUILLAGE (NOUVEAU FORMAT ULTRA-DÉTAILLÉ)
+        # SECTION MAKEUP
         # ================================================================
-        print(f"\n💄 Mapping guide_maquillage (ULTRA-DÉTAILLÉ):")
-        print(f"   ✓ teint: {bool(guide_maquillage_raw.get('teint'))}")
-        print(f"   ✓ blush: {bool(guide_maquillage_raw.get('blush'))}")
-        print(f"   ✓ vernis_a_ongles: {len(PDFDataMapper._safe_list(guide_maquillage_raw.get('vernis_a_ongles')))}")
+        print(f"\n💄 Mapping makeup (CLÉS CORRIGÉES):")
+        # ✅ CORRECTION: Mapper les clés EXACTES attendues par le template
+        makeup_mapping = {
+            "foundation": guide_maquillage_raw.get("teint", ""),        # ← teint → foundation
+            "blush": guide_maquillage_raw.get("blush", ""),
+            "bronzer": guide_maquillage_raw.get("bronzer", ""),
+            "highlighter": guide_maquillage_raw.get("highlighter", ""),
+            "eyeshadows": guide_maquillage_raw.get("yeux", ""),         # ← yeux → eyeshadows
+            "eyeliner": guide_maquillage_raw.get("eyeliner", ""),
+            "mascara": guide_maquillage_raw.get("mascara", ""),
+            "brows": guide_maquillage_raw.get("brows", ""),
+            "lipsNatural": guide_maquillage_raw.get("lipsNude", ""),    # ← lipsNude → lipsNatural
+            "lipsDay": guide_maquillage_raw.get("lipsDay", ""),
+            "lipsEvening": guide_maquillage_raw.get("lipsEvening", ""),
+            "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
+            "nailColors": PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", [])),
+        }
+        print(f"   ✓ foundation: {bool(makeup_mapping['foundation'])}")
+        print(f"   ✓ eyeshadows: {bool(makeup_mapping['eyeshadows'])}")
+        print(f"   ✓ lipsNatural: {bool(makeup_mapping['lipsNatural'])}")
         
         # ================================================================
-        # SECTION SHOPPING (NOUVEAU)
+        # SECTION SHOPPING
         # ================================================================
         print(f"\n🛍️  Mapping shopping_couleurs:")
         priorite_1 = PDFDataMapper._safe_list(shopping_raw.get("priorite_1"))
@@ -207,7 +215,7 @@ class PDFDataMapper:
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
             },
             
-            # ✅ SECTION: COLORIMETRY (ENRICHIE + allColorsWithNotes)
+            # ✅ SECTION: COLORIMETRY
             "colorimetry": {
                 "season": colorimetry_raw.get("saison_confirmee", ""),
                 "soustonDetecte": colorimetry_raw.get("sous_ton_detecte", ""),
@@ -216,29 +224,15 @@ class PDFDataMapper:
                 "hairColor": colorimetry_raw.get("hair_color", ""),
                 "palettePersonnalisee": palette,
                 "notesCompatibilite": notes_compatibilite,
-                "allColorsWithNotes": all_colors_with_notes,  # ✅ NOUVEAU: Pour page 4
+                "allColorsWithNotes": all_colors_with_notes,
                 "alternativesCouleurs": alternatives,
                 "associationsGagnantes": associations,
             },
             
-            # ✅ SECTION: MAKEUP (GUIDE MAQUILLAGE ULTRA-DÉTAILLÉ)
-            "makeup": {
-                "teint": guide_maquillage_raw.get("teint", ""),
-                "blush": guide_maquillage_raw.get("blush", ""),
-                "bronzer": guide_maquillage_raw.get("bronzer", ""),
-                "highlighter": guide_maquillage_raw.get("highlighter", ""),
-                "yeux": guide_maquillage_raw.get("yeux", ""),
-                "eyeliner": guide_maquillage_raw.get("eyeliner", ""),
-                "mascara": guide_maquillage_raw.get("mascara", ""),
-                "brows": guide_maquillage_raw.get("brows", ""),
-                "lipsNude": guide_maquillage_raw.get("lipsNude", ""),
-                "lipsDay": guide_maquillage_raw.get("lipsDay", ""),
-                "lipsEvening": guide_maquillage_raw.get("lipsEvening", ""),
-                "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
-                "nailColors": PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", [])),
-            },
+            # ✅ SECTION: MAKEUP (CLÉS CORRIGÉES)
+            "makeup": makeup_mapping,
             
-            # ✅ SECTION: SHOPPING COULEURS (NOUVEAU)
+            # ✅ SECTION: SHOPPING COULEURS
             "shopping": {
                 "priorite1": priorite_1,
                 "priorite2": priorite_2,
@@ -270,7 +264,7 @@ class PDFDataMapper:
                 },
             },
             
-            # ✅ SECTION: MORPHO (Recommandations)
+            # ✅ SECTION: MORPHO
             "morpho": {
                 "recos": {
                     "hauts": morphology_raw.get("hauts_recommendations", ""),
@@ -316,21 +310,21 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Structure Liquid complète assemblée (enrichie)")
+        print(f"\n✅ Structure Liquid assemblée (TOUTES CORRECTIONS APPLIQUÉES)")
+        print(f"   ✓ foundation: {bool(liquid_data['makeup']['foundation'])}")
+        print(f"   ✓ eyeshadows: {bool(liquid_data['makeup']['eyeshadows'])}")
+        print(f"   ✓ lipsNatural: {bool(liquid_data['makeup']['lipsNatural'])}")
+        print(f"   ✓ associations.combo: OK")
         
         return liquid_data
     
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
-        """
-        ⚠️  DEPRECATED: Ancienne fonction - garder pour compatibilité
-        Utiliser prepare_liquid_variables() à la place
-        """
-        print("⚠️  map_report_to_pdfmonkey() est dépréciée - utiliser prepare_liquid_variables()")
+        """Wrapper pour compatibilité"""
         return {
             "data": PDFDataMapper.prepare_liquid_variables(report_data, user_data)
         }
 
 
-# Instance globale à exporter
+# Instance globale
 pdf_mapper = PDFDataMapper()
