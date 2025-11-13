@@ -44,7 +44,7 @@ class ColorimetryService:
                 prompt=user_prompt,
                 model="gpt-4-turbo"
             )
-            
+            print(f"   📨 Réponse brute OpenAI:\n{response}\n")
             print(f"   📨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
             
