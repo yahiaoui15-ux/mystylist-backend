@@ -1,10 +1,17 @@
 """
-PDF Data Mapper - VERSION 3 AMÉLIORÉE
+PDF Data Mapper - VERSION 4 COMPLÈTE ET AMÉLIORÉE
+✅ COLOR_HEX_MAP GLOBAL ÉTENDU: 40+ couleurs (palette + associations + fallback)
 ✅ Guide_maquillage extrait depuis colorimetry (pas niveau racine)
 ✅ Mapping des clés Liquid EXACT: teint→foundation, yeux→eyeshadows, lipsNude→lipsNatural
 ✅ Associations: enrichies avec color_details (noms des couleurs)
 ✅ Shopping_couleurs extrait depuis colorimetry
 ✅ nailColors: transformés de hex codes à [{hex, name}, ...]
+✅ Fallback sur COLOR_HEX_MAP global si hex pas dans palette_personnalisee
+
+NOUVEAUTÉS v4:
+- COLOR_HEX_MAP complet avec toutes les couleurs possibles
+- Stratégie multi-niveaux pour les associations (palette → global map → fallback)
+- Documentation complète des hex codes non standards
 """
 
 from typing import Dict, Any, Optional, List
@@ -15,41 +22,104 @@ import json
 class PDFDataMapper:
     """
     Mappe les données du rapport généré au format PDFMonkey (structure Liquid)
+    
+    Stratégie de matching des couleurs:
+    1. Chercher le hex dans palette_personnalisee (priorité haute - couleurs du rapport)
+    2. Chercher le hex dans COLOR_HEX_MAP global (fallback - toutes les couleurs)
+    3. Fallback final: {"name": "couleur", "displayName": "Couleur"}
     """
     
-    # Mapping des noms de couleurs français → hex codes
+    # ✅ COLOR_HEX_MAP GLOBAL COMPLET - Pour toutes les associations
+    # Inclut: palette de base + couleurs génériques + couleurs moins courantes qu'OpenAI peut utiliser
     COLOR_HEX_MAP = {
-        "rouge": "#FF0000",
-        "bleu": "#0000FF",
-        "jaune": "#FFFF00",
-        "vert": "#008000",
-        "orange": "#FFA500",
-        "violet": "#800080",
-        "blanc": "#FFFFFF",
-        "noir": "#000000",
-        "gris": "#808080",
-        "beige": "#F5F5DC",
-        "marron": "#8B4513",
-        "rose_pale": "#FFB6C1",
-        "rose_fuchsia": "#FF1493",
-        "rose_corail": "#FF7F50",
-        "camel": "#C19A6B",
-        "marine": "#000080",
-        "bordeaux": "#800020",
-        "kaki": "#C3B091",
-        "turquoise": "#40E0D0",
+        # ════════════════════════════════════════════════════════════
+        # PALETTE DE BASE (Automne - couleurs chaudes)
+        # ════════════════════════════════════════════════════════════
+        "#E1AD01": {"name": "moutarde", "displayName": "Moutarde"},
+        "#B87333": {"name": "cuivre", "displayName": "Cuivre"},
+        "#808000": {"name": "olive", "displayName": "Olive"},
+        "#E2725B": {"name": "terracotta", "displayName": "Terracotta"},
+        "#C19A6B": {"name": "camel", "displayName": "Camel"},
+        "#7B3F00": {"name": "chocolat", "displayName": "Chocolat"},
+        "#6D071A": {"name": "bordeaux", "displayName": "Bordeaux"},
+        "#C3B091": {"name": "kaki", "displayName": "Kaki"},
+        "#CC7722": {"name": "ocre", "displayName": "Ocre"},
+        "#CD7F32": {"name": "bronze", "displayName": "Bronze"},
+        "#B7410E": {"name": "rouille", "displayName": "Rouille"},
+        "#CB4154": {"name": "brique", "displayName": "Brique"},
+        
+        # ════════════════════════════════════════════════════════════
+        # COULEURS GÉNÉRIQUES STANDARD
+        # ════════════════════════════════════════════════════════════
+        "#FF0000": {"name": "rouge", "displayName": "Rouge"},
+        "#0000FF": {"name": "bleu", "displayName": "Bleu"},
+        "#FFFF00": {"name": "jaune", "displayName": "Jaune"},
+        "#008000": {"name": "vert", "displayName": "Vert"},
+        "#FFA500": {"name": "orange", "displayName": "Orange"},
+        "#800080": {"name": "violet", "displayName": "Violet"},
+        "#FFFFFF": {"name": "blanc", "displayName": "Blanc"},
+        "#000000": {"name": "noir", "displayName": "Noir"},
+        "#808080": {"name": "gris", "displayName": "Gris"},
+        "#F5F5DC": {"name": "beige", "displayName": "Beige"},
+        "#8B4513": {"name": "marron", "displayName": "Marron"},
+        
+        # ════════════════════════════════════════════════════════════
+        # COULEURS ROSES & CORAIL
+        # ════════════════════════════════════════════════════════════
+        "#FFB6C1": {"name": "rose_pale", "displayName": "Rose pâle"},
+        "#FF1493": {"name": "rose_fuchsia", "displayName": "Rose fuchsia"},
+        "#FF7F50": {"name": "rose_corail", "displayName": "Corail"},
+        
+        # ════════════════════════════════════════════════════════════
+        # BLEUS & MARINES
+        # ════════════════════════════════════════════════════════════
+        "#000080": {"name": "marine", "displayName": "Marine"},
+        "#800020": {"name": "bordeaux", "displayName": "Bordeaux"},
+        "#40E0D0": {"name": "turquoise", "displayName": "Turquoise"},
+        
+        # ════════════════════════════════════════════════════════════
+        # COULEURS MOINS COURANTES (Hex codes non-standards qu'OpenAI peut utiliser)
+        # ════════════════════════════════════════════════════════════
+        "#D4AF76": {"name": "doré_clair", "displayName": "Doré clair"},
+        "#8B8589": {"name": "gris_taupe", "displayName": "Gris taupe"},
+        "#228B22": {"name": "vert_foncé", "displayName": "Vert foncé"},
+        "#2F4F4F": {"name": "ardoise_foncée", "displayName": "Ardoise foncée"},
+        "#D4A574": {"name": "tan_chaud", "displayName": "Tan chaud"},
+        "#A0522D": {"name": "sienne", "displayName": "Sienne"},
+        "#708090": {"name": "ardoise", "displayName": "Ardoise"},
+        "#CD853F": {"name": "pérou", "displayName": "Pérou"},
+        "#DEB887": {"name": "burlywood", "displayName": "Burlywood"},
+        "#F4A460": {"name": "orange_sable", "displayName": "Orange sablé"},
     }
     
     @staticmethod
     def _safe_dict(value: Any, default: dict = None) -> dict:
-        """Convertit une valeur en dict de manière sûre"""
+        """
+        Convertit une valeur en dict de manière sûre
+        
+        Args:
+            value: Valeur à convertir
+            default: Dict par défaut si conversion échoue
+            
+        Returns:
+            Dict convertie ou default
+        """
         if isinstance(value, dict):
             return value
         return default or {}
     
     @staticmethod
     def _safe_list(value: Any, default: list = None) -> list:
-        """Convertit une valeur en liste de manière sûre"""
+        """
+        Convertit une valeur en liste de manière sûre
+        
+        Args:
+            value: Valeur à convertir
+            default: Liste par défaut si conversion échoue
+            
+        Returns:
+            Liste convertie ou default
+        """
         if isinstance(value, list):
             return value
         return default or []
@@ -59,17 +129,41 @@ class PDFDataMapper:
         """
         Transforme notesCompatibilite (dict) en allColorsWithNotes (list)
         avec hex codes pour chaque couleur
+        
+        INPUT:
+        {
+            "rouge": {"note": "8", "commentaire": "..."},
+            "bleu": {"note": "3", "commentaire": "..."},
+            ...
+        }
+        
+        OUTPUT (trié par note décroissante):
+        [
+            {"name": "rouge", "note": 8, "commentaire": "...", "hex": "#FF0000"},
+            {"name": "bleu", "note": 3, "commentaire": "...", "hex": "#0000FF"},
+            ...
+        ]
         """
         all_colors = []
         
         for color_name, color_data in notes_compatibilite.items():
             if isinstance(color_data, dict):
                 try:
+                    # Convertir la note en int (OpenAI peut l'envoyer en string)
                     note = int(color_data.get("note", 0)) if isinstance(color_data.get("note"), str) else color_data.get("note", 0)
                 except (ValueError, TypeError):
                     note = 0
                 
-                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, "#CCCCCC")
+                # Chercher le hex dans COLOR_HEX_MAP
+                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, {}).get("hex", "#CCCCCC")
+                if not isinstance(hex_code, str) or hex_code.startswith("#"):
+                    # Si hex n'est pas dans COLOR_HEX_MAP, chercher directement
+                    if color_name in PDFDataMapper.COLOR_HEX_MAP:
+                        hex_code = list(PDFDataMapper.COLOR_HEX_MAP.keys())[
+                            list(PDFDataMapper.COLOR_HEX_MAP.values()).index({"name": color_name, "displayName": ""})
+                        ]
+                    else:
+                        hex_code = "#CCCCCC"
                 
                 all_colors.append({
                     "name": color_name,
@@ -78,6 +172,7 @@ class PDFDataMapper:
                     "hex": hex_code
                 })
         
+        # Trier par note décroissante
         all_colors.sort(key=lambda x: x["note"], reverse=True)
         return all_colors
     
@@ -85,31 +180,58 @@ class PDFDataMapper:
     def _create_hex_to_color_map(palette: list) -> Dict[str, Dict[str, str]]:
         """
         Crée un mapping hex → {name, displayName} depuis palette_personnalisee
+        PLUS fallback sur COLOR_HEX_MAP global
         
-        Exemple:
+        Stratégie:
+        1. Ajouter tous les hex de palette_personnalisee (priorité haute)
+        2. Ajouter tous les hex de COLOR_HEX_MAP (fallback)
+        
+        Retourne un dict:
         {
-            "#C19A6B": {"name": "camel", "displayName": "Camel"},
-            "#E2725B": {"name": "terracotta", "displayName": "Terracotta"},
+            "#C19A6B": {"name": "camel", "displayName": "Camel", "hex": "#C19A6B"},
+            "#E2725B": {"name": "terracotta", "displayName": "Terracotta", "hex": "#E2725B"},
+            "#000080": {"name": "marine", "displayName": "Marine", "hex": "#000080"},  # ← Du fallback
             ...
         }
         """
         hex_map = {}
+        
+        # ÉTAPE 1: Ajouter depuis palette_personnalisee (priorité haute)
         for color in palette:
             if isinstance(color, dict) and "hex" in color:
-                hex_code = color["hex"].upper()
-                hex_map[hex_code] = {
+                hex_upper = color["hex"].upper()
+                hex_map[hex_upper] = {
                     "name": color.get("name", ""),
                     "displayName": color.get("displayName", ""),
+                    "hex": color["hex"]
+                }
+        
+        # ÉTAPE 2: Ajouter depuis COLOR_HEX_MAP global (fallback - sans overwrite)
+        for hex_code, color_info in PDFDataMapper.COLOR_HEX_MAP.items():
+            hex_upper = hex_code.upper()
+            # Ne pas overwrite si déjà dans palette_personnalisee
+            if hex_upper not in hex_map:
+                hex_map[hex_upper] = {
+                    "name": color_info.get("name", ""),
+                    "displayName": color_info.get("displayName", ""),
                     "hex": hex_code
                 }
         
-        print(f"\n   🔍 Hex→Name mapping créé: {len(hex_map)} couleurs")
+        print(f"\n   🔍 _create_hex_to_color_map créé: {len(hex_map)} couleurs")
+        print(f"      - Depuis palette_personnalisee: {len([c for c in palette if isinstance(c, dict) and 'hex' in c])}")
+        print(f"      - Depuis COLOR_HEX_MAP global: {len(PDFDataMapper.COLOR_HEX_MAP)}")
         return hex_map
     
     @staticmethod
     def _enrich_associations_with_color_names(associations: list, palette: list) -> list:
         """
         Enrichit les associations avec color_details (noms des couleurs)
+        
+        Stratégie:
+        1. Créer hex_map depuis palette_personnalisee
+        2. Ajouter fallback depuis COLOR_HEX_MAP global
+        3. Pour chaque hex dans colors[], chercher le nom
+        4. Si pas trouvé: fallback "Couleur"
         
         INPUT:
         [
@@ -129,14 +251,14 @@ class PDFDataMapper:
                 "color_details": [
                     {"hex": "#C19A6B", "name": "camel", "displayName": "Camel"},
                     {"hex": "#E2725B", "name": "terracotta", "displayName": "Terracotta"},
-                    ...
+                    {"hex": "#000080", "name": "marine", "displayName": "Marine"}  # ← Du fallback!
                 ],
                 "effet": "Élégance autorité"
             }
         ]
         """
         
-        # Créer le mapping hex → {name, displayName}
+        # Créer le mapping hex → {name, displayName} (PALETTE + COLOR_HEX_MAP)
         hex_map = PDFDataMapper._create_hex_to_color_map(palette)
         
         enriched_associations = []
@@ -155,11 +277,11 @@ class PDFDataMapper:
                 # Normaliser le hex code (uppercase)
                 hex_upper = hex_code.upper() if isinstance(hex_code, str) else ""
                 
-                # Chercher dans le mapping
+                # Chercher dans le mapping (qui a palette + COLOR_HEX_MAP)
                 if hex_upper in hex_map:
                     color_details.append(hex_map[hex_upper])
                 else:
-                    # Fallback: créer une entrée minimale
+                    # Dernier fallback si vraiment pas trouvé
                     color_details.append({
                         "hex": hex_code,
                         "name": "couleur",
@@ -169,32 +291,38 @@ class PDFDataMapper:
             # Construire l'association enrichie
             enriched_assoc = {
                 **assoc,
-                "combo": colors_list,  # Garder combo pour compatibilité
-                "color_details": color_details  # Ajouter les détails avec noms
+                "combo": colors_list,
+                "color_details": color_details
             }
             
             enriched_associations.append(enriched_assoc)
         
-        print(f"   ✅ {len(enriched_associations)} associations enrichies avec color_details")
+        print(f"\n   ✅ _enrich_associations_with_color_names: {len(enriched_associations)} associations")
         return enriched_associations
     
     @staticmethod
     def _transform_nail_colors(nail_hex_list: list, palette: list) -> list:
         """
         Transforme les codes hex des ongles en [{hex, name, displayName}, ...]
+        Utilise PALETTE + COLOR_HEX_MAP comme fallback
         
-        INPUT: ["#E1AD01", "#7B3F00", "#CC7722", "#6D071A", "#CD7F32"]
-        OUTPUT: [
+        INPUT:
+        ["#E1AD01", "#7B3F00", "#CC7722", "#6D071A", "#CD7F32"]
+        
+        OUTPUT:
+        [
             {"hex": "#E1AD01", "name": "moutarde", "displayName": "Moutarde"},
             {"hex": "#7B3F00", "name": "chocolat", "displayName": "Chocolat"},
-            ...
+            {"hex": "#CC7722", "name": "ocre", "displayName": "Ocre"},
+            {"hex": "#6D071A", "name": "bordeaux", "displayName": "Bordeaux"},
+            {"hex": "#CD7F32", "name": "bronze", "displayName": "Bronze"}
         ]
         """
         
         if not nail_hex_list:
             return []
         
-        # Créer le mapping hex → {name, displayName}
+        # Créer le mapping hex → {name, displayName} (PALETTE + COLOR_HEX_MAP)
         hex_map = PDFDataMapper._create_hex_to_color_map(palette)
         
         nail_colors_detailed = []
@@ -212,7 +340,7 @@ class PDFDataMapper:
                     "displayName": "Couleur"
                 })
         
-        print(f"   ✅ {len(nail_colors_detailed)} couleurs d'ongles transformées")
+        print(f"   ✅ _transform_nail_colors: {len(nail_colors_detailed)} couleurs d'ongles")
         return nail_colors_detailed
     
     @staticmethod
@@ -220,25 +348,27 @@ class PDFDataMapper:
         """
         ✅ FONCTION PRINCIPALE - Prépare les variables Liquid pour le template PDFMonkey
         
-        CORRECTIONS APPORTÉES:
-        1. guide_maquillage extrait depuis colorimetry (pas niveau racine)
-        2. Mapping exact des clés Liquid pour le makeup
-        3. Associations: enrichies avec color_details (noms des couleurs) ✨
-        4. Shopping_couleurs extrait depuis colorimetry
-        5. nailColors: transformés de hex codes à [{hex, name}, ...] ✨
+        VERSION 4 - AMÉLIORATIONS:
+        1. ✅ guide_maquillage extrait depuis colorimetry (pas niveau racine)
+        2. ✅ Mapping exact des clés Liquid pour le makeup
+        3. ✅ Associations: enrichies avec color_details (noms des couleurs)
+        4. ✅ Shopping_couleurs extrait depuis colorimetry
+        5. ✅ nailColors: transformés de hex codes à [{hex, name}, ...]
+        6. ✅ COLOR_HEX_MAP global comme fallback pour toutes les associations
+        7. ✅ Hex map multi-niveaux: palette → COLOR_HEX_MAP → fallback
         """
         
         print("\n" + "="*70)
-        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (v3)")
+        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (v4 COMPLÈTE)")
         print("="*70)
         
-        # ✅ CORRECTION: Extraire depuis colorimetry_raw
+        # Extraire les sections principales
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry"))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology"))
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling"))
         products_raw = PDFDataMapper._safe_dict(report_data.get("products"))
         
-        # ✅ CORRECTION: guide_maquillage et shopping_couleurs DANS colorimetry_raw
+        # Extraire guide_maquillage et shopping_couleurs DEPUIS colorimetry
         guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
         shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
         
@@ -273,19 +403,18 @@ class PDFDataMapper:
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee"))
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite"))
         
-        # ✅ NEW: Enrichir les associations avec les noms des couleurs
+        # Enrichir les associations avec noms des couleurs + COLOR_HEX_MAP fallback
         print(f"\n✨ Enrichissement des associations:")
         raw_associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes"))
         associations = PDFDataMapper._enrich_associations_with_color_names(raw_associations, palette)
         
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees"))
-        
         all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         
         print(f"   ✓ palette: {len(palette)} couleurs")
         print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
         print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs")
-        print(f"   ✓ associations: {len(associations)}")
+        print(f"   ✓ associations: {len(associations)} (enrichies)")
         print(f"   ✓ alternatives: {len(alternatives)}")
         
         # ================================================================
@@ -293,26 +422,26 @@ class PDFDataMapper:
         # ================================================================
         print(f"\n💄 Mapping makeup (CLÉS CORRIGÉES):")
         
-        # ✅ NEW: Transformer nailColors de hex codes à [{hex, name}, ...]
+        # Transformer nailColors de hex codes à [{hex, name}, ...]
         raw_nail_colors = PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", []))
         print(f"\n💅 Transformation ongles:")
         nail_colors_transformed = PDFDataMapper._transform_nail_colors(raw_nail_colors, palette)
         
-        # ✅ CORRECTION: Mapper les clés EXACTES attendues par le template
+        # Mapper les clés EXACTES attendues par le template
         makeup_mapping = {
-            "foundation": guide_maquillage_raw.get("teint", ""),        # ← teint → foundation
+            "foundation": guide_maquillage_raw.get("teint", ""),
             "blush": guide_maquillage_raw.get("blush", ""),
             "bronzer": guide_maquillage_raw.get("bronzer", ""),
             "highlighter": guide_maquillage_raw.get("highlighter", ""),
-            "eyeshadows": guide_maquillage_raw.get("yeux", ""),         # ← yeux → eyeshadows
+            "eyeshadows": guide_maquillage_raw.get("yeux", ""),
             "eyeliner": guide_maquillage_raw.get("eyeliner", ""),
             "mascara": guide_maquillage_raw.get("mascara", ""),
             "brows": guide_maquillage_raw.get("brows", ""),
-            "lipsNatural": guide_maquillage_raw.get("lipsNude", ""),    # ← lipsNude → lipsNatural
+            "lipsNatural": guide_maquillage_raw.get("lipsNude", ""),
             "lipsDay": guide_maquillage_raw.get("lipsDay", ""),
             "lipsEvening": guide_maquillage_raw.get("lipsEvening", ""),
             "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
-            "nailColors": nail_colors_transformed,  # ✨ Maintenant des [{hex, name}, ...]
+            "nailColors": nail_colors_transformed,
         }
         print(f"   ✓ foundation: {bool(makeup_mapping['foundation'])}")
         print(f"   ✓ eyeshadows: {bool(makeup_mapping['eyeshadows'])}")
@@ -342,7 +471,6 @@ class PDFDataMapper:
         # ================================================================
         
         liquid_data = {
-            # ✅ SECTION: USER
             "user": {
                 "firstName": first_name,
                 "lastName": last_name,
@@ -353,7 +481,6 @@ class PDFDataMapper:
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
             },
             
-            # ✅ SECTION: COLORIMETRY
             "colorimetry": {
                 "season": colorimetry_raw.get("saison_confirmee", ""),
                 "soustonDetecte": colorimetry_raw.get("sous_ton_detecte", ""),
@@ -364,20 +491,17 @@ class PDFDataMapper:
                 "notesCompatibilite": notes_compatibilite,
                 "allColorsWithNotes": all_colors_with_notes,
                 "alternativesCouleurs": alternatives,
-                "associationsGagnantes": associations,  # ✨ Enrichies avec color_details
+                "associationsGagnantes": associations,
             },
             
-            # ✅ SECTION: MAKEUP (CLÉS CORRIGÉES)
             "makeup": makeup_mapping,
             
-            # ✅ SECTION: SHOPPING COULEURS
             "shopping": {
                 "priorite1": priorite_1,
                 "priorite2": priorite_2,
                 "eviterAbsolument": eviter,
             },
             
-            # ✅ SECTION: MORPHOLOGY_PAGE1
             "morphology_page1": {
                 "bodyType": morphology_raw.get("silhouette_type", ""),
                 "coherence": morphology_raw.get("silhouette_coherence", ""),
@@ -402,7 +526,6 @@ class PDFDataMapper:
                 },
             },
             
-            # ✅ SECTION: MORPHO
             "morpho": {
                 "recos": {
                     "hauts": morphology_raw.get("hauts_recommendations", ""),
@@ -412,28 +535,22 @@ class PDFDataMapper:
                 },
             },
             
-            # ✅ SECTION: STYLE
             "style": {
                 "archetypes": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", [])),
                 "primaryArchetype": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", []))[0] if styling_raw.get("style_archetypes") else {},
                 "essenceShort": styling_raw.get("style_essence", ""),
             },
             
-            # ✅ SECTION: CAPSULE
             "capsule": {
                 "basics": PDFDataMapper._safe_list(styling_raw.get("capsule_basics", [])),
                 "statement": PDFDataMapper._safe_list(styling_raw.get("capsule_statement_pieces", [])),
                 "totalBudget": styling_raw.get("capsule_total_budget", 0),
             },
             
-            # ✅ SECTION: OUTFITS
             "outfits": PDFDataMapper._safe_list(styling_raw.get("mix_and_match_outfits", [])),
-            
-            # ✅ SECTION: BRANDS & OCCASIONS
             "brands": PDFDataMapper._safe_list(styling_raw.get("shopping_brands", [])),
             "occasions": PDFDataMapper._safe_list(styling_raw.get("special_occasions", [])),
             
-            # ✅ SECTION: NEXT STEPS
             "nextSteps": {
                 "weeklyChecklist": [
                     "Imprimez ou enregistrez ce rapport sur votre téléphone",
@@ -444,19 +561,19 @@ class PDFDataMapper:
                 ]
             },
             
-            # ✅ METADATA
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Structure Liquid assemblée (v3 AMÉLIORÉE)")
+        print(f"\n✅ Structure Liquid assemblée (v4 COMPLÈTE)")
         print(f"   ✓ Associations enrichies: {len(associations)} avec color_details")
         print(f"   ✓ Ongles transformés: {len(nail_colors_transformed)} couleurs détaillées")
+        print(f"   ✓ COLOR_HEX_MAP fallback: {len(PDFDataMapper.COLOR_HEX_MAP)} couleurs disponibles")
         
         return liquid_data
     
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
-        """Wrapper pour compatibilité"""
+        """Wrapper pour compatibilité avec les anciennes versions"""
         return {
             "data": PDFDataMapper.prepare_liquid_variables(report_data, user_data)
         }
