@@ -1,7 +1,7 @@
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_prompt import COLORIMETRY_SYSTEM_PROMPT, COLORIMETRY_USER_PROMPT
-from app.utils.json_cleaner import clean_json_response  # ← NOUVEAU
+from app.services.robust_json_parser import RobustJSONParser  # ← MODIFIÉ
 
 
 class ColorimetryService:
@@ -44,32 +44,14 @@ class ColorimetryService:
                 prompt=user_prompt,
                 model="gpt-4-turbo"
             )
-            print(f"   📨 Réponse brute OpenAI:\n{response}\n")
             print(f"   📨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
             
-            # ✅ NOUVEAU: Nettoyage robuste JSON (gère les caractères de contrôle invalides)
-            response_cleaned = clean_json_response(response)
-            
-            if not response_cleaned or response_cleaned == "{}":
-                print("❌ Impossible de nettoyer la réponse JSON")
-                return {}
-            
-            # Parser la réponse JSON nettoyée
-            try:
-                result = json.loads(response_cleaned)
-                print(f"   ✅ JSON parsé avec succès ({len(result)} clés)")
-            except json.JSONDecodeError as e:
-                print(f"❌ Erreur parsing JSON après nettoyage: {e}")
-                print(f"   Position: {e.pos}")
-                # Afficher un snippet du problème
-                start = max(0, e.pos - 50)
-                end = min(len(response_cleaned), e.pos + 50)
-                print(f"   Snippet: ...{response_cleaned[start:end]}...")
-                return {}
+            # ✅ MODIFIÉ: Utiliser le parser robuste (remplace clean_json_response)
+            result = RobustJSONParser.parse_json_with_fallback(response)
             
             if not result:
-                print("❌ Résultat vide après parsing")
+                print("❌ Impossible de parser la réponse JSON")
                 return {}
             
             # ✅ Valider que les données colorimétrie sont présentes
