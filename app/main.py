@@ -13,6 +13,7 @@ from app.services import (
     report_generator,
     supabase_reports,  # gardé si tu l'utilises ailleurs
 )
+from app.services.pdf_storage_manager import PDFStorageManager  # ✅ NOUVEAU IMPORT
 from app.utils.supabase_client import supabase
 
 app = FastAPI()
@@ -243,16 +244,40 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         # IA : Génération du rapport complet
         report = await report_generator.generate_complete_report(user_data)
 
-        # PDF
-        pdf_url = await pdf_generation.generate_report_pdf(report, user_data)
-        print(f"✅ PDF généré : {pdf_url}")
+        # PDF - Générer via PDFMonkey
+        print("🎨 Génération PDF via PDFMonkey...")
+        pdf_url_temporary = await pdf_generation.generate_report_pdf(report, user_data)
+        print(f"✅ PDF généré (temporaire S3): {pdf_url_temporary[:80]}...")
 
-        # Email
+        # ✅ NOUVEAU: Télécharger et sauvegarder dans Supabase (lien PERMANENT)
+        print("💾 Sauvegarde du PDF dans Supabase Storage...")
+        try:
+            pdf_url_permanent = await PDFStorageManager.download_and_save_pdf(
+                pdf_url=pdf_url_temporary,
+                user_id=user_id,
+                report_id=payment_id  # Utiliser payment_id comme report_id
+            )
+            
+            if pdf_url_permanent:
+                pdf_url = pdf_url_permanent  # ✅ Utiliser le lien PERMANENT
+                print(f"✅ PDF sauvegardé permanemment: {pdf_url[:80]}...")
+            else:
+                # Fallback si erreur
+                print("⚠️ Erreur sauvegarde, utilisation lien temporaire PDFMonkey")
+                pdf_url = pdf_url_temporary
+                
+        except Exception as e:
+            print(f"⚠️ Exception lors de la sauvegarde PDF: {e}")
+            print("   Fallback sur lien temporaire PDFMonkey")
+            pdf_url = pdf_url_temporary
+
+        # Email - Envoyer avec le lien PERMANENT (ou fallback temporaire)
         if pdf_url:
+            print(f"📧 Envoi email avec PDF ({pdf_url[:60]}...)")
             await email_service.send_report_email(
                 user_email=user_email,
                 user_name=user_name,
-                pdf_url=pdf_url,
+                pdf_url=pdf_url,  # ← Lien PERMANENT ou fallback
                 report_data=report
             )
             print("📧 Email envoyé au client.")
@@ -261,7 +286,7 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         supabase.insert_table("reports", {
             "user_id": user_id,
             "payment_id": payment_id,
-            "pdf_url": pdf_url,
+            "pdf_url": pdf_url,  # ← Lien PERMANENT ou fallback sauvegardé
             "email_sent": True,
             "created_at": datetime.utcnow().isoformat()
         })
