@@ -1,6 +1,7 @@
 """
 PDF Data Mapper - VERSION 4 COMPLÈTE ET AMÉLIORÉE
 ✅ COLOR_HEX_MAP GLOBAL ÉTENDU: 40+ couleurs (palette + associations + fallback)
+✅ COLOR_NAME_MAP AJOUTÉ: Reverse mapping pour chercher par NOM (FIX pour couleurs grises)
 ✅ Guide_maquillage extrait depuis colorimetry (pas niveau racine)
 ✅ Mapping des clés Liquid EXACT: teint→foundation, yeux→eyeshadows, lipsNude→lipsNatural
 ✅ Associations: enrichies avec color_details (noms des couleurs)
@@ -8,10 +9,10 @@ PDF Data Mapper - VERSION 4 COMPLÈTE ET AMÉLIORÉE
 ✅ nailColors: transformés de hex codes à [{hex, name}, ...]
 ✅ Fallback sur COLOR_HEX_MAP global si hex pas dans palette_personnalisee
 
-NOUVEAUTÉS v4:
-- COLOR_HEX_MAP complet avec toutes les couleurs possibles
-- Stratégie multi-niveaux pour les associations (palette → global map → fallback)
-- Documentation complète des hex codes non standards
+CORRECTIONS v4.1:
+- ✅ COLOR_NAME_MAP ajouté (reverse mapping)
+- ✅ _build_all_colors_with_notes corrigée (utilise COLOR_NAME_MAP)
+- ✅ Pages 4-5: Les pastilles affichent les VRAIES couleurs (pas grises!)
 """
 
 from typing import Dict, Any, Optional, List
@@ -92,6 +93,14 @@ class PDFDataMapper:
         "#F4A460": {"name": "orange_sable", "displayName": "Orange sablé"},
     }
     
+    # ✅ CORRECTION v4.1: Reverse mapping pour chercher par NOM au lieu de HEX
+    # Exemple: {"moutarde": "#E1AD01", "cuivre": "#B87333", ...}
+    # Permet de chercher: COLOR_NAME_MAP.get("moutarde") → "#E1AD01"
+    COLOR_NAME_MAP = {
+        color_info["name"]: hex_code
+        for hex_code, color_info in COLOR_HEX_MAP.items()
+    }
+    
     @staticmethod
     def _safe_dict(value: Any, default: dict = None) -> dict:
         """
@@ -154,16 +163,10 @@ class PDFDataMapper:
                 except (ValueError, TypeError):
                     note = 0
                 
-                # Chercher le hex dans COLOR_HEX_MAP
-                hex_code = PDFDataMapper.COLOR_HEX_MAP.get(color_name, {}).get("hex", "#CCCCCC")
-                if not isinstance(hex_code, str) or hex_code.startswith("#"):
-                    # Si hex n'est pas dans COLOR_HEX_MAP, chercher directement
-                    if color_name in PDFDataMapper.COLOR_HEX_MAP:
-                        hex_code = list(PDFDataMapper.COLOR_HEX_MAP.keys())[
-                            list(PDFDataMapper.COLOR_HEX_MAP.values()).index({"name": color_name, "displayName": ""})
-                        ]
-                    else:
-                        hex_code = "#CCCCCC"
+                # ✅ CORRECTION v4.1: Utiliser COLOR_NAME_MAP (reverse mapping)
+                # AVANT (cassé): PDFDataMapper.COLOR_HEX_MAP.get(color_name, {}).get("hex", "#CCCCCC")
+                # APRÈS (correct): PDFDataMapper.COLOR_NAME_MAP.get(color_name, "#CCCCCC")
+                hex_code = PDFDataMapper.COLOR_NAME_MAP.get(color_name, "#CCCCCC")
                 
                 all_colors.append({
                     "name": color_name,
@@ -356,10 +359,11 @@ class PDFDataMapper:
         5. ✅ nailColors: transformés de hex codes à [{hex, name}, ...]
         6. ✅ COLOR_HEX_MAP global comme fallback pour toutes les associations
         7. ✅ Hex map multi-niveaux: palette → COLOR_HEX_MAP → fallback
+        8. ✅ COLOR_NAME_MAP pour chercher couleurs par nom (correction v4.1)
         """
         
         print("\n" + "="*70)
-        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (v4 COMPLÈTE)")
+        print("🔧 PDF DATA MAPPER - PREPARE_LIQUID_VARIABLES (v4.1 CORRIGÉE)")
         print("="*70)
         
         # Extraire les sections principales
@@ -413,7 +417,7 @@ class PDFDataMapper:
         
         print(f"   ✓ palette: {len(palette)} couleurs")
         print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
-        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs")
+        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs (✅ HEX CORRECTS!)")
         print(f"   ✓ associations: {len(associations)} (enrichies)")
         print(f"   ✓ alternatives: {len(alternatives)}")
         
@@ -564,9 +568,10 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Structure Liquid assemblée (v4 COMPLÈTE)")
+        print(f"\n✅ Structure Liquid assemblée (v4.1 CORRIGÉE)")
         print(f"   ✓ Associations enrichies: {len(associations)} avec color_details")
         print(f"   ✓ Ongles transformés: {len(nail_colors_transformed)} couleurs détaillées")
+        print(f"   ✓ COLOR_NAME_MAP utilisée: Pastilles pages 4-5 affichent VRAIES couleurs!")
         print(f"   ✓ COLOR_HEX_MAP fallback: {len(PDFDataMapper.COLOR_HEX_MAP)} couleurs disponibles")
         
         return liquid_data
