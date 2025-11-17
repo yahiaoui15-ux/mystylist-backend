@@ -24,7 +24,7 @@ class OpenAIClient:
             
             response = await self.client.chat.completions.create(
                 model=model,
-                max_tokens=2000,
+                max_tokens=3500,
                 messages=[
                     {
                         "role": "user",
@@ -47,7 +47,7 @@ class OpenAIClient:
         try:
             response = await self.client.chat.completions.create(
                 model=model,
-                max_tokens=2000,
+                max_tokens=3500,
                 messages=[
                     {
                         "role": "user",
