@@ -39,13 +39,13 @@ class ColorimetryService:
             )
             
             # Appel OpenAI Vision
-            # ✅ OPTIMAL: GPT-4o (recommandé par OpenAI pour vision + coût raisonnable)
-            print("   🔤 Envoi à OpenAI (GPT-4o)...")
+            # ✅ REVERT: Retour à GPT-4-turbo (fonctionnait avant) avec max_tokens=4000
+            print("   🔤 Envoi à OpenAI (GPT-4-turbo)...")
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
-                model="gpt-4o",  # ✅ OPTIMAL: GPT-4o (supporte bien la vision, qualité excellente)
-                max_tokens=4000  # ✅ CORRECT: 4000 (assez pour tout le JSON)
+                model="gpt-4-turbo",  # ✅ REVERT: GPT-4-turbo (vision fonctionne parfaitement)
+                max_tokens=4000  # ✅ CORRIGÉ: 4000 (pas 4500, limite OpenAI)
             )
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
