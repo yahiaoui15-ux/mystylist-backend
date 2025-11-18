@@ -1,7 +1,7 @@
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_prompt import COLORIMETRY_SYSTEM_PROMPT, COLORIMETRY_USER_PROMPT
-from app.services.robust_json_parser import RobustJSONParser  # ✅ MODIFIÉ
+from app.services.robust_json_parser import RobustJSONParser
 
 
 class ColorimetryService:
@@ -39,18 +39,18 @@ class ColorimetryService:
             )
             
             # Appel OpenAI Vision
-            # ✅ MODIFIÉ: Augmenter max_tokens de 2000 → 4500 pour permettre l'analyse enrichie
-            print("   🔤 Envoi à OpenAI...")
+            # ✅ CHANGÉ: Utilise GPT-4o mini (128k tokens) au lieu de GPT-4 Turbo (4k tokens)
+            print("   🔤 Envoi à OpenAI (GPT-4o mini)...")
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
-                model="gpt-4-turbo",
-                max_tokens=4500  # ✅ AUGMENTÉ de 2000 à 4500 pour accommoder l'analyse enrichie
+                model="gpt-4o-mini",  # ✅ CHANGÉ: GPT-4o mini (meilleur prix/perf)
+                max_tokens=4500  # ✅ Peut utiliser 4500 sans problème (limite: 128,000)
             )
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
             
-            # ✅ MODIFIÉ: Utiliser le parser robuste (remplace clean_json_response)
+            # ✅ Parser robuste
             result = RobustJSONParser.parse_json_with_fallback(response)
             
             if not result:
@@ -83,7 +83,7 @@ class ColorimetryService:
             if not result.get("justification_saison"):
                 result["justification_saison"] = f"Votre carnation et traits correspondent à la saison {result.get('saison_confirmee', 'indéterminée')}."
             
-            # ✅ NOUVEAU v5: Fallbacks pour analyse_colorimetrique_detaillee
+            # ✅ Fallbacks pour analyse_colorimetrique_detaillee
             analyse_detail = result.get("analyse_colorimetrique_detaillee", {})
             if not analyse_detail:
                 print("⚠️ analyse_colorimetrique_detaillee manquante, création fallback")

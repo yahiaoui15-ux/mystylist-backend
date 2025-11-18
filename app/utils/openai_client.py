@@ -11,7 +11,7 @@ class OpenAIClient:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10)
     )
-    async def analyze_image(self, image_urls: list, prompt: str, model: str = "gpt-4o-mini", max_tokens: int = 3500):
+    async def analyze_image(self, image_urls: list, prompt: str, model: str = "gpt-4o-mini", max_tokens: int = 4500):
         """Appel OpenAI Vision avec retry automatique"""
         try:
             # Construire le contenu avec images
@@ -47,7 +47,7 @@ class OpenAIClient:
         try:
             response = await self.client.chat.completions.create(
                 model=model,
-                max_tokens=2000,
+                max_tokens=4500,
                 messages=[
                     {
                         "role": "user",
