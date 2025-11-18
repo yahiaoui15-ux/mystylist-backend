@@ -38,6 +38,20 @@ class ColorimetryService:
                 unwanted_colors=unwanted_colors_str or "Aucune"
             )
             
+            # ✅ NOUVEAU: Log le prompt complet (pour diagnostic)
+            print("\n" + "="*80)
+            print("📋 PROMPT SYSTEM ENVOYÉ À OPENAI:")
+            print("="*80)
+            print(COLORIMETRY_SYSTEM_PROMPT[:500])
+            print(f"\n... [{len(COLORIMETRY_SYSTEM_PROMPT)} chars total]\n")
+            
+            print("="*80)
+            print("📋 PROMPT USER ENVOYÉ À OPENAI:")
+            print("="*80)
+            print(user_prompt[:800])
+            print(f"\n... [{len(user_prompt)} chars total]\n")
+            print("="*80 + "\n")
+            
             # Appel OpenAI Vision
             # ✅ REVERT: Retour à GPT-4-turbo (fonctionnait avant) avec max_tokens=4000
             print("   🔤 Envoi à OpenAI (GPT-4-turbo)...")
@@ -47,11 +61,28 @@ class ColorimetryService:
                 model="gpt-4-turbo",  # ✅ REVERT: GPT-4-turbo (vision fonctionne parfaitement)
                 max_tokens=4000  # ✅ CORRIGÉ: 4000 (pas 4500, limite OpenAI)
             )
+            
+            # ✅ NOUVEAU: Log la réponse COMPLÈTE d'OpenAI
+            print("\n" + "="*80)
+            print("📋 RÉPONSE COMPLÈTE D'OPENAI:")
+            print("="*80)
+            print(response)
+            print("="*80)
+            print(f"Longueur réponse: {len(response)} chars\n")
+            
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
-            print(f"   📋 Débuts: {response[:100]}...")
+            print(f"   📋 Débuts: {response[:200]}...")
             
             # ✅ Parser robuste
+            print("\n📋 AVANT PARSING:")
+            print(f"   Réponse type: {type(response)}")
+            print(f"   Longueur: {len(response)}")
+            
             result = RobustJSONParser.parse_json_with_fallback(response)
+            
+            print("\n📋 APRÈS PARSING:")
+            print(f"   Result type: {type(result)}")
+            print(f"   Clés retournées: {list(result.keys())}")
             
             if not result:
                 print("❌ Impossible de parser la réponse JSON")
@@ -61,14 +92,21 @@ class ColorimetryService:
             palette = result.get('palette_personnalisee', [])
             colors_with_notes = result.get('allColorsWithNotes', [])
             associations = result.get('associationsGagnantes', [])
+            guide_maquillage = result.get('guide_maquillage', {})
+            shopping = result.get('shopping_couleurs', {})
             
-            print(f"   ✓ Palette: {len(palette)} couleurs")
+            print(f"\n   ✓ Palette: {len(palette)} couleurs")
             print(f"   ✓ All Colors: {len(colors_with_notes)} couleurs")
             print(f"   ✓ Associations: {len(associations)} associations")
+            print(f"   ✓ Guide Maquillage: {bool(guide_maquillage)} - {len(guide_maquillage)} champs")
+            print(f"   ✓ Shopping Couleurs: {bool(shopping)} - {len(shopping)} champs")
             
             if not palette and not colors_with_notes:
                 print("⚠️ ATTENTION: Pas de couleurs dans la réponse GPT!")
                 print(f"   Clés disponibles: {list(result.keys())}")
+                print(f"\n   Contenu palette_personnalisee: {result.get('palette_personnalisee')}")
+                print(f"   Contenu guide_maquillage: {result.get('guide_maquillage')}")
+                print(f"   Contenu shopping_couleurs: {result.get('shopping_couleurs')}")
             
             # ✅ AJOUTER les données utilisateur manquantes
             result["eye_color"] = user_data.get("eye_color", "")
@@ -138,7 +176,7 @@ class ColorimetryService:
                 result["analyse_colorimetrique_detaillee"] = analyse_detail
             
             saison = result.get("saison_confirmee", "Unknown")
-            print(f"✅ Colorimétrie analysée: {saison}")
+            print(f"\n✅ Colorimétrie analysée: {saison}")
             print(f"   ✓ Yeux: {result.get('eye_color')}")
             print(f"   ✓ Cheveux: {result.get('hair_color')}")
             print(f"   ✓ Palette personnalisée: {len(palette)} couleurs")
