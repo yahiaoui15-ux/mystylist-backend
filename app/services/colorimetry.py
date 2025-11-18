@@ -39,13 +39,13 @@ class ColorimetryService:
             )
             
             # Appel OpenAI Vision
-            # ✅ MODIFIÉ: Augmenter max_tokens de 2000 → 3500 pour permettre l'analyse enrichie
+            # ✅ MODIFIÉ: Augmenter max_tokens de 2000 → 4500 pour permettre l'analyse enrichie
             print("   🔤 Envoi à OpenAI...")
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=3500  # ✅ AUGMENTÉ de 2000 à 3500 pour accommoder l'analyse enrichie
+                max_tokens=4500  # ✅ AUGMENTÉ de 2000 à 4500 pour accommoder l'analyse enrichie
             )
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
