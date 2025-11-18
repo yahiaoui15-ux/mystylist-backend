@@ -45,7 +45,7 @@ class ColorimetryService:
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
                 model="gpt-4o-mini",  # ✅ CHANGÉ: GPT-4o mini (meilleur prix/perf)
-                max_tokens=4500  # ✅ Peut utiliser 4500 sans problème (limite: 128,000)
+                max_tokens=4000  # ✅ Peut utiliser 4500 sans problème (limite: 128,000)
             )
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
             print(f"   📋 Débuts: {response[:100]}...")
