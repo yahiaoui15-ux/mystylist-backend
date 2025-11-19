@@ -9,7 +9,7 @@ Colorimetry Service Enhanced v5.0 - 2 Appels OpenAI
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT, COLORIMETRY_PART1_USER_PROMPT
-from app.prompts.colorimetry_part2_prompt import COLORIMETRY_PART2_SYSTEM_PROMPT, COLORIMETRY_PART2_USER_PROMPT
+from app.prompts.colorimetry_part2_prompt import COLORIMETRY_PART2_SYSTEM_PROMPT, COLORIMETRY_PART2_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
 
 
@@ -108,10 +108,10 @@ class ColorimetryService:
             # Extraire noms couleurs palette pour context
             palette_names = ", ".join([c.get("name", "") for c in palette[:5]])
             
-            user_prompt_part2 = COLORIMETRY_PART2_USER_PROMPT.format(
-                saison_confirmee=saison,
-                sous_ton_detecte=result_part1.get("sous_ton_detecte", ""),
-                palette_names=palette_names
+            user_prompt_part2 = COLORIMETRY_PART2_USER_PROMPT_TEMPLATE.format(
+                SAISON=saison,
+                SOUS_TON=result_part1.get("sous_ton_detecte", ""),
+                PALETTE_NAMES=palette_names
             )
             
             print(f"📋 User prompt (première 400 chars):")

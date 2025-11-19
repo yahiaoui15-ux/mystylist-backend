@@ -1,16 +1,19 @@
 """
-COLORIMETRY PART 2 - STRICT JSON VALIDATION
+COLORIMETRY PART 2 - STRICT JSON VALIDATION (FIXED)
 Input: ~1200 tokens | Output: ~1600 tokens
-FORCE OpenAI à générer JSON vraiment valide (pas d'échappement mal formé)
+FIX: Pas de .format() sur le prompt - utiliser f-strings dans colorimetry.py
 """
 
 COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous êtes expert colorimètre. Générez UNIQUEMENT du JSON VALIDE parfait. Commencez par { et terminez par }. Aucun texte avant/après. Si vous n'êtes pas sûr, retournez {} plutôt que JSON cassé."""
 
-COLORIMETRY_PART2_USER_PROMPT = """STRICTEMENT JSON VALIDE - Part 2 colorimétrie avancée.
+# ⚠️ IMPORTANT: Ce template NE utilise PAS .format()
+# On le complète avec f-string dans colorimetry.py
+COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """STRICTEMENT JSON VALIDE - Part 2 colorimétrie avancée.
 
 CLIENT:
-Saison: {saison_confirmee}
-Sous-ton: {sous_ton_detecte}
+Saison: {SAISON}
+Sous-ton: {SOUS_TON}
+Top couleurs: {PALETTE_NAMES}
 
 RETOURNEZ EXACTEMENT (pas d'erreur d'échappement):
 {{
@@ -47,32 +50,27 @@ RETOURNEZ EXACTEMENT (pas d'erreur d'échappement):
     {{
       "occasion": "professionnel",
       "colors": ["#C19A6B", "#E2725B", "#8B4513"],
-      "effet": "Elegance confidente",
-      "description": "Camel + Terracotta + Marron = trinité professionnelle harmonieuse."
+      "effet": "Elegance confidente"
     }},
     {{
       "occasion": "casual",
       "colors": ["#C3B091", "#CC7722", "#D2B48C"],
-      "effet": "Naturel sans-effort",
-      "description": "Kaki + Ocre + Doré clair = look décontracté intentionnel."
+      "effet": "Naturel sans-effort"
     }},
     {{
       "occasion": "soiree",
       "colors": ["#6D071A", "#8B8589", "#E2725B"],
-      "effet": "Sophistication chaleureuse",
-      "description": "Bordeaux + Taupe + Terracotta = soirée élégante."
+      "effet": "Sophistication chaleureuse"
     }},
     {{
       "occasion": "weekend",
       "colors": ["#228B22", "#E1AD01", "#B87333"],
-      "effet": "Détente avec caractère",
-      "description": "Vert olive + Moutarde + Cuivre = weekend confiant."
+      "effet": "Détente avec caractère"
     }},
     {{
       "occasion": "famille",
       "colors": ["#7B3F00", "#E2725B", "#C3B091"],
-      "effet": "Douceur naturelle",
-      "description": "Chocolat + Terracotta + Kaki = harmonie familiale."
+      "effet": "Douceur naturelle"
     }}
   ],
 
@@ -101,10 +99,10 @@ RETOURNEZ EXACTEMENT (pas d'erreur d'échappement):
   "alternatives_couleurs_refusees": {{}}
 }}
 
-RÈGLES STRICTES:
-✅ VALIDER JSON: { au début, } à la fin
-✅ Pas de guillemets mal échappés
-✅ Les notes sont DES NOMBRES (8, pas "8")
-✅ Zéro texte avant/après JSON
-✅ Si doute: retourner {} vide plutôt que JSON cassé
+RÈGLES:
+- Commencer par ouverture accolade simple {{
+- JSON imbriqué utilise doubles accolades {{}}
+- Fermer par accolade simple }}
+- Les notes sont NOMBRES: 8 (pas "8")
+- Zéro texte avant/après JSON
 """
