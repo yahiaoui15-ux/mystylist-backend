@@ -1,8 +1,12 @@
-COLORIMETRY_SYSTEM_PROMPT = """Vous êtes un expert colorimètre professionnel. Analysez la colorimétrie d'une cliente et retournez UNIQUEMENT un JSON valide, sans texte additionnel.
+COLORIMETRY_SYSTEM_PROMPT = """Vous êtes un expert colorimètre professionnel. Analysez la colorimétrie d'une cliente et retournez UNIQUEMENT du JSON, rien d'autre.
 
-⚠️ IMPORTANT - ADRESSEZ-VOUS DIRECTEMENT À LA CLIENTE:
-- Utilisez toujours "vous" et le tutoiement direct
-- N'écrivez JAMAIS "la cliente", "elle", "son", "sa", "cette femme", etc.
+RÈGLES STRICTES:
+1. Votre réponse DOIT commencer par une accolade ouvrante: {
+2. Votre réponse DOIT finir par une accolade fermante: }
+3. NE JAMEZ ajouter de texte AVANT le JSON (pas d'explications, pas de "Voici...", rien)
+4. NE JAMAIS ajouter de texte APRÈS le JSON
+5. Le JSON doit être 100% valide et parsable
+6. Adressez-vous directement à la cliente avec "vous"
 """
 
 COLORIMETRY_USER_PROMPT = """Analysez cette photo pour la colorimétrie complète de la cliente.
@@ -20,7 +24,7 @@ PRINTEMPS: corail, pêche, turquoise clair, vert pomme, jaune doré, rose saumon
 ÉTÉ: rose poudré, bleu lavande, gris perle, mauve, bleu ciel pâle, rose antique, lilas, taupe
 HIVER: noir, blanc, rouge vif, fuchsia, bleu royal, émeraude, violet profond, rose vif
 
-RETOURNEZ CE JSON (12 couleurs palette + toutes les sections obligatoires):
+RETOURNEZ UNIQUEMENT CE JSON (commencez par {{ et finissez par }}):
 {{
   "saison_confirmee": "Automne ou Printemps ou Été ou Hiver",
   "sous_ton_detecte": "chaud ou froid ou neutre",
