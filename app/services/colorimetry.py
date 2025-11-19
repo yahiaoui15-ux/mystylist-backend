@@ -1,6 +1,17 @@
+"""
+Colorimetry Service Enhanced v4.3
+✅ Utilise le prompt enrichi avec commentaires 20-25 mots
+✅ Intègre le token counting
+✅ Backward compatible - peut remplacer colorimetry.py directement
+✅ Fallbacks robustes
+"""
+
 import json
 from app.utils.openai_client import openai_client
-from app.prompts.colorimetry_prompt import COLORIMETRY_SYSTEM_PROMPT, COLORIMETRY_USER_PROMPT
+from app.prompts.colorimetry_prompt_ENHANCED import (
+    COLORIMETRY_SYSTEM_PROMPT,
+    COLORIMETRY_USER_PROMPT
+)
 from app.services.robust_json_parser import RobustJSONParser
 
 
@@ -10,17 +21,16 @@ class ColorimetryService:
     
     async def analyze(self, user_data: dict) -> dict:
         """
-        Analyse la colorimétrie d'une cliente
+        Analyse la colorimétrie d'une cliente avec prompt enrichi
         
         Args:
             user_data: dict avec face_photo_url, eye_color, hair_color, age, unwanted_colors
         
         Returns:
-            dict avec saison_confirmee, palette_personnalisee, guide_maquillage, 
-            analyse_colorimetrique_detaillee, etc.
+            dict avec saison_confirmee, palette_personnalisee, commentaires enrichis, etc.
         """
         try:
-            print("🎨 Analyse colorimétrie...")
+            print("\n🎨 Analyse colorimétrie (ENRICHIE v4.3)...")
             
             # Vérifier que la photo existe
             face_photo_url = user_data.get("face_photo_url")
@@ -28,9 +38,11 @@ class ColorimetryService:
                 print("❌ Pas de photo de visage fournie")
                 return {}
             
-            # Construire le prompt utilisateur
+            # ✅ NOUVEAU: Stocker le system prompt pour token counting
+            self.openai.set_system_prompt(COLORIMETRY_SYSTEM_PROMPT)
+            
+            # Construire le prompt utilisateur avec données réelles
             unwanted_colors_str = ", ".join(user_data.get("unwanted_colors", []))
-            # ✅ CORRIGÉ: Utiliser .replace() au lieu de .format() pour éviter collisions accolades JSON
             user_prompt = COLORIMETRY_USER_PROMPT.replace(
                 "{face_photo_url}", face_photo_url
             ).replace(
@@ -43,31 +55,29 @@ class ColorimetryService:
                 "{unwanted_colors}", unwanted_colors_str or "Aucune"
             )
             
-            # ✅ NOUVEAU: Log le prompt complet (pour diagnostic)
+            # Log prompts (première 500 chars)
             print("\n" + "="*80)
-            print("📋 PROMPT SYSTEM ENVOYÉ À OPENAI:")
+            print("📋 PROMPT ENVOYÉ À OPENAI:")
             print("="*80)
-            print(COLORIMETRY_SYSTEM_PROMPT[:500])
+            print(f"System prompt (première 300 chars):")
+            print(COLORIMETRY_SYSTEM_PROMPT[:300])
             print(f"\n... [{len(COLORIMETRY_SYSTEM_PROMPT)} chars total]\n")
             
-            print("="*80)
-            print("📋 PROMPT USER ENVOYÉ À OPENAI:")
-            print("="*80)
-            print(user_prompt[:800])
-            print(f"\n... [{len(user_prompt)} chars total]\n")
+            print(f"User prompt (première 400 chars):")
+            print(user_prompt[:400])
+            print(f"\n... [{len(user_prompt)} chars total]")
             print("="*80 + "\n")
             
-            # Appel OpenAI Vision
-            # ✅ REVERT: Retour à GPT-4-turbo (fonctionnait avant) avec max_tokens=4000
-            print("   🔤 Envoi à OpenAI (GPT-4-turbo)...")
+            # Appel OpenAI Vision avec token counting intégré
+            print("   🤖 Envoi à OpenAI (GPT-4-turbo avec vision)...")
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
-                model="gpt-4-turbo",  # ✅ REVERT: GPT-4-turbo (vision fonctionne parfaitement)
-                max_tokens=4000  # ✅ CORRIGÉ: 4000 (pas 4500, limite OpenAI)
+                model="gpt-4-turbo",
+                max_tokens=4000
             )
             
-            # ✅ NOUVEAU: Log la réponse COMPLÈTE d'OpenAI
+            # Log réponse
             print("\n" + "="*80)
             print("📋 RÉPONSE COMPLÈTE D'OPENAI:")
             print("="*80)
@@ -76,125 +86,124 @@ class ColorimetryService:
             print(f"Longueur réponse: {len(response)} chars\n")
             
             print(f"   🎨 Réponse reçue ({len(response)} chars)")
-            print(f"   📋 Débuts: {response[:200]}...")
+            print(f"   📋 Débuts: {response[:150]}...")
             
-            # ✅ Parser robuste
-            print("\n📋 AVANT PARSING:")
-            print(f"   Réponse type: {type(response)}")
-            print(f"   Longueur: {len(response)}")
+            # Parser robuste
+            print("\n📋 PARSING JSON:")
+            print(f"   Avant: Type={type(response)}, Longueur={len(response)}")
             
             result = RobustJSONParser.parse_json_with_fallback(response)
             
-            print("\n📋 APRÈS PARSING:")
-            print(f"   Result type: {type(result)}")
-            print(f"   Clés retournées: {list(result.keys())}")
+            print(f"   Après: Type={type(result)}, Clés={list(result.keys()) if result else 'NONE'}")
             
             if not result:
                 print("❌ Impossible de parser la réponse JSON")
                 return {}
             
-            # ✅ Valider que les données colorimétrie sont présentes
+            # Validation des données critiques
             palette = result.get('palette_personnalisee', [])
             colors_with_notes = result.get('allColorsWithNotes', [])
             associations = result.get('associationsGagnantes', [])
             guide_maquillage = result.get('guide_maquillage', {})
             shopping = result.get('shopping_couleurs', {})
+            analyse_detail = result.get('analyse_colorimetrique_detaillee', {})
             
-            print(f"\n   ✓ Palette: {len(palette)} couleurs")
+            print(f"\n✅ Données récupérées:")
+            print(f"   ✓ Palette: {len(palette)} couleurs")
             print(f"   ✓ All Colors: {len(colors_with_notes)} couleurs")
-            print(f"   ✓ Associations: {len(associations)} associations")
-            print(f"   ✓ Guide Maquillage: {bool(guide_maquillage)} - {len(guide_maquillage)} champs")
-            print(f"   ✓ Shopping Couleurs: {bool(shopping)} - {len(shopping)} champs")
+            print(f"   ✓ Associations: {len(associations)}")
+            print(f"   ✓ Guide Maquillage: {len(guide_maquillage)} champs")
+            print(f"   ✓ Shopping: {len(shopping)} champs")
+            print(f"   ✓ Analyse détaillée: {len(analyse_detail)} champs")
             
-            if not palette and not colors_with_notes:
-                print("⚠️ ATTENTION: Pas de couleurs dans la réponse GPT!")
-                print(f"   Clés disponibles: {list(result.keys())}")
-                print(f"\n   Contenu palette_personnalisee: {result.get('palette_personnalisee')}")
-                print(f"   Contenu guide_maquillage: {result.get('guide_maquillage')}")
-                print(f"   Contenu shopping_couleurs: {result.get('shopping_couleurs')}")
+            # Vérification commentaires enrichis
+            if palette and len(palette) > 0:
+                first_color = palette[0]
+                comment = first_color.get('commentaire', '')
+                word_count = len(comment.split())
+                print(f"\n📊 Vérification qualité commentaires:")
+                print(f"   Premier commentaire: {word_count} mots")
+                if word_count < 15:
+                    print(f"   ⚠️  WARNING: Commentaires encore trop courts!")
+                elif word_count >= 20:
+                    print(f"   ✅ Bon: Commentaires assez longs (>= 20 mots)")
             
-            # ✅ AJOUTER les données utilisateur manquantes
+            # ✅ AJOUTER données utilisateur
             result["eye_color"] = user_data.get("eye_color", "")
             result["hair_color"] = user_data.get("hair_color", "")
             
-            # Fallback saison si absente
+            # Fallbacks si données manquantes
             if not result.get("saison_confirmee"):
                 result["saison_confirmee"] = "Indéterminée"
-                print(f"⚠️ Saison manquante, utilisation fallback")
             
-            # Fallback justification
             if not result.get("justification_saison"):
-                result["justification_saison"] = f"Votre carnation et traits correspondent à la saison {result.get('saison_confirmee', 'indéterminée')}."
+                result["justification_saison"] = f"Analyse colorimétrique complète basée sur votre carnation, yeux et cheveux."
             
-            # ✅ Fallbacks pour analyse_colorimetrique_detaillee
-            analyse_detail = result.get("analyse_colorimetrique_detaillee", {})
+            # Fallbacks pour analyse_colorimetrique_detaillee
             if not analyse_detail:
-                print("⚠️ analyse_colorimetrique_detaillee manquante, création fallback")
-                result["analyse_colorimetrique_detaillee"] = {
-                    "temperature": "neutre",
-                    "valeur": "médium",
-                    "intensite": "médium",
-                    "contraste_naturel": "moyen",
-                    "description_teint": "Votre teint présente des caractéristiques qui s'harmonisent avec votre saison colorimétrique.",
-                    "description_yeux": "Vos yeux contribuent à l'harmonie générale de votre palette colorimétrique.",
-                    "description_cheveux": "Vos cheveux complètent naturellement votre profil colorimétrique.",
-                    "harmonie_globale": "Tous les éléments de votre profil colorimétrique s'harmonisent ensemble.",
-                    "bloc_emotionnel": f"La saison {result.get('saison_confirmee', 'de votre profil')} vous convient et apportera de la lumière à votre apparence.",
-                    "impact_visuel": {
-                        "effet_couleurs_chaudes": "Les couleurs de votre palette illuminent votre teint naturel.",
-                        "effet_couleurs_froides": "Les couleurs contraires à votre palette créent un contraste moins flatteur.",
-                        "pourquoi": "Votre undertone naturel s'harmonise mieux avec certaines teintes qu'avec d'autres."
-                    }
-                }
+                print("\n⚠️  Création fallback pour analyse_colorimetrique_detaillee...")
+                result["analyse_colorimetrique_detaillee"] = self._create_default_analyse(
+                    result.get('saison_confirmee', 'Automne'),
+                    user_data
+                )
             else:
-                # Fallbacks pour les sous-clés manquantes
-                if not analyse_detail.get("temperature"):
-                    analyse_detail["temperature"] = "neutre"
-                if not analyse_detail.get("valeur"):
-                    analyse_detail["valeur"] = "médium"
-                if not analyse_detail.get("intensite"):
-                    analyse_detail["intensite"] = "médium"
-                if not analyse_detail.get("contraste_naturel"):
-                    analyse_detail["contraste_naturel"] = "moyen"
-                if not analyse_detail.get("description_teint"):
-                    analyse_detail["description_teint"] = "Votre teint présente des caractéristiques harmonieuses."
-                if not analyse_detail.get("description_yeux"):
-                    analyse_detail["description_yeux"] = "Vos yeux contribuent à votre palette."
-                if not analyse_detail.get("description_cheveux"):
-                    analyse_detail["description_cheveux"] = "Vos cheveux complètent votre profil."
-                if not analyse_detail.get("harmonie_globale"):
-                    analyse_detail["harmonie_globale"] = "Tous les éléments s'harmonisent."
-                if not analyse_detail.get("bloc_emotionnel"):
-                    analyse_detail["bloc_emotionnel"] = "Votre profil colorimétrique vous apportera luminosité et confiance."
-                
-                # Fallbacks pour impact_visuel
-                if not analyse_detail.get("impact_visuel"):
-                    analyse_detail["impact_visuel"] = {}
-                impact = analyse_detail["impact_visuel"]
-                if not impact.get("effet_couleurs_chaudes"):
-                    impact["effet_couleurs_chaudes"] = "Les couleurs de votre palette illuminent votre teint."
-                if not impact.get("effet_couleurs_froides"):
-                    impact["effet_couleurs_froides"] = "Les couleurs contraires créent un contraste moins flatteur."
-                if not impact.get("pourquoi"):
-                    impact["pourquoi"] = "Votre undertone naturel s'harmonise mieux avec certaines teintes."
-                
+                # Compléter clés manquantes
+                analyse_detail = self._ensure_analyse_fields(analyse_detail, user_data)
                 result["analyse_colorimetrique_detaillee"] = analyse_detail
             
             saison = result.get("saison_confirmee", "Unknown")
             print(f"\n✅ Colorimétrie analysée: {saison}")
             print(f"   ✓ Yeux: {result.get('eye_color')}")
             print(f"   ✓ Cheveux: {result.get('hair_color')}")
-            print(f"   ✓ Palette personnalisée: {len(palette)} couleurs")
-            print(f"   ✓ Guide Maquillage: {bool(result.get('guide_maquillage'))}")
-            print(f"   ✓ Analyse détaillée: {bool(result.get('analyse_colorimetrique_detaillee'))}")
+            print(f"   ✓ Palette: {len(palette)} couleurs")
+            print(f"   ✓ Guide Maquillage: {bool(guide_maquillage)}")
+            print(f"   ✓ Analyse détaillée: {bool(result.get('analyse_colorimetrique_detaillee'))}\n")
             
             return result
             
         except Exception as e:
-            print(f"❌ Erreur analyse colorimétrie: {e}")
+            print(f"\n❌ Erreur analyse colorimétrie: {e}")
             import traceback
             traceback.print_exc()
             raise
+    
+    def _create_default_analyse(self, saison: str, user_data: dict) -> dict:
+        """Crée une structure d'analyse par défaut si OpenAI ne la génère pas"""
+        return {
+            "temperature": "neutre",
+            "valeur": "médium",
+            "intensite": "médium",
+            "contraste_naturel": "moyen",
+            "description_teint": f"Votre teint présente des caractéristiques harmonieuses typiques de la saison {saison}.",
+            "description_yeux": f"Vos yeux {user_data.get('eye_color', 'de couleur variée')} contribuent à l'harmonie de votre profil colorimétrique.",
+            "description_cheveux": f"Vos cheveux {user_data.get('hair_color', 'de teinte naturelle')} complètent parfaitement votre palette saisonnière.",
+            "harmonie_globale": "Tous les éléments de votre profil colorimétrique s'harmonisent ensemble de manière naturelle.",
+            "bloc_emotionnel": f"Votre profil colorimétrique {saison} apporte luminosité et confiance à votre apparence naturelle.",
+            "impact_visuel": {
+                "effet_couleurs_chaudes": "Les couleurs de votre palette illuminent votre teint de manière naturelle et flatteuse.",
+                "effet_couleurs_froides": "Les couleurs en dehors de votre palette créent un contraste moins harmonieux.",
+                "pourquoi": "Votre sous-ton naturel s'harmonise mieux avec certaines teintes colorées qu'avec d'autres."
+            }
+        }
+    
+    def _ensure_analyse_fields(self, analyse: dict, user_data: dict) -> dict:
+        """Remplit les champs manquants dans analyse_colorimetrique_detaillee"""
+        defaults = self._create_default_analyse("Automne", user_data)
+        
+        for key in defaults.keys():
+            if not analyse.get(key):
+                analyse[key] = defaults[key]
+        
+        # Vérifier les sous-champs
+        if not analyse.get("impact_visuel"):
+            analyse["impact_visuel"] = defaults["impact_visuel"]
+        else:
+            impact = analyse["impact_visuel"]
+            for key in defaults["impact_visuel"].keys():
+                if not impact.get(key):
+                    impact[key] = defaults["impact_visuel"][key]
+        
+        return analyse
 
 
 # Instance globale
