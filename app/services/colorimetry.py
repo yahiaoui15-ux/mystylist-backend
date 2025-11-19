@@ -30,12 +30,17 @@ class ColorimetryService:
             
             # Construire le prompt utilisateur
             unwanted_colors_str = ", ".join(user_data.get("unwanted_colors", []))
-            user_prompt = COLORIMETRY_USER_PROMPT.format(
-                face_photo_url=face_photo_url,
-                eye_color=user_data.get("eye_color", "Non spécifié"),
-                hair_color=user_data.get("hair_color", "Non spécifié"),
-                age=user_data.get("age", 0),
-                unwanted_colors=unwanted_colors_str or "Aucune"
+            # ✅ CORRIGÉ: Utiliser .replace() au lieu de .format() pour éviter collisions accolades JSON
+            user_prompt = COLORIMETRY_USER_PROMPT.replace(
+                "{face_photo_url}", face_photo_url
+            ).replace(
+                "{eye_color}", user_data.get("eye_color", "Non spécifié")
+            ).replace(
+                "{hair_color}", user_data.get("hair_color", "Non spécifié")
+            ).replace(
+                "{age}", str(user_data.get("age", 0))
+            ).replace(
+                "{unwanted_colors}", unwanted_colors_str or "Aucune"
             )
             
             # ✅ NOUVEAU: Log le prompt complet (pour diagnostic)
