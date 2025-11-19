@@ -8,7 +8,7 @@ Colorimetry Service Enhanced v4.3
 
 import json
 from app.utils.openai_client import openai_client
-from app.prompts.colorimetry_prompt_ENHANCED import (
+from app.prompts.colorimetry_prompt import (
     COLORIMETRY_SYSTEM_PROMPT,
     COLORIMETRY_USER_PROMPT
 )
