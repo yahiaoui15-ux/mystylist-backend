@@ -1,57 +1,49 @@
-MORPHOLOGY_SYSTEM_PROMPT = """Vous êtes une experte en morphologie corporelle et conseils vestimentaires personnalisés avec 20 ans d'expérience.
+MORPHOLOGY_SYSTEM_PROMPT = """Vous êtes une experte en morphologie corporelle.
+Analysez la photo et les mensurations, puis retournez UNIQUEMENT du JSON valide.
+Pas d'autres texte avant ou après les accolades."""
 
-MISSION: Analyser la morphologie d'une personne à partir de sa photo en pied et de ses mensurations, puis déterminer son type de silhouette et fournir des recommandations vestimentaires précises.
+MORPHOLOGY_USER_PROMPT = """Analysez la morphologie et recommandez les coupes vestimentaires.
 
-LES 6 TYPES DE SILHOUETTES:
-- SILHOUETTE O (Ronde/Pomme): Volume centré sur l'abdomen
-- SILHOUETTE H (Rectangle): Épaules et hanches alignées
-- SILHOUETTE A (Triangle/Poire): Hanches plus larges que les épaules
-- SILHOUETTE V (Triangle inversé): Épaules plus larges que les hanches
-- SILHOUETTE X (Sablier): Courbes marquées, taille amincie
-- SILHOUETTE 8 (8): Formes généreuses haut et bas
+DONNÉES:
+- Photo: {body_photo_url}
+- Épaules: {shoulder_circumference} cm
+- Taille: {waist_circumference} cm
+- Hanches: {hip_circumference} cm
 
-REPONSE EN JSON VALIDE UNIQUEMENT - PAS D'AUTRES TEXTE."""
+SILHOUETTES: O (ronde), H (rectangle), A (poire), V (inverse), X (sablier), 8
 
-MORPHOLOGY_USER_PROMPT = """Analysez la morphologie de cette personne et recommandez les coupes vestimentaires adaptées.
-
-DONNÉES DISPONIBLES:
-- Photo corps entier: {body_photo_url}
-- Mensurations:
-  * Tour d'épaules: {shoulder_circumference} cm
-  * Tour de taille: {waist_circumference} cm
-  * Tour de hanches: {hip_circumference} cm
-  * Tour de poitrine: {bust_circumference} cm
-
-REPONDEZ AVEC CE JSON (ET RIEN D'AUTRE):
+RETOURNEZ UNIQUEMENT CE JSON:
 {{
   "silhouette_type": "O",
-  "silhouette_explanation": "Votre silhouette est en O...",
+  "silhouette_explanation": "Votre silhouette est en O avec volume centré",
+  
   "body_analysis": {{
-    "shoulder_width": "80cm",
-    "waist": "90cm",
-    "hips": "100cm",
+    "shoulder_width": "cm",
+    "waist": "cm",
+    "hips": "cm",
     "waist_hip_ratio": 0.9,
-    "body_description": "Volume centré sur l'abdomen..."
+    "body_description": "Description courte"
   }},
+  
   "styling_objectives": [
-    "Créer une illusion de taille marquée",
-    "Allonger visuellement la silhouette",
-    "Équilibrer les proportions haut/bas"
+    "Objectif 1",
+    "Objectif 2",
+    "Objectif 3"
   ],
+  
   "recommendations": {{
     "hauts": {{
       "a_privilegier": [
         {{
           "cut": "encolure_en_v",
-          "cut_display": "Encolure en V profonde",
-          "why": "Attire le regard vers le haut...",
-          "examples": ["Pull col V cachemire", "T-shirt col V profond"]
+          "cut_display": "Encolure en V",
+          "why": "Explication courte"
         }}
       ],
       "a_eviter": [
         {{
           "cut": "col_rond",
-          "why": "Élargit les épaules..."
+          "why": "Explication courte"
         }}
       ]
     }},
@@ -60,7 +52,7 @@ REPONDEZ AVEC CE JSON (ET RIEN D'AUTRE):
         {{
           "cut": "pantalon_droit",
           "cut_display": "Pantalon droit",
-          "why": "Allonge la silhouette..."
+          "why": "Explication courte"
         }}
       ],
       "a_eviter": []
@@ -70,13 +62,17 @@ REPONDEZ AVEC CE JSON (ET RIEN D'AUTRE):
         {{
           "cut": "robe_empire",
           "cut_display": "Robe empire",
-          "why": "Crée une taille marquée..."
+          "why": "Explication courte"
         }}
       ],
       "a_eviter": []
-    }},
-    "vestes": {{}},
-    "maillots": {{}},
-    "accessoires": {{}}
-  }}
-}}"""
+    }}
+  }},
+  
+  "instant_tips": [
+    "Conseil 1",
+    "Conseil 2",
+    "Conseil 3"
+  ]
+}}
+"""
