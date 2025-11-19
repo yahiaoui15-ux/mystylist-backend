@@ -1,5 +1,5 @@
 """
-PDF Data Mapper - VERSION 4 COMPLÈTE ET AMÉLIORÉE
+PDF Data Mapper - VERSION 4.3 COMPLÈTE ET AMÉLIORÉE
 ✅ COLOR_HEX_MAP GLOBAL ÉTENDU: 40+ couleurs (palette + associations + fallback)
 ✅ COLOR_NAME_MAP AJOUTÉ: Reverse mapping pour chercher par NOM (FIX pour couleurs grises)
 ✅ Guide_maquillage extrait depuis colorimetry (pas niveau racine)
@@ -8,11 +8,12 @@ PDF Data Mapper - VERSION 4 COMPLÈTE ET AMÉLIORÉE
 ✅ Shopping_couleurs extrait depuis colorimetry
 ✅ nailColors: transformés de hex codes à [{hex, name}, ...]
 ✅ Fallback sur COLOR_HEX_MAP global si hex pas dans palette_personnalisee
-✅ analyseColorimetriqueDetaillee: AJOUTÉ avec conversion snake_case→camelCase
+✅ analyseColorimetriqueDetaillee: AJOUTÉ avec conversion snake_case→camelCase + impactVisuel
 
-CORRECTIONS v4.2:
+CORRECTIONS v4.3:
 - ✅ analyseColorimetriqueDetaillee incluse dans section colorimetry
 - ✅ _convert_snake_to_camel() pour conversion automatique des clés
+- ✅ NOUVEAU: impactVisuel extrait ET ajouté à analyseColorimetriqueDetaillee
 """
 
 from typing import Dict, Any, Optional, List
@@ -103,46 +104,21 @@ class PDFDataMapper:
     
     @staticmethod
     def _safe_dict(value: Any, default: dict = None) -> dict:
-        """
-        Convertit une valeur en dict de manière sûre
-        
-        Args:
-            value: Valeur à convertir
-            default: Dict par défaut si conversion échoue
-            
-        Returns:
-            Dict convertie ou default
-        """
+        """Convertit une valeur en dict de manière sûre"""
         if isinstance(value, dict):
             return value
         return default or {}
     
     @staticmethod
     def _safe_list(value: Any, default: list = None) -> list:
-        """
-        Convertit une valeur en liste de manière sûre
-        
-        Args:
-            value: Valeur à convertir
-            default: Liste par défaut si conversion échoue
-            
-        Returns:
-            Liste convertie ou default
-        """
+        """Convertit une valeur en liste de manière sûre"""
         if isinstance(value, list):
             return value
         return default or []
     
     @staticmethod
     def _convert_snake_to_camel(obj: Any) -> Any:
-        """
-        ✅ NOUVEAU v4.2: Convertit les clés snake_case en camelCase récursivement
-        
-        Exemple:
-            {"analyse_colorimetrique_detaillee": {"contraste_naturel": "moyen"}}
-            →
-            {"analyseColorimetriqueDetaillee": {"contrasteNaturel": "moyen"}}
-        """
+        """✅ Convertit les clés snake_case en camelCase récursivement"""
         if not isinstance(obj, dict):
             return obj
         
@@ -170,24 +146,7 @@ class PDFDataMapper:
     
     @staticmethod
     def _build_all_colors_with_notes(notes_compatibilite: dict) -> list:
-        """
-        Transforme notesCompatibilite (dict) en allColorsWithNotes (list)
-        avec hex codes pour chaque couleur
-        
-        INPUT:
-        {
-            "rouge": {"note": "8", "commentaire": "..."},
-            "bleu": {"note": "3", "commentaire": "..."},
-            ...
-        }
-        
-        OUTPUT (trié par note décroissante):
-        [
-            {"name": "rouge", "note": 8, "commentaire": "...", "hex": "#FF0000"},
-            {"name": "bleu", "note": 3, "commentaire": "...", "hex": "#0000FF"},
-            ...
-        ]
-        """
+        """Transforme notesCompatibilite (dict) en allColorsWithNotes (list)"""
         all_colors = []
         
         for color_name, color_data in notes_compatibilite.items():
@@ -218,31 +177,7 @@ class PDFDataMapper:
     
     @staticmethod
     def _enrich_associations_with_colors(associations: list, palette: list) -> list:
-        """
-        ✅ ENRICHIT chaque association avec les détails des couleurs
-        
-        INPUT:
-        [
-            {"occasion": "professionnel", "colors": ["#C19A6B", "#E2725B", "#000080"], "effet": "Elegance"},
-            ...
-        ]
-        
-        OUTPUT:
-        [
-            {
-                "occasion": "professionnel",
-                "colors": ["#C19A6B", "#E2725B", "#000080"],
-                "effet": "Elegance",
-                "combo": ["#C19A6B", "#E2725B", "#000080"],  # Fallback colors
-                "color_details": [
-                    {"name": "camel", "displayName": "Camel", "hex": "#C19A6B"},
-                    {"name": "terracotta", "displayName": "Terracotta", "hex": "#E2725B"},
-                    {"name": "marine", "displayName": "Marine", "hex": "#000080"}
-                ]
-            },
-            ...
-        ]
-        """
+        """✅ Enrichit chaque association avec les détails des couleurs"""
         enriched = []
         
         for assoc in associations:
@@ -291,16 +226,7 @@ class PDFDataMapper:
     
     @staticmethod
     def _transform_nail_colors(nail_colors_hex: list, palette: list) -> list:
-        """
-        Transforme une liste de hex codes d'ongles en liste d'objets avec noms
-        
-        INPUT: ["#E1AD01", "#7B3F00", "#CC7722"]
-        OUTPUT: [
-            {"name": "moutarde", "displayName": "Moutarde", "hex": "#E1AD01"},
-            {"name": "chocolat", "displayName": "Chocolat", "hex": "#7B3F00"},
-            ...
-        ]
-        """
+        """Transforme une liste de hex codes d'ongles en liste d'objets avec noms"""
         transformed = []
         
         for hex_code in nail_colors_hex:
@@ -338,13 +264,7 @@ class PDFDataMapper:
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
-        """
-        Prépare les variables Liquid pour le template PDFMonkey
-        
-        Transforme:
-        - report_data (généré par report_generator) + user_data
-        → liquid_data (structure Liquid pour PDFMonkey)
-        """
+        """Prépare les variables Liquid pour le template PDFMonkey"""
         
         # Extraire les sections du rapport
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
@@ -367,36 +287,19 @@ class PDFDataMapper:
         associations = PDFDataMapper._enrich_associations_with_colors(associations, palette)
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees", {}))
         
-        print(f"🎨 Génération PDF via PDFMonkey...")
-        print(f"✨ Enrichissement des associations:")
-        
-        # Créer hex_to_color_map
-        hex_map = {color.get("hex"): color for color in palette}
-        print(f"🔍 _create_hex_to_color_map créé: {len(hex_map)} couleurs")
-        print(f"   - Depuis palette_personnalisee: {len(palette)}")
-        print(f"   - Depuis COLOR_HEX_MAP global: {len(PDFDataMapper.COLOR_HEX_MAP)}")
+        print(f"   ✓ Palette: {len(palette)} couleurs")
+        print(f"   ✓ Notes compatibilité: {len(notes_compatibilite)} couleurs")
+        print(f"   ✓ All colors with notes: {len(all_colors_with_notes)}")
+        print(f"   ✓ Associations: {len(associations)}")
         
         # ================================================================
         # SECTION MAKEUP (depuis colorimetry)
         # ================================================================
-        print(f"\n📦 Données reçues:")
-        print(f"   ✓ user_data: {len(user_data)} champs")
-        print(f"   ✓ colorimetry: {len(colorimetry_raw)} champs")
-        
         guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
         shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
         
-        print(f"   ✓ guide_maquillage: {len(guide_maquillage_raw)} champs")
-        print(f"   ✓ notes_compatibilite: {len(notes_compatibilite)} couleurs")
-        print(f"   ✓ allColorsWithNotes: {len(all_colors_with_notes)} couleurs (✅ HEX CORRECTS!)")
-        print(f"   ✓ associations: {len(associations)} (enrichies)")
-        print(f"   ✓ alternatives: {len(alternatives)}")
-        
-        print(f"\n💄 Mapping makeup (CLÉS CORRIGÉES):")
-        
         # Transformer nailColors de hex codes à [{hex, name}, ...]
         raw_nail_colors = PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", []))
-        print(f"\n💅 Transformation ongles:")
         nail_colors_transformed = PDFDataMapper._transform_nail_colors(raw_nail_colors, palette)
         
         # Mapper les clés EXACTES attendues par le template
@@ -415,28 +318,32 @@ class PDFDataMapper:
             "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
             "nailColors": nail_colors_transformed,
         }
-        print(f"   ✓ foundation: {bool(makeup_mapping['foundation'])}")
-        print(f"   ✓ eyeshadows: {bool(makeup_mapping['eyeshadows'])}")
-        print(f"   ✓ lipsNatural: {bool(makeup_mapping['lipsNatural'])}")
-        print(f"   ✓ nailColors: {len(makeup_mapping['nailColors'])} (transformés)")
         
         # ================================================================
         # SECTION SHOPPING
         # ================================================================
-        print(f"\n🛍️  Mapping shopping_couleurs:")
         priorite_1 = PDFDataMapper._safe_list(shopping_raw.get("priorite_1"))
         priorite_2 = PDFDataMapper._safe_list(shopping_raw.get("priorite_2"))
         eviter = PDFDataMapper._safe_list(shopping_raw.get("eviter_absolument"))
-        print(f"   ✓ priorite_1: {len(priorite_1)}")
-        print(f"   ✓ priorite_2: {len(priorite_2)}")
-        print(f"   ✓ eviter_absolument: {len(eviter)}")
         
         # ================================================================
         # SECTION MORPHOLOGY
         # ================================================================
-        print(f"\n👗 Mapping morphology:")
         hauts_visuals = PDFDataMapper._safe_list(morphology_raw.get("hauts_visuals", []))
-        print(f"   ✓ hauts_visuals: {len(hauts_visuals)} images")
+        
+        # ================================================================
+        # ✅ EXTRACTION ET ENRICHISSEMENT analyseColorimetriqueDetaillee
+        # ================================================================
+        analyse_raw = PDFDataMapper._safe_dict(
+            colorimetry_raw.get("analyse_colorimetrique_detaillee", {})
+        )
+        
+        # Convertir en camelCase
+        analyse_camel = PDFDataMapper._convert_snake_to_camel(analyse_raw)
+        
+        # ✅ NOUVEAU v4.3: Extraire et ajouter impactVisuel séparément
+        impact_visuel_raw = PDFDataMapper._safe_dict(analyse_raw.get("impact_visuel", {}))
+        analyse_camel["impactVisuel"] = PDFDataMapper._convert_snake_to_camel(impact_visuel_raw)
         
         # ================================================================
         # CONSTRUIRE LA STRUCTURE LIQUID EXACTE
@@ -464,10 +371,8 @@ class PDFDataMapper:
                 "allColorsWithNotes": all_colors_with_notes,
                 "alternativesCouleurs": alternatives,
                 "associationsGagnantes": associations,
-                # ✅ NOUVEAU v4.2: Ajouter analyseColorimetriqueDetaillee avec conversion camelCase
-                "analyseColorimetriqueDetaillee": PDFDataMapper._convert_snake_to_camel(
-                    colorimetry_raw.get("analyse_colorimetrique_detaillee", {})
-                ),
+                # ✅ v4.3: analyseColorimetriqueDetaillee AVEC impactVisuel
+                "analyseColorimetriqueDetaillee": analyse_camel,
             },
             
             "makeup": makeup_mapping,
@@ -540,10 +445,10 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Structure Liquid assemblée (v4.2 CORRIGÉE)")
+        print(f"\n✅ Structure Liquid assemblée (v4.3 CORRIGÉE)")
         print(f"   ✓ Associations enrichies: {len(associations)} avec color_details")
         print(f"   ✓ Ongles transformés: {len(nail_colors_transformed)} couleurs détaillées")
-        print(f"   ✓ analyseColorimetriqueDetaillee: INCLUSE avec clés camelCase")
+        print(f"   ✓ analyseColorimetriqueDetaillee: INCLUSE avec impactVisuel")
         print(f"   ✓ COLOR_NAME_MAP utilisée: Pastilles pages 4-5 affichent VRAIES couleurs!")
         print(f"   ✓ COLOR_HEX_MAP fallback: {len(PDFDataMapper.COLOR_HEX_MAP)} couleurs disponibles")
         
