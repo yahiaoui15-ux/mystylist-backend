@@ -1,9 +1,9 @@
 """
-Colorimetry Service Enhanced v5.0 - 2 Appels OpenAI
-✅ 2 appels (Part 1 + Part 2) = pas troncature
-✅ Tous les logs détaillés du v4.3 original
-✅ Fallbacks robustes conservés
-✅ Token counting intégré
+Colorimetry Service Enhanced v6.0 - FIXED JSON Parsing
+✅ Affichage COMPLET réponse brute (debug)
+✅ Consolidation Part 1 fallback
+✅ Nettoyage réponse avant parsing
+✅ 2 appels OpenAI (Part 1 + Part 2)
 """
 
 import json
@@ -30,7 +30,7 @@ class ColorimetryService:
             dict complet avec saison, palette, couleurs, maquillage, associations
         """
         try:
-            print("\n🎨 Analyse colorimétrie (2 APPELS - v5.0)...")
+            print("\n🎨 Analyse colorimétrie (2 APPELS - v6.0 FIXED)...")
             
             # Vérifier que la photo existe
             face_photo_url = user_data.get("face_photo_url")
@@ -68,7 +68,24 @@ class ColorimetryService:
             )
             
             print(f"   📨 Réponse reçue ({len(response_part1)} chars)")
-            print(f"   📋 Débuts: {response_part1[:150]}...\n")
+            
+            # 🔴 SOLUTION 1: Afficher la réponse brute COMPLÈTE pour debugging
+            print("\n   ═══════════════════════════════════════════════════════════")
+            print("   🔴 RÉPONSE BRUTE PART 1 (début 0-500 chars):")
+            print("   ═══════════════════════════════════════════════════════════")
+            print(response_part1[:500] if len(response_part1) > 500 else response_part1)
+            
+            if len(response_part1) > 500:
+                print("\n   ... [MILIEU] ...\n")
+                mid = len(response_part1) // 2
+                print(response_part1[mid-250:mid+250])
+                
+                print("\n   ... [FIN] ...\n")
+                print(response_part1[-500:])
+            
+            print(f"\n   ═══════════════════════════════════════════════════════════")
+            print(f"   Total: {len(response_part1)} chars")
+            print("   ═══════════════════════════════════════════════════════════\n")
             
             # Parser Part 1
             print("   🔍 Parsing JSON Part 1...")
@@ -126,11 +143,32 @@ class ColorimetryService:
             )
             
             print(f"   📨 Réponse reçue ({len(response_part2)} chars)")
-            print(f"   📋 Débuts: {response_part2[:150]}...\n")
+            
+            # 🔴 SOLUTION 1: Afficher la réponse brute COMPLÈTE pour debugging
+            print("\n   ═══════════════════════════════════════════════════════════")
+            print("   🔴 RÉPONSE BRUTE PART 2 (début 0-500 chars):")
+            print("   ═══════════════════════════════════════════════════════════")
+            print(response_part2[:500] if len(response_part2) > 500 else response_part2)
+            
+            if len(response_part2) > 500:
+                print("\n   ... [MILIEU] ...\n")
+                mid = len(response_part2) // 2
+                print(response_part2[mid-250:mid+250])
+                
+                print("\n   ... [FIN] ...\n")
+                print(response_part2[-500:])
+            
+            print(f"\n   ═══════════════════════════════════════════════════════════")
+            print(f"   Total: {len(response_part2)} chars")
+            print("   ═══════════════════════════════════════════════════════════\n")
+            
+            # 🔴 SOLUTION 4: Nettoyer la réponse avant parsing
+            print("   🧹 Nettoyage réponse Part 2...")
+            response_part2_cleaned = self._clean_response(response_part2)
             
             # Parser Part 2
             print("   🔍 Parsing JSON Part 2...")
-            result_part2 = RobustJSONParser.parse_json_with_fallback(response_part2)
+            result_part2 = RobustJSONParser.parse_json_with_fallback(response_part2_cleaned)
             
             if not result_part2:
                 print("   ❌ Erreur parsing Part 2 - utilisation Part 1 seul")
@@ -174,6 +212,21 @@ class ColorimetryService:
                 "shopping_couleurs": result_part2.get("shopping_couleurs", {}),
                 "alternatives_couleurs_refusees": result_part2.get("alternatives_couleurs_refusees", {}),
             }
+            
+            # 🔴 SOLUTION 3: Consolidation - Si Part 2 échoue, utiliser Part 1
+            palette = result.get('palette_personnalisee', [])
+            if not result.get('allColorsWithNotes') and palette:
+                print("   ⚠️ Part 2 palette vide, consolidation avec Part 1...")
+                all_colors = []
+                for color in palette:
+                    all_colors.append({
+                        "name": color.get("name"),
+                        "note": color.get("note", 8),
+                        "hex": color.get("hex"),
+                        "commentaire": color.get("commentaire", "")
+                    })
+                result["allColorsWithNotes"] = all_colors
+                print(f"   ✅ Consolidé: {len(all_colors)} couleurs de Part 1")
             
             # Fallbacks si données manquantes
             if not result.get("saison_confirmee"):
@@ -224,6 +277,19 @@ class ColorimetryService:
             import traceback
             traceback.print_exc()
             raise
+    
+    def _clean_response(self, response: str) -> str:
+        """Nettoie la réponse OpenAI avant parsing JSON"""
+        # Nettoyer caractères de contrôle
+        response = response.replace('\r', ' ').replace('\x00', '')
+        
+        # Nettoyer les apostrophes mal échappées
+        response = response.replace("\\'", "'")
+        
+        # Supprimer les espaces inutiles
+        response = ' '.join(response.split())
+        
+        return response
     
     def _create_default_analyse(self, saison: str, user_data: dict) -> dict:
         """Crée une structure d'analyse par défaut si OpenAI ne la génère pas"""
