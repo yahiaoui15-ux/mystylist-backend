@@ -1,12 +1,11 @@
 """
-COLORIMETRY PART 1 ENRICHI - Saison + Palette + Analyses détaillées
-Input: ~2200 tokens | Output: ~1400 tokens
-Justifications: 40-50 mots (spécifiques client, PAS génériques)
+COLORIMETRY PART 1 - Saison + Analyses détaillées (40-50 mots chaque)
+Input: ~1400 tokens | Output: ~1200 tokens
 """
 
-COLORIMETRY_PART1_SYSTEM_PROMPT = """Vous êtes expert colorimètre senior. Générez analyses SPÉCIFIQUES et DÉTAILLÉES par client, jamais génériques. Retournez UNIQUEMENT JSON valide."""
+COLORIMETRY_PART1_SYSTEM_PROMPT = """Vous êtes expert colorimètre senior. Générez analyses TRÈS SPÉCIFIQUES au client, JAMAIS génériques. Chaque description doit référencer ses caractéristiques exactes. Retournez UNIQUEMENT JSON valide."""
 
-COLORIMETRY_PART1_USER_PROMPT = """Analysez colorimétrie - SAISON, PALETTE, ANALYSES DÉTAILLÉES.
+COLORIMETRY_PART1_USER_PROMPT = """Analysez colorimétrie complète - SAISON, ANALYSES DÉTAILLÉES.
 
 CLIENT SPÉCIFIQUE:
 - Photo: {face_photo_url}
@@ -19,31 +18,15 @@ RETOURNEZ:
   "saison_confirmee": "Automne|Printemps|Été|Hiver",
   "sous_ton_detecte": "chaud|froid|neutre",
   
-  "justification_saison": "40-50 mots DÉTAILLÉS analysant:
-    - Pigmentation spécifique de la carnation (riche/dorée/pale/olivâtre?)
-    - Comment yeux {eye_color} impactent la saison
-    - Comment cheveux {hair_color} confirment/contredisent
+  "justification_saison": "40-50 mots spécifiques analysant:
+    - Tonalité exacte carnation (dorée/olive/pale/rose?)
+    - Comment yeux {eye_color} confirment/contredisent la saison
+    - Comment cheveux {hair_color} renforcent l'harmonie
     - Contraste naturel observé
-    Exemple BON: 'Votre carnation dorée-olive avec reflets chauds + yeux marron foncé créent harmonie automne. Cheveux brun-chaud confirment sous-ton chaud. Contraste moyen typique Automne riche.'
-    Exemple MAUVAIS: 'Votre carnation présente des caractéristiques harmonieuses.' - TROP VAGUE!",
+    Exemple: 'Carnation dorée-olive riche + yeux marron foncé + cheveux brun chaud créent harmonie Automne. Contraste ~70% typique saison riche. Profil très net, sans ambiguïté.'",
     
   "eye_color": "{eye_color}",
   "hair_color": "{hair_color}",
-  
-  "palette_personnalisee": [
-    {{
-      "name": "couleur",
-      "hex": "#HEX",
-      "note": 10,
-      "commentaire": "30 mots SPÉCIFIQUES:
-        - Effet EXACT sur ce client (illumine carnation dorée? renforce contraste?)
-        - POURQUOI fonctionne (référencer yeux/cheveux/sous-ton)
-        - Cas d'usage (près visage? sur corps?)
-        Exemple: 'Moutarde dore illumine carnation riche car amplifie undertone naturellement chaud. Crée pont optique avec yeux marron foncé, fait briller reflets. Blond froid à éviter avec cette couleur.'
-        PAS: 'Sublime car harmonise bien.'"
-    }},
-    ... 11 autres (12 TOTAL - TOUTES les couleurs)
-  ],
   
   "analyse_colorimetrique_detaillee": {{
     "temperature": "chaud|froid|neutre",
@@ -51,51 +34,50 @@ RETOURNEZ:
     "intensite": "douce|medium|intense",
     "contraste_naturel": "faible|moyen|fort",
     
-    "description_teint": "30 mots SPÉCIFIQUES:
+    "description_teint": "40-50 mots SPÉCIFIQUES sur carnation:
       - Tonalité exacte (dorée? olive? rose?)
       - Saturation (riche? pâle?)
       - Uniformité (homogène? taches?)
-      Exemple: 'Carnation olive-dorée saturée, uniforme. Reflets chauds prédominants. Sous-ton clairement chaud sans ambiguïté.'
-      PAS: 'Votre teint présente des caractéristiques harmonieuses.'",
+      Exemple: 'Carnation olive-dorée saturée, uniforme. Reflets chauds dominent clairement. Sous-ton chaud sans ambiguïté. Teint riche qui réagit positivement aux couleurs chaudes.'",
     
-    "description_yeux": "25 mots SPÉCIFIQUES sur {eye_color}:
-      - Nuance exacte
+    "description_yeux": "40-50 mots SPÉCIFIQUES sur {eye_color}:
+      - Nuance/profondeur
       - Clarté/intensité
-      - Impact sur saison
-      Exemple: 'Yeux marron-foncé saturés, pas clairs. Concentration pigment = ancrage automne. Aucune teinte frappante.'",
+      - Impact direct sur saison
+      Exemple: 'Yeux marron-foncé intensément saturés, avec concentration pigment élevée. Aucune teinte claire frappante. Ancrage automne certain. Intensité moyenne-forte qui renforce harmonie chaud.'",
     
-    "description_cheveux": "25 mots SPÉCIFIQUES sur {hair_color}:
-      - Nuance/tonalité
-      - Éclat
-      - Alignement avec saison
-      Exemple: 'Cheveux brun-foncé chauds, pas blonds. Reflets dorés/rouille. Renforce clearly le profil automne chaud.'",
+    "description_cheveux": "40-50 mots SPÉCIFIQUES sur {hair_color}:
+      - Tonalité/reflets exacts
+      - Éclat/saturation
+      - Alignement saison
+      Exemple: 'Cheveux brun-foncé chauds, sans teinte froide. Reflets dorés/rouille visibles. Luminosité modérée. Renforce clairement profil automne chaud. Cohérence totale avec carnation.'",
     
-    "harmonie_globale": "40 mots: Comment teint+yeux+cheveux = HARMONIE COHÉRENTE:
-      Exemple: 'Trois éléments (carnation olive-dorée + yeux marron + cheveux brun chaud) créent trinité cohérente automne. Aucune contradiction. Contraste naturel ~70% qui confirme saison. Profil très net, non ambigu.'",
+    "harmonie_globale": "50 mots: Comment teint+yeux+cheveux créent TRINITÉ COHÉRENTE:
+      Exemple: 'Trois éléments (carnation olive-dorée + yeux marron + cheveux brun chaud) s\\'alignent parfaitement. Aucune contradiction ou élément discordant. Contraste naturel ~70% confirme saison. Profil très net, harmonieux, non ambigu. Synergie totale.'",
     
-    "bloc_emotionnel": "30 mots: Impact ÉMOTIONNEL de cette saison sur ce client:
-      Exemple: 'Votre Automne apporte luminosité douce (pas harshness), confiance subtle (pas drama). Permet looks sophistiqués sans effort car harmonie naturelle.'",
+    "bloc_emotionnel": "50 mots: Impact ÉMOTIONNEL et PRATIQUE de cette saison pour ce client:
+      Exemple: 'Votre Automne apporte luminosité douce (jamais harshness), sophistication naturelle sans effort. Vous avez l\\'avantage d\\'une harmonie innée qui permet des looks élégants instantanément. Confiance subtle, pas de drama. Votre palette crée cohésion qui flatte sans surcharge.'",
     
     "impact_visuel": {{
-      "effet_couleurs_chaudes": "30 mots SPÉCIFIQUE: Quel EXACT impact sur THIS client?
-        Exemple: 'Réchauffent votre carnation olive (la rendent dorée-chaude). Amplifient yeux marron. Créent cohésion globale.'
-        PAS: 'Illuminent votre teint'",
+      "effet_couleurs_chaudes": "40-50 mots SPÉCIFIQUE à THIS client:
+        Exemple: 'Réchauffent votre carnation olive (la rendent dorée-lumineuse). Amplifient intensité yeux marron. Créent cohésion globale instantanée. Harmonisent avec reflets cheveux. Effet: teint vivant, regard renforcé, allure sophistiquée.'",
       
-      "effet_couleurs_froides": "30 mots: Quel EXACT problème sur THIS client?
-        Exemple: 'Ternissent carnation dorée (la rendent grisâtre-fade). Isolent yeux marron (font contraste heurté). Créent apparence désharmonisée.'",
+      "effet_couleurs_froides": "40-50 mots sur dégâts spécifiques à THIS client:
+        Exemple: 'Ternissent carnation dorée (la rendent grisâtre-morne). Isolent yeux marron (contraste désharmonisé). Contredisent reflets cheveux (effet décousu). Créent apparence désunitée. Effet: teint éteint, regard perdu, allure confuse.'",
       
-      "pourquoi": "20 mots: SCIENCE du pourquoi:
-        Exemple: 'Sous-ton chaud naturel = besoin harmonie chaleureuse. Couleurs froides = opposition pigmentaire crée désaccord.'"
+      "pourquoi": "25 mots: SCIENCE du phénomène:
+        Exemple: 'Sous-ton naturel chaud = nécessité harmonie pigmentaire chaleureuse. Froid = opposition crée dissonance optique.'"
     }}
   }}
 }}
 
-RÈGLES QUALITÉ:
-✅ CHAQUE description = 25-50 mots SPÉCIFIQUES (pas génériques!)
-✅ Référencer CLIENT par nom ou yeux/cheveux
-✅ Utiliser vocabulaire PRÉCIS (doré, olivâtre, saturé, chaud, etc.)
-✅ Éviter: "harmonieuses", "typiques", "complètent" - phrases creuses
-✅ Incluire: observations réelles (carnation riche? pâle? dorée?)
+RÈGLES QUALITÉ STRICTE:
+✅ Chaque description = 40-50 mots SPÉCIFIQUES (pas une de moins!)
+✅ bloc_emotionnel = 50 mots minimum (impact émotionnel + pratique)
+✅ Référencer CLIENT par yeux/cheveux/carnation
+✅ Vocabulaire PRÉCIS (doré, olivâtre, saturé, chaud, intense, etc.)
+✅ JAMAIS: "harmonieuses", "typiques", "complètent" - phrases creuses
+✅ INCLURE: observations RÉELLES basées photo
 ✅ JSON valide complet
 ✅ ZÉRO texte avant/après
 """

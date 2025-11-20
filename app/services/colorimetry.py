@@ -1,15 +1,15 @@
 """
-Colorimetry Service Enhanced v6.0 - FIXED JSON Parsing
-✅ Affichage COMPLET réponse brute (debug)
-✅ Consolidation Part 1 fallback
-✅ Nettoyage réponse avant parsing
-✅ 2 appels OpenAI (Part 1 + Part 2)
+Colorimetry Service Enhanced v7.0 - 3 APPELS OPTIMISÉS
+✅ Part 1: Saison + Analyses détaillées (50+ mots)
+✅ Part 2: Palette + Couleurs génériques + Associations
+✅ Part 3: Notes compatibilité + Unwanted colors + Maquillage + Vernis
 """
 
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT, COLORIMETRY_PART1_USER_PROMPT
 from app.prompts.colorimetry_part2_prompt import COLORIMETRY_PART2_SYSTEM_PROMPT, COLORIMETRY_PART2_USER_PROMPT_TEMPLATE
+from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
 
 
@@ -19,35 +19,28 @@ class ColorimetryService:
     
     async def analyze(self, user_data: dict) -> dict:
         """
-        Analyse la colorimétrie en 2 appels OpenAI
-        Part 1: Saison + Palette + Analyse détaillée
-        Part 2: Couleurs génériques + Maquillage + Associations
-        
-        Args:
-            user_data: dict avec face_photo_url, eye_color, hair_color, age, unwanted_colors
-        
-        Returns:
-            dict complet avec saison, palette, couleurs, maquillage, associations
+        Analyse colorimétrie en 3 appels OpenAI optimisés pour tokens.
+        Part 1: Saison + Analyses détaillées
+        Part 2: Palette 12 + Couleurs génériques + Associations
+        Part 3: Notes compatibilité + Unwanted colors + Maquillage
         """
         try:
-            print("\n🎨 Analyse colorimétrie (2 APPELS - v6.0 FIXED)...")
+            print("\n🎨 Analyse colorimétrie (3 APPELS - v7.0)...")
             
-            # Vérifier que la photo existe
             face_photo_url = user_data.get("face_photo_url")
             if not face_photo_url:
                 print("❌ Pas de photo de visage fournie")
                 return {}
             
             # ═══════════════════════════════════════════════════════════
-            # APPEL 1: SAISON + PALETTE + ANALYSE DÉTAILLÉE
+            # APPEL 1: SAISON + ANALYSES DÉTAILLÉES
             # ═══════════════════════════════════════════════════════════
             print("\n" + "="*80)
-            print("📊 APPEL 1: Saison + Palette + Analyse détaillée")
+            print("📊 APPEL 1: Saison + Analyses détaillées (50+ mots)")
             print("="*80)
             
             self.openai.set_system_prompt(COLORIMETRY_PART1_SYSTEM_PROMPT)
             
-            unwanted_colors_str = ", ".join(user_data.get("unwanted_colors", []))
             user_prompt_part1 = COLORIMETRY_PART1_USER_PROMPT.format(
                 face_photo_url=face_photo_url,
                 eye_color=user_data.get("eye_color", "Non spécifié"),
@@ -55,39 +48,20 @@ class ColorimetryService:
                 age=str(user_data.get("age", 0))
             )
             
-            print(f"📋 User prompt (première 400 chars):")
-            print(user_prompt_part1[:400])
-            print(f"   ... [{len(user_prompt_part1)} chars total]\n")
+            print(f"📋 User prompt (première 300 chars): {user_prompt_part1[:300]}...")
+            print("   🤖 Envoi à OpenAI (gpt-4-turbo avec vision)...")
             
-            print("   🤖 Envoi à OpenAI (GPT-4-turbo avec vision)...")
             response_part1 = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt_part1,
                 model="gpt-4-turbo",
-                max_tokens=2000
+                max_tokens=1200
             )
             
             print(f"   📨 Réponse reçue ({len(response_part1)} chars)")
+            print("   🔴 RÉPONSE BRUTE PART 1 (premiers 300 chars):")
+            print(response_part1[:300])
             
-            # 🔴 SOLUTION 1: Afficher la réponse brute COMPLÈTE pour debugging
-            print("\n   ═══════════════════════════════════════════════════════════")
-            print("   🔴 RÉPONSE BRUTE PART 1 (début 0-500 chars):")
-            print("   ═══════════════════════════════════════════════════════════")
-            print(response_part1[:500] if len(response_part1) > 500 else response_part1)
-            
-            if len(response_part1) > 500:
-                print("\n   ... [MILIEU] ...\n")
-                mid = len(response_part1) // 2
-                print(response_part1[mid-250:mid+250])
-                
-                print("\n   ... [FIN] ...\n")
-                print(response_part1[-500:])
-            
-            print(f"\n   ═══════════════════════════════════════════════════════════")
-            print(f"   Total: {len(response_part1)} chars")
-            print("   ═══════════════════════════════════════════════════════════\n")
-            
-            # Parser Part 1
             print("   🔍 Parsing JSON Part 1...")
             result_part1 = RobustJSONParser.parse_json_with_fallback(response_part1)
             
@@ -96,179 +70,153 @@ class ColorimetryService:
                 return {}
             
             saison = result_part1.get("saison_confirmee", "Indéterminée")
-            palette = result_part1.get("palette_personnalisee", [])
+            sous_ton = result_part1.get("sous_ton_detecte", "neutre")
+            eye_color = result_part1.get("eye_color", user_data.get("eye_color"))
+            hair_color = result_part1.get("hair_color", user_data.get("hair_color"))
             analyse_detail = result_part1.get("analyse_colorimetrique_detaillee", {})
             
-            print(f"   ✅ Part 1 parsé avec succès:")
+            print(f"   ✅ Part 1 parsé:")
             print(f"      • Saison: {saison}")
-            print(f"      • Palette: {len(palette)} couleurs")
-            print(f"      • Analyse détaillée: {len(analyse_detail)} champs")
-            
-            # Vérifier qualité commentaires Part 1
-            if palette and len(palette) > 0:
-                first_color = palette[0]
-                comment = first_color.get('commentaire', '')
-                word_count = len(comment.split())
-                print(f"      • Qualité commentaires: {word_count} mots (min 25)")
-                if word_count < 20:
-                    print(f"        ⚠️  WARNING: Commentaires plus courts que prévu")
+            print(f"      • Sous-ton: {sous_ton}")
+            print(f"      • Analyses détaillées: {len(analyse_detail)} champs")
             
             # ═══════════════════════════════════════════════════════════
-            # APPEL 2: COULEURS GÉNÉRIQUES + MAQUILLAGE + ASSOCIATIONS
+            # APPEL 2: PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS
             # ═══════════════════════════════════════════════════════════
             print("\n" + "="*80)
-            print("📊 APPEL 2: Détails + Maquillage + Associations")
+            print("📊 APPEL 2: Palette + Couleurs génériques + Associations")
             print("="*80)
             
             self.openai.set_system_prompt(COLORIMETRY_PART2_SYSTEM_PROMPT)
             
-            # Extraire noms couleurs palette pour context
-            palette_names = ", ".join([c.get("name", "") for c in palette[:5]])
-            
             user_prompt_part2 = COLORIMETRY_PART2_USER_PROMPT_TEMPLATE.format(
                 SAISON=saison,
-                SOUS_TON=result_part1.get("sous_ton_detecte", ""),
-                PALETTE_NAMES=palette_names
+                SOUS_TON=sous_ton,
+                EYE_COLOR=eye_color,
+                HAIR_COLOR=hair_color
             )
             
-            print(f"📋 User prompt (première 400 chars):")
-            print(user_prompt_part2[:400])
-            print(f"   ... [{len(user_prompt_part2)} chars total]\n")
+            print(f"📋 User prompt (première 300 chars): {user_prompt_part2[:300]}...")
+            print("   🤖 Envoi à OpenAI (gpt-4 chat)...")
             
-            print("   🤖 Envoi à OpenAI (Chat mode)...")
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4",
-                max_tokens=2000
+                max_tokens=1400
             )
             
             print(f"   📨 Réponse reçue ({len(response_part2)} chars)")
+            print("   🔴 RÉPONSE BRUTE PART 2 (premiers 300 chars):")
+            print(response_part2[:300])
             
-            # 🔴 SOLUTION 1: Afficher la réponse brute COMPLÈTE pour debugging
-            print("\n   ═══════════════════════════════════════════════════════════")
-            print("   🔴 RÉPONSE BRUTE PART 2 (début 0-500 chars):")
-            print("   ═══════════════════════════════════════════════════════════")
-            print(response_part2[:500] if len(response_part2) > 500 else response_part2)
-            
-            if len(response_part2) > 500:
-                print("\n   ... [MILIEU] ...\n")
-                mid = len(response_part2) // 2
-                print(response_part2[mid-250:mid+250])
-                
-                print("\n   ... [FIN] ...\n")
-                print(response_part2[-500:])
-            
-            print(f"\n   ═══════════════════════════════════════════════════════════")
-            print(f"   Total: {len(response_part2)} chars")
-            print("   ═══════════════════════════════════════════════════════════\n")
-            
-            # 🔴 SOLUTION 4: Nettoyer la réponse avant parsing
-            print("   🧹 Nettoyage réponse Part 2...")
-            response_part2_cleaned = self._clean_response(response_part2)
-            
-            # Parser Part 2
             print("   🔍 Parsing JSON Part 2...")
+            response_part2_cleaned = response_part2.replace('\r', ' ').replace('\x00', '')
             result_part2 = RobustJSONParser.parse_json_with_fallback(response_part2_cleaned)
             
             if not result_part2:
-                print("   ❌ Erreur parsing Part 2 - utilisation Part 1 seul")
+                print("   ⚠️ Erreur Part 2, utilisant fallback")
                 result_part2 = {}
             else:
-                colors_with_notes = result_part2.get('allColorsWithNotes', [])
-                associations = result_part2.get('associations_gagnantes', [])
-                guide_maquillage = result_part2.get('guide_maquillage', {})
-                shopping = result_part2.get('shopping_couleurs', {})
-                notes_compatibilite = result_part2.get('notes_compatibilite', {})
-                
-                print(f"   ✅ Part 2 parsé avec succès:")
-                print(f"      • Couleurs génériques: {len(colors_with_notes)} couleurs")
-                print(f"      • Notes compatibilité: {len(notes_compatibilite)} couleurs")
-                print(f"      • Associations gagnantes: {len(associations)}")
-                print(f"      • Guide maquillage: {len(guide_maquillage)} champs")
-                print(f"      • Shopping couleurs: {len(shopping)} champs")
+                palette = result_part2.get("palette_personnalisee", [])
+                associations = result_part2.get("associations_gagnantes", [])
+                print(f"   ✅ Part 2 parsé:")
+                print(f"      • Palette: {len(palette)} couleurs")
+                print(f"      • Associations: {len(associations)} occasions")
             
             # ═══════════════════════════════════════════════════════════
-            # FUSIONNER LES 2 APPELS
+            # APPEL 3: NOTES COMPATIBILITÉ + UNWANTED + MAQUILLAGE
             # ═══════════════════════════════════════════════════════════
             print("\n" + "="*80)
-            print("🔗 FUSION Part 1 + Part 2")
+            print("📊 APPEL 3: Compatibilité + Unwanted colors + Maquillage")
+            print("="*80)
+            
+            self.openai.set_system_prompt(COLORIMETRY_PART3_SYSTEM_PROMPT)
+            
+            unwanted_colors = user_data.get("unwanted_colors", [])
+            unwanted_str = ", ".join(unwanted_colors) if unwanted_colors else "Aucune"
+            
+            user_prompt_part3 = COLORIMETRY_PART3_USER_PROMPT_TEMPLATE.format(
+                SAISON=saison,
+                SOUS_TON=sous_ton,
+                UNWANTED_COLORS=unwanted_str
+            )
+            
+            print(f"📋 User prompt (première 300 chars): {user_prompt_part3[:300]}...")
+            print(f"   Couleurs refusées: {unwanted_str}")
+            print("   🤖 Envoi à OpenAI (gpt-4 chat)...")
+            
+            response_part3 = await self.openai.call_chat(
+                prompt=user_prompt_part3,
+                model="gpt-4",
+                max_tokens=1400
+            )
+            
+            print(f"   📨 Réponse reçue ({len(response_part3)} chars)")
+            print("   🔴 RÉPONSE BRUTE PART 3 (premiers 300 chars):")
+            print(response_part3[:300])
+            
+            print("   🔍 Parsing JSON Part 3...")
+            response_part3_cleaned = response_part3.replace('\r', ' ').replace('\x00', '')
+            result_part3 = RobustJSONParser.parse_json_with_fallback(response_part3_cleaned)
+            
+            if not result_part3:
+                print("   ⚠️ Erreur Part 3, utilisant fallback")
+                result_part3 = {}
+            else:
+                unwanted = result_part3.get("unwanted_colors", [])
+                makeup = result_part3.get("guide_maquillage", {})
+                nails = result_part3.get("nailColors", [])
+                print(f"   ✅ Part 3 parsé:")
+                print(f"      • Couleurs refusées traitées: {len(unwanted)}")
+                print(f"      • Guide maquillage: {len(makeup)} champs")
+                print(f"      • Vernis: {len(nails)} couleurs")
+            
+            # ═══════════════════════════════════════════════════════════
+            # FUSION 3 APPELS
+            # ═══════════════════════════════════════════════════════════
+            print("\n" + "="*80)
+            print("🔗 FUSION Part 1 + Part 2 + Part 3")
             print("="*80)
             
             result = {
-                # Part 1 (core)
-                "saison_confirmee": result_part1.get("saison_confirmee"),
-                "sous_ton_detecte": result_part1.get("sous_ton_detecte"),
-                "justification_saison": result_part1.get("justification_saison"),
-                "eye_color": user_data.get("eye_color", ""),
-                "hair_color": user_data.get("hair_color", ""),
-                "palette_personnalisee": result_part1.get("palette_personnalisee", []),
+                # Part 1
+                "saison_confirmee": result_part1.get("saison_confirmee", "Indéterminée"),
+                "sous_ton_detecte": result_part1.get("sous_ton_detecte", "neutre"),
+                "eye_color": eye_color,
+                "hair_color": hair_color,
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
                 
-                # Part 2 (details)
-                "notes_compatibilite": result_part2.get("notes_compatibilite", {}),
+                # Part 2
+                "palette_personnalisee": result_part2.get("palette_personnalisee", []),
                 "allColorsWithNotes": result_part2.get("allColorsWithNotes", []),
                 "associations_gagnantes": result_part2.get("associations_gagnantes", []),
-                "guide_maquillage": result_part2.get("guide_maquillage", {}),
-                "shopping_couleurs": result_part2.get("shopping_couleurs", {}),
-                "alternatives_couleurs_refusees": result_part2.get("alternatives_couleurs_refusees", {}),
+                
+                # Part 3
+                "notes_compatibilite": result_part3.get("notes_compatibilite", {}),
+                "unwanted_colors": result_part3.get("unwanted_colors", []),
+                "guide_maquillage": result_part3.get("guide_maquillage", {}),
+                "nailColors": result_part3.get("nailColors", [])
             }
             
-            # 🔴 SOLUTION 3: Consolidation - Si Part 2 échoue, utiliser Part 1
-            palette = result.get('palette_personnalisee', [])
-            if not result.get('allColorsWithNotes') and palette:
-                print("   ⚠️ Part 2 palette vide, consolidation avec Part 1...")
-                all_colors = []
-                for color in palette:
-                    all_colors.append({
-                        "name": color.get("name"),
-                        "note": color.get("note", 8),
-                        "hex": color.get("hex"),
-                        "commentaire": color.get("commentaire", "")
-                    })
-                result["allColorsWithNotes"] = all_colors
-                print(f"   ✅ Consolidé: {len(all_colors)} couleurs de Part 1")
+            # Fallbacks
+            if not result.get("palette_personnalisee") and result_part2:
+                palette = result_part2.get("palette_personnalisee", [])
+                result["palette_personnalisee"] = palette
+                print(f"   ✅ Palette consolidée: {len(palette)} couleurs")
             
-            # Fallbacks si données manquantes
-            if not result.get("saison_confirmee"):
-                result["saison_confirmee"] = "Indéterminée"
-            
-            if not result.get("justification_saison"):
-                result["justification_saison"] = f"Analyse colorimétrique basée sur votre carnation, yeux et cheveux."
-            
-            # Fallbacks pour analyse_colorimetrique_detaillee
             if not result.get("analyse_colorimetrique_detaillee"):
-                print("\n⚠️  Création fallback pour analyse_colorimetrique_detaillee...")
                 result["analyse_colorimetrique_detaillee"] = self._create_default_analyse(
-                    result.get('saison_confirmee', 'Automne'),
+                    result.get("saison_confirmee", "Automne"),
                     user_data
                 )
-            else:
-                analyse_detail = self._ensure_analyse_fields(result["analyse_colorimetrique_detaillee"], user_data)
-                result["analyse_colorimetrique_detaillee"] = analyse_detail
             
-            # Validation des données critiques
-            palette = result.get('palette_personnalisee', [])
-            colors_with_notes = result.get('allColorsWithNotes', [])
-            associations = result.get('associations_gagnantes', [])
-            guide_maquillage = result.get('guide_maquillage', {})
-            shopping = result.get('shopping_couleurs', {})
-            analyse_detail = result.get('analyse_colorimetrique_detaillee', {})
-            
-            print(f"\n✅ Données finales récupérées:")
-            print(f"   ✓ Palette: {len(palette)} couleurs")
-            print(f"   ✓ Couleurs génériques: {len(colors_with_notes)} couleurs")
-            print(f"   ✓ Associations: {len(associations)}")
-            print(f"   ✓ Guide Maquillage: {len(guide_maquillage)} champs")
-            print(f"   ✓ Shopping: {len(shopping)} champs")
-            print(f"   ✓ Analyse détaillée: {len(analyse_detail)} champs")
-            
-            saison = result.get("saison_confirmee", "Unknown")
-            print(f"\n✅ Colorimétrie analysée (2 appels): {saison}")
-            print(f"   ✓ Yeux: {result.get('eye_color')}")
-            print(f"   ✓ Cheveux: {result.get('hair_color')}")
-            print(f"   ✓ Palette: {len(palette)} couleurs")
-            print(f"   ✓ Guide Maquillage: {bool(guide_maquillage)}")
-            print(f"   ✓ Analyse détaillée: {bool(result.get('analyse_colorimetrique_detaillee'))}\n")
+            print(f"\n✅ RÉSUMÉ FINAL:")
+            print(f"   • Saison: {result.get('saison_confirmee')}")
+            print(f"   • Palette: {len(result.get('palette_personnalisee', []))} couleurs")
+            print(f"   • Couleurs génériques: {len(result.get('allColorsWithNotes', []))}")
+            print(f"   • Associations: {len(result.get('associations_gagnantes', []))}")
+            print(f"   • Couleurs refusées analysées: {len(result.get('unwanted_colors', []))}")
+            print(f"   • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs\n")
             
             return result
             
@@ -278,56 +226,24 @@ class ColorimetryService:
             traceback.print_exc()
             raise
     
-    def _clean_response(self, response: str) -> str:
-        """Nettoie la réponse OpenAI avant parsing JSON"""
-        # Nettoyer caractères de contrôle
-        response = response.replace('\r', ' ').replace('\x00', '')
-        
-        # Nettoyer les apostrophes mal échappées
-        response = response.replace("\\'", "'")
-        
-        # Supprimer les espaces inutiles
-        response = ' '.join(response.split())
-        
-        return response
-    
     def _create_default_analyse(self, saison: str, user_data: dict) -> dict:
-        """Crée une structure d'analyse par défaut si OpenAI ne la génère pas"""
+        """Fallback analyse si OpenAI échoue"""
         return {
-            "temperature": "neutre",
+            "temperature": "chaud" if saison in ["Automne", "Printemps"] else "froid",
             "valeur": "médium",
             "intensite": "médium",
             "contraste_naturel": "moyen",
-            "description_teint": f"Votre teint présente des caractéristiques harmonieuses typiques de la saison {saison}.",
-            "description_yeux": f"Vos yeux {user_data.get('eye_color', 'de couleur variée')} contribuent à l'harmonie de votre profil colorimétrique.",
-            "description_cheveux": f"Vos cheveux {user_data.get('hair_color', 'de teinte naturelle')} complètent parfaitement votre palette saisonnière.",
-            "harmonie_globale": "Tous les éléments de votre profil colorimétrique s'harmonisent ensemble de manière naturelle.",
-            "bloc_emotionnel": f"Votre profil colorimétrique {saison} apporte luminosité et confiance à votre apparence naturelle.",
+            "description_teint": f"Votre teint s'harmonise naturellement avec la saison {saison}.",
+            "description_yeux": f"Vos yeux {user_data.get('eye_color', 'de couleur variée')} enrichissent votre profil colorimétrique.",
+            "description_cheveux": f"Vos cheveux {user_data.get('hair_color', 'de teinte naturelle')} complètent votre palette {saison}.",
+            "harmonie_globale": f"Tous vos éléments créent une harmonie cohérente typique de la saison {saison}.",
+            "bloc_emotionnel": f"Votre {saison} apporte luminosité et confiance à votre apparence naturelle.",
             "impact_visuel": {
-                "effet_couleurs_chaudes": "Les couleurs de votre palette illuminent votre teint de manière naturelle et flatteuse.",
-                "effet_couleurs_froides": "Les couleurs en dehors de votre palette créent un contraste moins harmonieux.",
-                "pourquoi": "Votre sous-ton naturel s'harmonise mieux avec certaines teintes colorées qu'avec d'autres."
+                "effet_couleurs_chaudes": "Illuminent votre teint naturellement.",
+                "effet_couleurs_froides": "Créent moins d'harmonie avec votre sous-ton.",
+                "pourquoi": "Votre sous-ton naturel réagit favorablement aux couleurs alignées à votre saison."
             }
         }
-    
-    def _ensure_analyse_fields(self, analyse: dict, user_data: dict) -> dict:
-        """Remplit les champs manquants dans analyse_colorimetrique_detaillee"""
-        defaults = self._create_default_analyse("Automne", user_data)
-        
-        for key in defaults.keys():
-            if not analyse.get(key):
-                analyse[key] = defaults[key]
-        
-        # Vérifier les sous-champs impact_visuel
-        if not analyse.get("impact_visuel"):
-            analyse["impact_visuel"] = defaults["impact_visuel"]
-        else:
-            impact = analyse["impact_visuel"]
-            for key in defaults["impact_visuel"].keys():
-                if not impact.get(key):
-                    impact[key] = defaults["impact_visuel"][key]
-        
-        return analyse
 
 
 # Instance globale

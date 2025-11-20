@@ -1,108 +1,99 @@
 """
-COLORIMETRY PART 2 - STRICT JSON VALIDATION (FIXED)
-Input: ~1200 tokens | Output: ~1600 tokens
-FIX: Pas de .format() sur le prompt - utiliser f-strings dans colorimetry.py
+COLORIMETRY PART 2 - Palette personnalisée + Couleurs génériques + Associations
+Input: ~1100 tokens | Output: ~1400 tokens
 """
 
-COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous êtes expert colorimètre. Générez UNIQUEMENT du JSON VALIDE parfait. Commencez par { et terminez par }. Aucun texte avant/après. Si vous n'êtes pas sûr, retournez {} plutôt que JSON cassé."""
+COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous êtes expert colorimètre. Générez UNIQUEMENT JSON valide. Commencez par { et terminez par }. Aucun texte avant/après."""
 
-# ⚠️ IMPORTANT: Ce template NE utilise PAS .format()
-# On le complète avec f-string dans colorimetry.py
-COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """STRICTEMENT JSON VALIDE - Part 2 colorimétrie avancée.
+COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """PALETTE PERSONNALISÉE - Part 2 colorimétrie.
 
-CLIENT:
+DONNÉES CLIENT:
 Saison: {SAISON}
 Sous-ton: {SOUS_TON}
-Top couleurs: {PALETTE_NAMES}
+Yeux: {EYE_COLOR}
+Cheveux: {HAIR_COLOR}
 
-RETOURNEZ EXACTEMENT (pas d'erreur d'échappement):
+RETOURNEZ JSON VALIDE (doubles accolades {{ }} pour imbrication):
 {{
-  "notes_compatibilite": {{
-    "rouge": {{"note": 8, "commentaire": "Rouges chauds harmonisent. Froids ternissent."}},
-    "bleu": {{"note": 3, "commentaire": "Blus froids isolent. À éviter absolument."}},
-    "jaune": {{"note": 9, "commentaire": "Jaunes dorés amplifient or naturel."}},
-    "vert": {{"note": 8, "commentaire": "Verts chauds harmonisent. Acides froids non."}},
-    "orange": {{"note": 9, "commentaire": "Orange chaud amplifie vitalité."}},
-    "violet": {{"note": 2, "commentaire": "Violets froids ternissent présence."}},
-    "blanc": {{"note": 5, "commentaire": "Blanc pur crée micro-contraste heurté."}},
-    "noir": {{"note": 4, "commentaire": "Noir pur dur. Charbon plus flatteur."}},
-    "gris": {{"note": 6, "commentaire": "Gris taupe OK. Gris froid non."}},
-    "beige": {{"note": 8, "commentaire": "Beiges chauds flattent carnation."}},
-    "marron": {{"note": 9, "commentaire": "Marrons chauds intensifient yeux."}},
-    "rose_pale": {{"note": 2, "commentaire": "Rose pâle froid ternit teint chaud."}},
-    "rose_fuchsia": {{"note": 1, "commentaire": "Fuchsia froid crée dissonance extrême."}},
-    "rose_corail": {{"note": 9, "commentaire": "Rose corail chaud s'harmonise magnifiquement."}},
-    "camel": {{"note": 10, "commentaire": "Camel essentiel. Reproduit harmonie naturelle."}},
-    "marine": {{"note": 3, "commentaire": "Marine froid crée contraste désharmonisé."}},
-    "bordeaux": {{"note": 9, "commentaire": "Bordeaux chaud sophistiqué s'harmonise parfait."}},
-    "kaki": {{"note": 8, "commentaire": "Kaki chaud complète sous-ton créant harmonie."}},
-    "turquoise": {{"note": 1, "commentaire": "Turquoise froide incompatible total."}}
-  }},
+  "palette_personnalisee": [
+    {{
+      "name": "couleur1",
+      "hex": "#HEX1",
+      "note": 10,
+      "commentaire": "15-20 mots: Effet visuel + pourquoi fonctionne. Ex: 'Illumine carnation dorée. Renforce yeux marron. Parfait près visage.'"
+    }},
+    {{
+      "name": "couleur2",
+      "hex": "#HEX2",
+      "note": 10,
+      "commentaire": "15-20 mots"
+    }},
+    ...12 COULEURS TOTAL (jamais moins!)
+  ],
 
   "allColorsWithNotes": [
-    {{"name": "jaune", "note": 9, "hex": "#FFFF00", "commentaire": "Jaunes dorés amplifient or. Pâles citrons non."}},
-    {{"name": "rouge", "note": 8, "hex": "#FF0000", "commentaire": "Rouges chauds magnifient. Froids isolent."}},
-    {{"name": "vert", "note": 8, "hex": "#008000", "commentaire": "Verts chauds harmonisent naturel."}},
-    {{"name": "bleu", "note": 3, "hex": "#0000FF", "commentaire": "Blus froids ternissent carnation."}}
+    {{"name": "jaune", "note": 9, "hex": "#FFFF00", "commentaire": "Jaunes dorés amplifient or naturel du teint."}},
+    {{"name": "rouge", "note": 8, "hex": "#FF0000", "commentaire": "Rouges chauds harmonisent. Froids ternissent."}},
+    {{"name": "vert", "note": 8, "hex": "#008000", "commentaire": "Verts chauds harmonisent naturellement."}},
+    {{"name": "bleu", "note": 3, "hex": "#0000FF", "commentaire": "Bleus froids isolent. À éviter absolument."}},
+    {{"name": "orange", "note": 9, "hex": "#FFA500", "commentaire": "Orange chaud amplifie vitalité et éclat."}},
+    {{"name": "violet", "note": 2, "hex": "#800080", "commentaire": "Violets froids ternissent présence naturelle."}},
+    {{"name": "blanc", "note": 5, "hex": "#FFFFFF", "commentaire": "Blanc pur crée micro-contraste heurté."}},
+    {{"name": "noir", "note": 4, "hex": "#000000", "commentaire": "Noir pur dur. Charbon plus flatteur."}},
+    {{"name": "gris", "note": 6, "hex": "#808080", "commentaire": "Gris taupe OK. Gris froid non."}},
+    {{"name": "beige", "note": 8, "hex": "#F5F5DC", "commentaire": "Beiges chauds flattent carnation dorée."}},
+    {{"name": "marron", "note": 9, "hex": "#8B4513", "commentaire": "Marrons chauds intensifient yeux."}},
+    {{"name": "rose_pale", "note": 2, "hex": "#FFB6C1", "commentaire": "Rose pâle froid ternit teint chaud."}},
+    {{"name": "rose_fuchsia", "note": 1, "hex": "#FF20F0", "commentaire": "Fuchsia froid crée dissonance extrême."}},
+    {{"name": "rose_corail", "note": 9, "hex": "#FF7F50", "commentaire": "Rose corail chaud s'harmonise magnifiquement."}},
+    {{"name": "camel", "note": 10, "hex": "#C3B091", "commentaire": "Camel essentiel. Reproduit harmonie naturelle."}},
+    {{"name": "marine", "note": 3, "hex": "#000080", "commentaire": "Marine froid crée contraste désharmonisé."}},
+    {{"name": "bordeaux", "note": 9, "hex": "#800020", "commentaire": "Bordeaux chaud sophistiqué s'harmonise parfait."}},
+    {{"name": "kaki", "note": 8, "hex": "#9B8B56", "commentaire": "Kaki chaud complète sous-ton créant harmonie."}},
+    {{"name": "turquoise", "note": 1, "hex": "#40E0D0", "commentaire": "Turquoise froide incompatible total."}}
   ],
 
   "associations_gagnantes": [
     {{
       "occasion": "professionnel",
-      "colors": ["#C19A6B", "#E2725B", "#8B4513"],
+      "colors": ["Terracotta", "Marron", "Camel"],
+      "color_hex": ["#E2725B", "#8B4513", "#C3B091"],
       "effet": "Elegance confidente"
     }},
     {{
       "occasion": "casual",
-      "colors": ["#C3B091", "#CC7722", "#D2B48C"],
+      "colors": ["Kaki", "Ocre Jaune", "Camel"],
+      "color_hex": ["#C3B091", "#CC7722", "#D2B48C"],
       "effet": "Naturel sans-effort"
     }},
     {{
-      "occasion": "soiree",
-      "colors": ["#6D071A", "#8B8589", "#E2725B"],
-      "effet": "Sophistication chaleureuse"
+      "occasion": "soirée",
+      "colors": ["Bordeaux", "Gris Taupe", "Terracotta"],
+      "color_hex": ["#6D071A", "#8B8589", "#E2725B"],
+      "effet": "Sophistication chaleureuse",
+      "description": "Harmonie riche et profonde qui respire l'élégance nocturne. Bordeaux apporte profondeur, gris taupe crée équilibre, terracotta ajoute chaleur. Parfait pour dîners, cocktails, événements où vous souhaitez briller discrètement avec raffinement."
     }},
     {{
       "occasion": "weekend",
-      "colors": ["#228B22", "#E1AD01", "#B87333"],
+      "colors": ["Moutarde", "Cuivre", "Olive"],
+      "color_hex": ["#E1AD01", "#B87333", "#6B8E23"],
       "effet": "Détente avec caractère"
     }},
     {{
       "occasion": "famille",
-      "colors": ["#7B3F00", "#E2725B", "#C3B091"],
+      "colors": ["Chocolat", "Terracotta", "Kaki"],
+      "color_hex": ["#7B3F00", "#E2725B", "#C3B091"],
       "effet": "Douceur naturelle"
     }}
-  ],
-
-  "guide_maquillage": {{
-    "teint": "Doré riche (pas pâle)",
-    "blush": "Pêche corail chaud",
-    "bronzer": "Bronze chaud",
-    "highlighter": "Or",
-    "yeux": "Cuivre/bronze/terre",
-    "eyeliner": "Marron chaud",
-    "mascara": "Noir",
-    "brows": "Brun chaud naturel",
-    "lipsNude": "Beige chaud doré",
-    "lipsDay": "Rose corail CHAUD",
-    "lipsEvening": "Bordeaux riche",
-    "lipsAvoid": "Rose pâle froid",
-    "vernis_a_ongles": ["#E1AD01", "#7B3F00", "#CC7722", "#6D071A"]
-  }},
-
-  "shopping_couleurs": {{
-    "priorite_1": ["Moutarde", "Camel", "Bordeaux"],
-    "priorite_2": ["Cuivre", "Terracotta", "Bronze"],
-    "eviter_absolument": ["Rose pâle froid", "Bleu marine froid", "Violet", "Turquoise"]
-  }},
-
-  "alternatives_couleurs_refusees": {{}}
+  ]
 }}
 
 RÈGLES:
-- Commencer par ouverture accolade simple {{
-- JSON imbriqué utilise doubles accolades {{}}
-- Fermer par accolade simple }}
-- Les notes sont NOMBRES: 8 (pas "8")
-- Zéro texte avant/après JSON
+✅ palette_personnalisee = 12 couleurs MINIMUM
+✅ Chaque couleur a name + hex + note + commentaire (15-20 mots)
+✅ allColorsWithNotes = 19 couleurs génériques (déjà présentes)
+✅ associations_gagnantes: 5 occasions, chaque occasion a "description" de 40-50 mots pour SOIRÉE
+✅ JSON valide complet
+✅ Doubles accolades {{ }} pour imbrication
+✅ ZÉRO texte avant/après
 """
