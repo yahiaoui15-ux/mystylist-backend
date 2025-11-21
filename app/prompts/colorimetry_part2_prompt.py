@@ -20,7 +20,7 @@ Sous-ton: {SOUS_TON}
 Yeux: {EYE_COLOR}
 Cheveux: {HAIR_COLOR}
 
-RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de {{ }} - utiliser { } directement):
+RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples accolades directement):
 {{
   "palette_personnalisee": [
     {{
