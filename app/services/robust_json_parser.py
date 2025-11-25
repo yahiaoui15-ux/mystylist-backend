@@ -1,9 +1,10 @@
 """
-JSON Parser Robuste - Version corrigée
+JSON Parser Robuste v2.0 - Version corrigée
 ✅ Compte les accolades correctement
 ✅ Gère les objets imbriqués complexes
 ✅ Extrait TOUT le JSON valide (pas juste une partie)
 ✅ FIXÉ: Regex character set cassée
+✅ NOUVEAU: Nettoyage agressif apostrophes françaises
 """
 
 import json
@@ -11,7 +12,7 @@ import re
 
 
 class RobustJSONParser:
-    """Parser JSON robuste avec comptage d'accolades"""
+    """Parser JSON robuste avec comptage d'accolades et nettoyage apostrophes"""
     
     @staticmethod
     def parse_json_with_fallback(response_text: str) -> dict:
@@ -19,8 +20,8 @@ class RobustJSONParser:
         Parse JSON avec 4 stratégies de fallback
         
         ✅ Stratégie 1: Parser direct (JSON valide)
-        ✅ Stratégie 2: Extraction complète (compte accolades)
-        ✅ Stratégie 3: Nettoyage et retry
+        ✅ Stratégie 2: Nettoyage apostrophes + retry
+        ✅ Stratégie 3: Extraction complète (compte accolades)
         ✅ Stratégie 4: Fallback minimal
         
         Retourne TOUJOURS un dict (jamais d'exception)
@@ -36,13 +37,25 @@ class RobustJSONParser:
         except json.JSONDecodeError as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
-        # STRATÉGIE 2: Extraction complète (compte accolades) - AVANT nettoyage
-        print("   Tentative 2: Extraction complète (compte accolades)...")
+        # STRATÉGIE 2: Nettoyage apostrophes françaises + retry
+        print("   Tentative 2: Nettoyage apostrophes françaises...")
+        try:
+            cleaned_apostrophes = RobustJSONParser._fix_french_apostrophes(response_text)
+            data = json.loads(cleaned_apostrophes)
+            print("      ✅ JSON valide après nettoyage apostrophes!")
+            return data
+        except json.JSONDecodeError as e:
+            print(f"      ❌ Erreur: {str(e)[:60]}...")
+        
+        # STRATÉGIE 3: Extraction complète (compte accolades) + nettoyage
+        print("   Tentative 3: Extraction complète (compte accolades)...")
         try:
             extracted = RobustJSONParser._extract_complete_json(response_text)
             if extracted:
-                # Essayer de parser directement l'extrait
-                data = json.loads(extracted)
+                # Nettoyer puis parser
+                extracted_clean = RobustJSONParser._fix_french_apostrophes(extracted)
+                extracted_clean = RobustJSONParser._clean_json(extracted_clean)
+                data = json.loads(extracted_clean)
                 print("      ✅ JSON complet extrait et valide!")
                 return data
             else:
@@ -50,21 +63,59 @@ class RobustJSONParser:
         except Exception as e:
             print(f"      ❌ Erreur parsing extrait: {str(e)[:60]}...")
         
-        # STRATÉGIE 3: Nettoyage et retry
-        print("   Tentative 3: Après nettoyage...")
+        # STRATÉGIE 4: Nettoyage agressif final
+        print("   Tentative 4: Nettoyage agressif...")
         try:
-            cleaned = RobustJSONParser._clean_json(response_text)
-            if cleaned and cleaned != "{}":
-                data = json.loads(cleaned)
-                print("      ✅ JSON valide après nettoyage!")
+            aggressive_clean = RobustJSONParser._aggressive_clean(response_text)
+            if aggressive_clean and aggressive_clean != "{}":
+                data = json.loads(aggressive_clean)
+                print("      ✅ JSON valide après nettoyage agressif!")
                 return data
         except Exception as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
         # FALLBACK: Retourner dict minimal
-        print("   Tentative 4: Fallback minimal")
+        print("   Tentative 5: Fallback minimal")
         print("      ⚠️ Retour données minimales")
         return RobustJSONParser._minimal_fallback()
+    
+    @staticmethod
+    def _fix_french_apostrophes(text: str) -> str:
+        """
+        ✅ NOUVEAU: Corrige les apostrophes françaises non échappées
+        
+        Problème: OpenAI génère "s'harmonise" au lieu de "s\'harmonise"
+        Solution: Trouver et échapper les apostrophes dans les strings JSON
+        """
+        result = []
+        in_string = False
+        i = 0
+        
+        while i < len(text):
+            char = text[i]
+            
+            # Détecter début/fin de string JSON
+            if char == '"' and (i == 0 or text[i-1] != '\\'):
+                in_string = not in_string
+                result.append(char)
+                i += 1
+                continue
+            
+            # Si dans une string et on trouve une apostrophe non échappée
+            if in_string and char == "'":
+                # Vérifier si déjà échappée
+                if i > 0 and text[i-1] == '\\':
+                    result.append(char)
+                else:
+                    # Échapper l'apostrophe
+                    result.append("\\'")
+                i += 1
+                continue
+            
+            result.append(char)
+            i += 1
+        
+        return ''.join(result)
     
     @staticmethod
     def _extract_complete_json(response_text: str) -> str:
@@ -158,6 +209,47 @@ class RobustJSONParser:
         # ✅ CORRECTION 4: Supprimer les virgules traînantes
         result = re.sub(r',(\s*})', r'\1', result)
         result = re.sub(r',(\s*])', r'\1', result)
+        
+        return result
+    
+    @staticmethod
+    def _aggressive_clean(json_str: str) -> str:
+        """
+        ✅ NOUVEAU: Nettoyage AGRESSIF pour cas désespérés
+        
+        Supprime tout ce qui n'est pas JSON valide
+        """
+        # Extraire entre premier { et dernier }
+        start_idx = json_str.find('{')
+        end_idx = json_str.rfind('}')
+        
+        if start_idx == -1 or end_idx == -1:
+            return "{}"
+        
+        result = json_str[start_idx:end_idx+1]
+        
+        # Nettoyage basique
+        result = re.sub('[\x00-\x1f\x7f]', ' ', result)
+        result = result.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # Fixer les apostrophes françaises
+        result = RobustJSONParser._fix_french_apostrophes(result)
+        
+        # Supprimer virgules traînantes
+        result = re.sub(r',(\s*[}\]])', r'\1', result)
+        
+        # Réduire espaces
+        result = re.sub(r' +', ' ', result)
+        
+        # Essayer de réparer les strings non terminées
+        # Compter les guillemets
+        quote_count = result.count('"') - result.count('\\"')
+        if quote_count % 2 != 0:
+            # Nombre impair de guillemets = problème
+            # Ajouter un guillemet avant la dernière }
+            last_brace = result.rfind('}')
+            if last_brace > 0:
+                result = result[:last_brace] + '"' + result[last_brace:]
         
         return result
     

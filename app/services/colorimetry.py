@@ -1,14 +1,19 @@
 """
-Colorimetry Service Enhanced v7.0 - 3 APPELS OPTIMISÉS
+Colorimetry Service Enhanced v7.1 - 3 APPELS OPTIMISÉS
 ✅ Part 1: Saison + Analyses détaillées (50+ mots)
 ✅ Part 2: Palette + Couleurs génériques + Associations
 ✅ Part 3: Notes compatibilité + Unwanted colors + Maquillage + Vernis
+🔧 CORRIGÉ: Utilise FALLBACK_PALETTE_AND_ASSOCIATIONS si Part 2 échoue
 """
 
 import json
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT, COLORIMETRY_PART1_USER_PROMPT
-from app.prompts.colorimetry_part2_prompt import COLORIMETRY_PART2_SYSTEM_PROMPT, COLORIMETRY_PART2_USER_PROMPT_TEMPLATE
+from app.prompts.colorimetry_part2_prompt import (
+    COLORIMETRY_PART2_SYSTEM_PROMPT, 
+    COLORIMETRY_PART2_USER_PROMPT_TEMPLATE,
+    FALLBACK_PALETTE_AND_ASSOCIATIONS  # ✅ AJOUTÉ: Import du fallback
+)
 from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
 
@@ -25,7 +30,7 @@ class ColorimetryService:
         Part 3: Notes compatibilité + Unwanted colors + Maquillage
         """
         try:
-            print("\n🎨 Analyse colorimétrie (3 APPELS - v7.0)...")
+            print("\n🎨 Analyse colorimétrie (3 APPELS - v7.1)...")
             
             face_photo_url = user_data.get("face_photo_url")
             if not face_photo_url:
@@ -110,15 +115,27 @@ class ColorimetryService:
             print(response_part2[:300])
             
             print("   🔍 Parsing JSON Part 2...")
-            response_part2_cleaned = response_part2.replace('\r', ' ').replace('\x00', '')
+            
+            # ✅ NOUVEAU: Nettoyage agressif des apostrophes AVANT parsing
+            response_part2_cleaned = self._clean_french_apostrophes(response_part2)
             result_part2 = RobustJSONParser.parse_json_with_fallback(response_part2_cleaned)
             
-            if not result_part2:
-                print("   ⚠️ Erreur Part 2, utilisant fallback")
-                result_part2 = {}
-            else:
+            # ✅ CORRIGÉ: Vérifier si result_part2 est VRAIMENT utilisable
+            palette = result_part2.get("palette_personnalisee", []) if result_part2 else []
+            associations = result_part2.get("associations_gagnantes", []) if result_part2 else []
+            all_colors = result_part2.get("allColorsWithNotes", []) if result_part2 else []
+            
+            # ✅ NOUVEAU: Si palette vide → utiliser FALLBACK
+            if not palette or len(palette) == 0:
+                print("   ⚠️ Palette vide après parsing, utilisation FALLBACK_PALETTE_AND_ASSOCIATIONS")
+                result_part2 = FALLBACK_PALETTE_AND_ASSOCIATIONS.copy()
                 palette = result_part2.get("palette_personnalisee", [])
                 associations = result_part2.get("associations_gagnantes", [])
+                all_colors = result_part2.get("allColorsWithNotes", [])
+                print(f"   ✅ FALLBACK activé:")
+                print(f"      • Palette fallback: {len(palette)} couleurs")
+                print(f"      • Associations fallback: {len(associations)} occasions")
+            else:
                 print(f"   ✅ Part 2 parsé:")
                 print(f"      • Palette: {len(palette)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
@@ -156,7 +173,9 @@ class ColorimetryService:
             print(response_part3[:300])
             
             print("   🔍 Parsing JSON Part 3...")
-            response_part3_cleaned = response_part3.replace('\r', ' ').replace('\x00', '')
+            
+            # ✅ NOUVEAU: Même nettoyage pour Part 3
+            response_part3_cleaned = self._clean_french_apostrophes(response_part3)
             result_part3 = RobustJSONParser.parse_json_with_fallback(response_part3_cleaned)
             
             if not result_part3:
@@ -182,11 +201,12 @@ class ColorimetryService:
                 # Part 1
                 "saison_confirmee": result_part1.get("saison_confirmee", "Indéterminée"),
                 "sous_ton_detecte": result_part1.get("sous_ton_detecte", "neutre"),
+                "justification_saison": result_part1.get("justification_saison", ""),
                 "eye_color": eye_color,
                 "hair_color": hair_color,
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
                 
-                # Part 2
+                # Part 2 (ou fallback)
                 "palette_personnalisee": result_part2.get("palette_personnalisee", []),
                 "allColorsWithNotes": result_part2.get("allColorsWithNotes", []),
                 "associations_gagnantes": result_part2.get("associations_gagnantes", []),
@@ -198,12 +218,7 @@ class ColorimetryService:
                 "nailColors": result_part3.get("nailColors", [])
             }
             
-            # Fallbacks
-            if not result.get("palette_personnalisee") and result_part2:
-                palette = result_part2.get("palette_personnalisee", [])
-                result["palette_personnalisee"] = palette
-                print(f"   ✅ Palette consolidée: {len(palette)} couleurs")
-            
+            # Fallback analyse détaillée
             if not result.get("analyse_colorimetrique_detaillee"):
                 result["analyse_colorimetrique_detaillee"] = self._create_default_analyse(
                     result.get("saison_confirmee", "Automne"),
@@ -225,6 +240,33 @@ class ColorimetryService:
             import traceback
             traceback.print_exc()
             raise
+    
+    def _clean_french_apostrophes(self, text: str) -> str:
+        """
+        ✅ NOUVEAU: Nettoie les apostrophes françaises problématiques
+        Convertit les apostrophes non échappées en versions échappées JSON-safe
+        """
+        import re
+        
+        # Supprimer caractères de contrôle
+        text = text.replace('\r', ' ').replace('\x00', '')
+        
+        # Patterns d'apostrophes françaises courantes qui cassent le JSON
+        # On remplace les apostrophes dans les mots français courants
+        french_patterns = [
+            (r"([sl])'([aehiouy])", r"\1\\'\2"),  # s'harmonise, l'harmonie, etc.
+            (r"([dnc])'([aeiou])", r"\1\\'\2"),   # d'une, n'est, c'est, etc.
+            (r"qu'([aeiou])", r"qu\\'\1"),         # qu'il, qu'un, etc.
+            (r"j'([aeiou])", r"j\\'\1"),           # j'ai, etc.
+        ]
+        
+        # Appliquer seulement DANS les strings JSON (entre guillemets)
+        # Approche simple: remplacer les patterns évidents
+        for pattern, replacement in french_patterns:
+            # Ne pas remplacer si déjà échappé
+            text = re.sub(r"(?<!\\)" + pattern, replacement, text, flags=re.IGNORECASE)
+        
+        return text
     
     def _create_default_analyse(self, saison: str, user_data: dict) -> dict:
         """Fallback analyse si OpenAI échoue"""
