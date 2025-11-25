@@ -1,20 +1,21 @@
+# -*- coding: utf-8 -*-
 """
-COLORIMETRY PART 2 v2.0 - SIMPLIFIÉ & ROBUSTE
-✅ Pas de {{ }} doubles - JSON direct
-✅ Escaping strict des apostrophes
-✅ Palette réduite 10 couleurs (au lieu de 12)
-✅ Associations réduites 3-4 (au lieu de 6)
-✅ Fallback hardcoded si erreur
+COLORIMETRY PART 2 v2.0 - SIMPLIFIE & ROBUSTE
+- Pas de {{ }} doubles - JSON direct
+- Escaping strict des apostrophes
+- Palette reduite 10 couleurs (au lieu de 12)
+- Associations reduites 3-4 (au lieu de 6)
+- Fallback hardcoded si erreur
 """
 
-COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous êtes expert colorimètre. Générez UNIQUEMENT JSON valide parfait.
+COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous etes expert colorimetre. Generez UNIQUEMENT JSON valide parfait.
 Commencez par { et terminez par }.
-RÈGLE CRITIQUE: Échappez TOUTES les apostrophes avec backslash (\\') - Exemple: s\\'harmonise
-Aucun texte avant/après JSON."""
+REGLE CRITIQUE: Echappez TOUTES les apostrophes avec backslash (\\') - Exemple: s\\'harmonise
+Aucun texte avant/apres JSON."""
 
-COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """PALETTE PERSONNALISÉE - Part 2 colorimétrie.
+COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """PALETTE PERSONNALISEE - Part 2 colorimetrie.
 
-DONNÉES CLIENT:
+DONNEES CLIENT:
 Saison: {SAISON}
 Sous-ton: {SOUS_TON}
 Yeux: {EYE_COLOR}
@@ -27,13 +28,13 @@ RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples ac
       "name": "couleur1",
       "hex": "#HEX1",
       "note": 10,
-      "commentaire": "15-20 mots spécifiques au client"
+      "commentaire": "15-20 mots specifiques au client"
     }},
     ...10 COULEURS MAXIMUM (jamais moins!)
   ],
 
   "allColorsWithNotes": [
-    {{"name": "jaune", "note": 9, "hex": "#FFFF00", "commentaire": "Jaunes dorés amplifient or naturel."}},
+    {{"name": "jaune", "note": 9, "hex": "#FFFF00", "commentaire": "Jaunes dores amplifient or naturel."}},
     {{"name": "rouge", "note": 8, "hex": "#FF0000", "commentaire": "Rouges chauds harmonisent. Froids ternissent."}},
     {{"name": "vert", "note": 8, "hex": "#008000", "commentaire": "Verts chauds harmonisent naturellement."}},
     {{"name": "bleu", "note": 3, "hex": "#0000FF", "commentaire": "Bleus froids isolent. A eviter absolument."}},
@@ -46,10 +47,10 @@ RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples ac
     {{"name": "marron", "note": 9, "hex": "#8B4513", "commentaire": "Marrons chauds intensifient yeux."}},
     {{"name": "rose_pale", "note": 2, "hex": "#FFB6C1", "commentaire": "Rose pale froid ternit teint chaud."}},
     {{"name": "rose_fuchsia", "note": 1, "hex": "#FF20F0", "commentaire": "Fuchsia froid cree dissonance extreme."}},
-    {{"name": "rose_corail", "note": 9, "hex": "#FF7F50", "commentaire": "Rose corail chaud s\\\'harmonise magnifiquement."}},
+    {{"name": "rose_corail", "note": 9, "hex": "#FF7F50", "commentaire": "Rose corail chaud s\\'harmonise magnifiquement."}},
     {{"name": "camel", "note": 10, "hex": "#C19A6B", "commentaire": "Camel essentiel. Reproduit harmonie naturelle."}},
     {{"name": "marine", "note": 3, "hex": "#000080", "commentaire": "Marine froid cree contraste desharmonise."}},
-    {{"name": "bordeaux", "note": 9, "hex": "#800020", "commentaire": "Bordeaux chaud sophistique s\\\'harmonise parfait."}},
+    {{"name": "bordeaux", "note": 9, "hex": "#800020", "commentaire": "Bordeaux chaud sophistique s\\'harmonise parfait."}},
     {{"name": "kaki", "note": 8, "hex": "#C3B091", "commentaire": "Kaki chaud complete sous-ton creant harmonie."}},
     {{"name": "turquoise", "note": 1, "hex": "#40E0D0", "commentaire": "Turquoise froide incompatible total."}}
   ],
@@ -68,26 +69,26 @@ RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples ac
       "effet": "Naturel sans-effort"
     }},
     {{
-      "occasion": "soirée",
+      "occasion": "soiree",
       "colors": ["Bordeaux", "Gris Taupe", "Terracotta"],
       "color_hex": ["#6D071A", "#8B8589", "#E2725B"],
       "effet": "Sophistication chaleureuse",
-      "description": "Harmonie riche et profonde qui respire l\\\'elegance nocturne. Bordeaux apporte profondeur, gris taupe cree equilibre, terracotta ajoute chaleur. Parfait pour diners, cocktails, evenements ou vous souhaitez briller discretement avec raffinement."
+      "description": "Harmonie riche et profonde qui respire l\\'elegance nocturne. Bordeaux apporte profondeur, gris taupe cree equilibre, terracotta ajoute chaleur. Parfait pour diners, cocktails, evenements ou vous souhaitez briller discretement avec raffinement."
     }}
   ]
 }}
 
-RÈGLES STRICTES - OBLIGATOIRE:
-✅ palette_personnalisee = 10 COULEURS EXACTEMENT
-✅ allColorsWithNotes = 19 couleurs FIXES (données ci-dessus)
-✅ associations_gagnantes = 3 OCCASIONS (professionnel, casual, soirée AVEC description 40+ mots)
-✅ ÉCHAPPER APOSTROPHES: s\\\'harmonise (backslash-apostrophe)
-✅ Pas d\\\'accents accentués dans JSON - utiliser version plain: é→e, è->e
-✅ JSON VALIDE COMPLET - Pas de caractères de contrôle
-✅ ZÉRO texte avant/après JSON
+REGLES STRICTES - OBLIGATOIRE:
+- palette_personnalisee = 10 COULEURS EXACTEMENT
+- allColorsWithNotes = 19 couleurs FIXES (donnees ci-dessus)
+- associations_gagnantes = 3 OCCASIONS (professionnel, casual, soiree AVEC description 40+ mots)
+- ECHAPPER APOSTROPHES: s\\'harmonise (backslash-apostrophe)
+- Pas d\\'accents accentues dans JSON - utiliser version plain: e au lieu de e accent
+- JSON VALIDE COMPLET - Pas de caracteres de controle
+- ZERO texte avant/apres JSON
 """
 
-# Fallback hardcoded si OpenAI échoue
+# Fallback hardcoded si OpenAI echoue
 FALLBACK_PALETTE_AND_ASSOCIATIONS = {
     "palette_personnalisee": [
         {"name": "terracotta", "hex": "#E2725B", "note": 10, "commentaire": "Couleur centrale de votre palette. Apporte chaleur et luminosite au teint."},
@@ -115,7 +116,7 @@ FALLBACK_PALETTE_AND_ASSOCIATIONS = {
         {"name": "gris", "displayName": "Gris", "note": 6, "commentaire": "Gris taupe OK. Gris froid non.", "hex": "#808080"},
         {"name": "blanc", "displayName": "Blanc", "note": 5, "commentaire": "Blanc pur cree micro-contraste hurte.", "hex": "#FFFFFF"},
         {"name": "noir", "displayName": "Noir", "note": 4, "commentaire": "Noir pur dur. Charbon plus flatteur.", "hex": "#000000"},
-        {"name": "bleu", "displayName": "Bleu", "note": 3, "commentaire": "Blus froids isolent. A eviter absolument.", "hex": "#0000FF"},
+        {"name": "bleu", "displayName": "Bleu", "note": 3, "commentaire": "Bleus froids isolent. A eviter absolument.", "hex": "#0000FF"},
         {"name": "marine", "displayName": "Marine", "note": 3, "commentaire": "Marine froid cree contraste desharmonise.", "hex": "#000080"},
         {"name": "violet", "displayName": "Violet", "note": 2, "commentaire": "Violets froids ternissent presence.", "hex": "#800080"},
         {"name": "rose_pale", "displayName": "Rose Pale", "note": 2, "commentaire": "Rose pale froid ternit teint chaud.", "hex": "#FFB6C1"},
@@ -136,7 +137,7 @@ FALLBACK_PALETTE_AND_ASSOCIATIONS = {
             "effet": "Naturel sans-effort"
         },
         {
-            "occasion": "soirée",
+            "occasion": "soiree",
             "colors": ["Bordeaux", "Gris Taupe", "Terracotta"],
             "color_hex": ["#6D071A", "#8B8589", "#E2725B"],
             "effet": "Sophistication chaleureuse",

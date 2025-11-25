@@ -1,5 +1,7 @@
 import json
 import uuid
+import sys
+import logging
 from datetime import datetime
 
 import stripe
@@ -11,21 +13,37 @@ from app.services import (
     email_service,
     pdf_generation,
     report_generator,
-    supabase_reports,  # gardé si tu l'utilises ailleurs
+    supabase_reports,
 )
-from app.services.pdf_storage_manager import PDFStorageManager  # ✅ NOUVEAU IMPORT
+from app.services.pdf_storage_manager import PDFStorageManager
 from app.utils.supabase_client import supabase
+
+# =====================================================
+# CONFIGURATION LOGGING FORCE
+# =====================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
+def log(message: str):
+    """Force l'affichage du log immediatement"""
+    print(message, flush=True)
+    logger.info(message)
+    sys.stdout.flush()
 
 app = FastAPI()
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
-# --- Logs au boot pour vérifier l'env déployé ---
-print(f"[BOOT] Using SUPABASE_URL (masked): ...{settings.SUPABASE_URL[-16:]}")
-print(f"[BOOT] Webhook route ready: /api/webhook/stripe")
+# --- Logs au boot pour verifier l'env deploye ---
+log(f"[BOOT] Using SUPABASE_URL (masked): ...{settings.SUPABASE_URL[-16:]}")
+log(f"[BOOT] Webhook route ready: /api/webhook/stripe")
 
 
 # =====================================================
-# ENDPOINTS DEBUG (à supprimer quand tout est OK)
+# ENDPOINTS DEBUG
 # =====================================================
 @app.get("/debug/supabase/env")
 async def debug_supabase_env():
@@ -46,7 +64,7 @@ async def debug_supabase_write():
             "created_at": datetime.utcnow().isoformat()
         })
         supabase.insert_table("reports", {
-            "id": str(uuid.uuid4()),  # si ta colonne id est uuid pk avec default, tu peux retirer cette ligne
+            "id": str(uuid.uuid4()),
             "user_id": "00000000-0000-0000-0000-000000000000",
             "payment_id": f"pay_debug_{uuid.uuid4().hex[:8]}",
             "pdf_url": "https://example.com/test.pdf",
@@ -59,7 +77,7 @@ async def debug_supabase_write():
 
 
 # =====================================================
-# WEBHOOK STRIPE — IDÉMPOTENT & ACK 200 IMMÉDIAT
+# WEBHOOK STRIPE - IDEMPOTENT & ACK 200 IMMEDIAT
 # =====================================================
 @app.post("/api/webhook/stripe")
 async def handle_stripe_webhook(
@@ -68,16 +86,12 @@ async def handle_stripe_webhook(
     stripe_signature: str = Header(None, alias="Stripe-Signature")
 ):
     """
-    On répond TOUJOURS 200 à Stripe pour éviter tout retry.
-    - Vérif signature : si invalide, on ignore mais on ACK 200.
-    - Dédup par event.id (table stripe_events).
-    - On ne traite que checkout.session.completed.
-    - Le job lourd (IA -> PDF -> Email) part en tâche de fond.
+    On repond TOUJOURS 200 a Stripe pour eviter tout retry.
     """
     try:
         payload_bytes = await request.body()
 
-        # 1) Vérif signature — si mauvaise, on ACK 200 mais on ne traite pas
+        # 1) Verif signature
         try:
             event = stripe.Webhook.construct_event(
                 payload=payload_bytes,
@@ -85,18 +99,18 @@ async def handle_stripe_webhook(
                 secret=settings.STRIPE_WEBHOOK_SECRET
             )
         except Exception as sig_err:
-            print(f"[WEBHOOK] Signature invalide: {sig_err} — event ignoré (ACK 200).")
+            log(f"[WEBHOOK] Signature invalide: {sig_err} - event ignore (ACK 200).")
             return JSONResponse(status_code=200, content={"ok": True, "ignored": "bad_signature"})
 
         evt_id = event.get("id")
         evt_type = event.get("type")
-        print(f"💬 Webhook reçu : {evt_type} ({evt_id})")
+        log(f">>> WEBHOOK RECU : {evt_type} ({evt_id})")
 
         # 2) Idempotence event Stripe
         try:
             existing_evt = supabase.query("stripe_events", select_fields="id", filters={"id": evt_id})
             if existing_evt.data:
-                print("🛑 Événement Stripe déjà traité → stop (ACK 200).")
+                log(">>> Event Stripe deja traite -> stop (ACK 200).")
                 return JSONResponse(status_code=200, content={"ok": True, "deduped": True})
             supabase.insert_table("stripe_events", {
                 "id": evt_id,
@@ -105,8 +119,7 @@ async def handle_stripe_webhook(
                 "created_at": datetime.utcnow().isoformat()
             })
         except Exception as e:
-            # Ne jamais échouer le webhook → Stripe ne doit pas retenter
-            print(f"⚠️ Échec log stripe_events (on continue quand même): {e}")
+            log(f">>> Echec log stripe_events (on continue): {e}")
 
         # 3) On ne traite que checkout.session.completed
         if evt_type != "checkout.session.completed":
@@ -117,86 +130,94 @@ async def handle_stripe_webhook(
         payment_id = session.get("id")
 
         if not user_id or not payment_id:
-            print("[WEBHOOK] Missing userId/payment_id — ACK 200 et on ignore.")
+            log("[WEBHOOK] Missing userId/payment_id - ACK 200 et on ignore.")
             return JSONResponse(status_code=200, content={"ok": True, "ignored": "missing_fields"})
 
-        # 4) Dédoublonnage par payment_id
+        # 4) Dedoublonnage par payment_id
         try:
             existing = supabase.query("reports", select_fields="id", filters={"payment_id": payment_id})
             if existing.data:
-                print("🛑 Rapport déjà généré pour ce payment_id (ACK 200).")
+                log(">>> Rapport deja genere pour ce payment_id (ACK 200).")
                 return JSONResponse(status_code=200, content={"ok": True, "already_processed": True})
         except Exception as e:
-            print(f"[WEBHOOK] Lookup reports failed (on continue): {e}")
+            log(f"[WEBHOOK] Lookup reports failed (on continue): {e}")
 
         # 5) Lancer le job asynchrone et ACK 200 tout de suite
+        log(f">>> LANCEMENT TACHE ASYNC user={user_id} payment={payment_id}")
         background_tasks.add_task(process_checkout_session_job, user_id, payment_id)
-        print(f"🚀 Tâche asynchrone lancée user={user_id} payment={payment_id}")
+        log(f">>> Tache ajoutee, retour 200 a Stripe")
         return JSONResponse(status_code=200, content={"ok": True})
 
     except Exception as e:
-        # QUOI QU'IL ARRIVE : on ACK 200 pour stopper les retries Stripe
-        print(f"❌ Webhook exception (ACK 200 quand même): {e}")
+        log(f">>> WEBHOOK EXCEPTION: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(status_code=200, content={"ok": True, "note": "exception_caught_but_acked"})
 
 
 # =====================================================
-# TÂCHE ASYNCHRONE : IA + PDF + MAIL
+# TACHE ASYNCHRONE : IA + PDF + MAIL
 # =====================================================
 async def process_checkout_session_job(user_id: str, payment_id: str):
+    """Tache de generation de rapport - logs forces"""
+    log(f"========== DEBUT TACHE ASYNC ==========")
+    log(f">>> user_id={user_id}")
+    log(f">>> payment_id={payment_id}")
+    
     try:
-        print("📄 Début de génération du rapport IA")
+        log(">>> Etape 1: Recuperation profil utilisateur...")
 
-        # Récup infos utilisateur
+        # Recup infos utilisateur
         profile_response = supabase.query("user_profiles", select_fields="*", filters={"user_id": user_id})
         user_profile = profile_response.data[0] if profile_response.data else {}
+        log(f">>> Profile trouve: {bool(user_profile)}")
 
         photos_response = supabase.query("user_photos", select_fields="*", filters={"user_id": user_id})
         photos = photos_response.data if photos_response.data else []
+        log(f">>> Photos trouvees: {len(photos)}")
 
         auth_response = supabase.query("profiles", select_fields="*", filters={"id": user_id})
         auth = auth_response.data[0] if auth_response.data else {}
 
         user_email = auth.get("email")
-        
-        # ✅ Extraire les noms de la table profiles (Auth Supabase)
         first_name = auth.get("first_name", "Client(e)")
         last_name = auth.get("last_name", "")
         user_name = f"{first_name} {last_name}".strip()
+        
+        log(f">>> Email: {user_email}")
+        log(f">>> Nom: {user_name}")
 
         # Extraire les URLs des photos par type
-        # ⚠️ IMPORTANT: Utiliser les vrais noms de colonnes Supabase
         face_photo_url = None
         body_photo_url = None
         
-        print(f"   📸 Traitement de {len(photos)} photo(s) trouvée(s)...")
+        log(f">>> Traitement de {len(photos)} photo(s)...")
         
         for photo in photos:
-            # ✅ CORRECTED: utiliser "photo_type" et "cloudinary_url"
             photo_type = photo.get("photo_type", "").lower()
             photo_url = photo.get("cloudinary_url", "")
             
-            print(f"      📸 Photo: type='{photo_type}', url={photo_url[:50] if photo_url else 'NONE'}...")
+            log(f">>>    Photo: type='{photo_type}'")
             
             if "face" in photo_type and not face_photo_url:
-                print(f"         ✓ Assigné comme FACE_PHOTO")
                 face_photo_url = photo_url
+                log(f">>>    -> Assigne comme FACE")
             elif "body" in photo_type and not body_photo_url:
-                print(f"         ✓ Assigné comme BODY_PHOTO")
                 body_photo_url = photo_url
+                log(f">>>    -> Assigne comme BODY")
         
-        # Fallback: si pas de type, utiliser les deux premiers
+        # Fallback
         if not face_photo_url and len(photos) > 0:
-            print(f"   ⚠️ Fallback: Utilisation de la 1ère photo comme FACE")
             face_photo_url = photos[0].get("cloudinary_url", "")
+            log(f">>> Fallback: 1ere photo comme FACE")
         if not body_photo_url and len(photos) > 1:
-            print(f"   ⚠️ Fallback: Utilisation de la 2ème photo comme BODY")
             body_photo_url = photos[1].get("cloudinary_url", "")
+            log(f">>> Fallback: 2eme photo comme BODY")
 
-        print(f"   ✅ face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
-        print(f"   ✅ body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
+        log(f">>> face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
+        log(f">>> body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
 
-        # ✅ CORRECTION: Extraire les données du JSONB imbriqué (structure onboarding_data)
+        # Extraire les donnees du JSONB
         onboarding_data = user_profile.get("onboarding_data", {})
         personal_info = onboarding_data.get("personal_info", {})
         measurements = onboarding_data.get("measurements", {})
@@ -212,7 +233,6 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
             "photos": photos,
             "face_photo_url": face_photo_url,
             "body_photo_url": body_photo_url,
-            # ✅ EXTRACTION CORRECTE DU JSONB
             "eye_color": onboarding_data.get("eye_color", ""),
             "hair_color": onboarding_data.get("hair_color", ""),
             "age": personal_info.get("age", 0),
@@ -221,78 +241,76 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
             "shoulder_circumference": measurements.get("shoulder_circumference", 0),
             "waist_circumference": measurements.get("waist_circumference", 0),
             "hip_circumference": measurements.get("hip_circumference", 0),
-            "bust_circumference": measurements.get("shoulder_circumference", 0),  # Approximation
+            "bust_circumference": measurements.get("shoulder_circumference", 0),
             "unwanted_colors": color_prefs.get("disliked_colors", [])
         }
 
-        print(f"   👤 User data extrait du JSONB:")
-        print(f"      ✓ first_name: {user_data['first_name']}")
-        print(f"      ✓ last_name: {user_data['last_name']}")
-        print(f"      ✓ age: {user_data['age']}")
-        print(f"      ✓ height: {user_data['height']}")
-        print(f"      ✓ weight: {user_data['weight']}")
-        print(f"      ✓ eye_color: {user_data['eye_color']}")
-        print(f"      ✓ hair_color: {user_data['hair_color']}")
-        print(f"      ✓ shoulder_circumference: {user_data['shoulder_circumference']}")
+        log(f">>> User data extrait:")
+        log(f">>>    age: {user_data['age']}")
+        log(f">>>    height: {user_data['height']}")
+        log(f">>>    eye_color: {user_data['eye_color']}")
+        log(f">>>    hair_color: {user_data['hair_color']}")
 
-        # Garde-fou email (au cas où Stripe re-tente malgré tout)
+        # Garde-fou email
         existing = supabase.query("reports", select_fields="email_sent", filters={"payment_id": payment_id})
         if existing.data and existing.data[0].get("email_sent"):
-            print("🛑 Email déjà envoyé → on arrête ici.")
+            log(">>> Email deja envoye -> on arrete ici.")
             return
 
-        # IA : Génération du rapport complet
+        # IA : Generation du rapport complet
+        log(">>> Etape 2: GENERATION RAPPORT IA...")
         report = await report_generator.generate_complete_report(user_data)
+        log(f">>> Rapport IA genere!")
 
-        # PDF - Générer via PDFMonkey
-        print("🎨 Génération PDF via PDFMonkey...")
+        # PDF - Generer via PDFMonkey
+        log(">>> Etape 3: GENERATION PDF...")
         pdf_url_temporary = await pdf_generation.generate_report_pdf(report, user_data)
-        print(f"✅ PDF généré (temporaire S3): {pdf_url_temporary[:80]}...")
+        log(f">>> PDF genere (temporaire): {pdf_url_temporary[:60]}...")
 
-        # ✅ NOUVEAU: Télécharger et sauvegarder dans Supabase (lien PERMANENT)
-        print("💾 Sauvegarde du PDF dans Supabase Storage...")
+        # Sauvegarder dans Supabase (lien PERMANENT)
+        log(">>> Etape 4: SAUVEGARDE PDF PERMANENT...")
         try:
             pdf_url_permanent = await PDFStorageManager.download_and_save_pdf(
                 pdf_url=pdf_url_temporary,
                 user_id=user_id,
-                report_id=payment_id  # Utiliser payment_id comme report_id
+                report_id=payment_id
             )
             
             if pdf_url_permanent:
-                pdf_url = pdf_url_permanent  # ✅ Utiliser le lien PERMANENT
-                print(f"✅ PDF sauvegardé permanemment: {pdf_url[:80]}...")
+                pdf_url = pdf_url_permanent
+                log(f">>> PDF sauvegarde permanemment!")
             else:
-                # Fallback si erreur
-                print("⚠️ Erreur sauvegarde, utilisation lien temporaire PDFMonkey")
+                log(">>> Erreur sauvegarde, utilisation lien temporaire")
                 pdf_url = pdf_url_temporary
                 
         except Exception as e:
-            print(f"⚠️ Exception lors de la sauvegarde PDF: {e}")
-            print("   Fallback sur lien temporaire PDFMonkey")
+            log(f">>> Exception sauvegarde PDF: {e}")
             pdf_url = pdf_url_temporary
 
-        # Email - Envoyer avec le lien PERMANENT (ou fallback temporaire)
+        # Email
         if pdf_url:
-            print(f"📧 Envoi email avec PDF ({pdf_url[:60]}...)")
+            log(f">>> Etape 5: ENVOI EMAIL...")
             await email_service.send_report_email(
                 user_email=user_email,
                 user_name=user_name,
-                pdf_url=pdf_url,  # ← Lien PERMANENT ou fallback
+                pdf_url=pdf_url,
                 report_data=report
             )
-            print("📧 Email envoyé au client.")
+            log(">>> Email envoye!")
 
-        # Sauvegarde en base (clé métier = payment_id)
+        # Sauvegarde en base
         supabase.insert_table("reports", {
             "user_id": user_id,
             "payment_id": payment_id,
-            "pdf_url": pdf_url,  # ← Lien PERMANENT ou fallback sauvegardé
+            "pdf_url": pdf_url,
             "email_sent": True,
             "created_at": datetime.utcnow().isoformat()
         })
-        print("💾 Rapport sauvegardé dans Supabase.")
+        log(">>> Rapport sauvegarde dans Supabase.")
+        log(f"========== FIN TACHE ASYNC (SUCCES) ==========")
 
     except Exception as e:
-        print(f"❌ Erreur pendant la tâche de génération : {e}")
+        log(f">>> ERREUR TACHE ASYNC: {e}")
         import traceback
         traceback.print_exc()
+        log(f"========== FIN TACHE ASYNC (ECHEC) ==========")
