@@ -1,12 +1,13 @@
 """
-PDF Data Mapper v5.0 - COMPLET & FUSIONNÉ
+PDF Data Mapper v5.1 - CORRIGÉ SNAKE_CASE
 ✅ Garde logique complète ancien (466 lignes)
+✅ CORRIGÉ: Utilise snake_case pour correspondre au template PDFMonkey
 ✅ Ajoute displayName generation (backend, 0 tokens OpenAI)
 ✅ Ajoute unwanted_colors mapping + traitement
 ✅ COLOR_HEX_MAP global: 40+ couleurs
 ✅ COLOR_NAME_MAP: reverse mapping
 ✅ Associations enrichies avec color_details + displayName
-✅ analyseColorimetriqueDetaillee INCLUSE avec impactVisuel
+✅ analyse_colorimetrique_detaillee INCLUSE avec impact_visuel (snake_case)
 """
 
 from typing import Dict, Any, Optional, List
@@ -38,6 +39,11 @@ class PDFDataMapper:
         "kaki": "Kaki",
         "bordeaux": "Bordeaux",
         "terracotta": "Terracotta",
+        "rouge_chaud": "Rouge Chaud",
+        "olive": "Olive",
+        "brique": "Brique",
+        "ocre": "Ocre",
+        "rouille": "Rouille",
     }
     
     # ✅ COLOR_HEX_MAP GLOBAL - 40+ couleurs (palette + associations + fallback)
@@ -109,7 +115,7 @@ class PDFDataMapper:
             return PDFDataMapper.DISPLAY_NAMES[color_name.lower()]
         
         # Sinon: capitaliser simple
-        return color_name.title()
+        return color_name.replace("_", " ").title()
     
     @staticmethod
     def enrich_with_display_names(items: List[dict]) -> List[dict]:
@@ -132,31 +138,6 @@ class PDFDataMapper:
         if isinstance(value, list):
             return value
         return default or []
-    
-    @staticmethod
-    def _convert_snake_to_camel(obj: Any) -> Any:
-        """Convertit clés snake_case en camelCase récursivement"""
-        if not isinstance(obj, dict):
-            return obj
-        
-        def to_camel(snake_str):
-            components = snake_str.split('_')
-            return components[0] + ''.join(x.title() for x in components[1:])
-        
-        converted = {}
-        for key, value in obj.items():
-            camel_key = to_camel(key)
-            if isinstance(value, dict):
-                converted[camel_key] = PDFDataMapper._convert_snake_to_camel(value)
-            elif isinstance(value, list) and value and isinstance(value[0], dict):
-                converted[camel_key] = [
-                    PDFDataMapper._convert_snake_to_camel(item) if isinstance(item, dict) else item
-                    for item in value
-                ]
-            else:
-                converted[camel_key] = value
-        
-        return converted
     
     @staticmethod
     def _build_all_colors_with_notes(notes_compatibilite: dict) -> list:
@@ -195,43 +176,58 @@ class PDFDataMapper:
         enriched = []
         
         for assoc in associations:
-            hex_codes = assoc.get("colors", [])
+            # Gérer les deux formats possibles: "colors" ou "color_hex"
+            hex_codes = assoc.get("color_hex", assoc.get("colors", []))
+            color_names = assoc.get("colors", [])
             color_details = []
             
-            for hex_code in hex_codes:
-                # Chercher dans palette
-                found = None
-                for color in palette:
-                    if color.get("hex") == hex_code:
+            # Si color_hex existe, l'utiliser
+            if assoc.get("color_hex"):
+                for i, hex_code in enumerate(hex_codes):
+                    # Chercher dans palette
+                    found = None
+                    for color in palette:
+                        if color.get("hex") == hex_code:
+                            found = {
+                                "name": color.get("name", ""),
+                                "displayName": color.get("displayName", PDFDataMapper.generate_display_name(color.get("name", ""))),
+                                "hex": hex_code,
+                            }
+                            break
+                    
+                    # Fallback COLOR_HEX_MAP
+                    if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
+                        color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
                         found = {
-                            "name": color.get("name", ""),
-                            "displayName": color.get("displayName", PDFDataMapper.generate_display_name(color.get("name", ""))),
+                            "name": color_info.get("name", ""),
+                            "displayName": color_info.get("displayName", ""),
                             "hex": hex_code,
                         }
-                        break
-                
-                # Fallback COLOR_HEX_MAP
-                if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
-                    color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
+                    
+                    # Ultra-fallback: utiliser le nom de la liste colors si dispo
+                    if not found:
+                        name = color_names[i] if i < len(color_names) else hex_code
+                        found = {
+                            "name": name,
+                            "displayName": PDFDataMapper.generate_display_name(name),
+                            "hex": hex_code,
+                        }
+                    
+                    color_details.append(found)
+            else:
+                # Sinon, utiliser les noms de couleurs
+                for name in color_names:
+                    hex_code = PDFDataMapper.COLOR_NAME_MAP.get(name.lower(), "#808080")
                     found = {
-                        "name": color_info.get("name", ""),
-                        "displayName": color_info.get("displayName", ""),
+                        "name": name,
+                        "displayName": PDFDataMapper.generate_display_name(name),
                         "hex": hex_code,
                     }
-                
-                # Ultra-fallback
-                if not found:
-                    found = {
-                        "name": hex_code,
-                        "displayName": hex_code,
-                        "hex": hex_code,
-                    }
-                
-                color_details.append(found)
+                    color_details.append(found)
             
             enriched_assoc = {
                 **assoc,
-                "combo": hex_codes,
+                "combo": hex_codes if assoc.get("color_hex") else color_names,
                 "color_details": color_details,
             }
             enriched.append(enriched_assoc)
@@ -278,7 +274,7 @@ class PDFDataMapper:
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
-        """Prépare variables Liquid pour PDFMonkey"""
+        """Prépare variables Liquid pour PDFMonkey - SNAKE_CASE pour template"""
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
@@ -291,7 +287,14 @@ class PDFDataMapper:
         palette = PDFDataMapper.enrich_with_display_names(palette)
         
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
-        all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        
+        # ✅ IMPORTANT: Récupérer allColorsWithNotes depuis colorimetry_raw SI présent (FALLBACK)
+        all_colors_with_notes = PDFDataMapper._safe_list(colorimetry_raw.get("allColorsWithNotes", []))
+        if not all_colors_with_notes:
+            # Sinon construire depuis notes_compatibilite
+            all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        # Enrichir avec displayName
+        all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
         associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes", []))
         associations = PDFDataMapper._enrich_associations_with_colors(associations, palette)
@@ -330,12 +333,29 @@ class PDFDataMapper:
         }
         
         # ════════════════════════════════════════════════════════════
-        # ANALYSE COLORIMETRIQUE (snake_case → camelCase)
+        # ANALYSE COLORIMETRIQUE - GARDER SNAKE_CASE pour template!
         # ════════════════════════════════════════════════════════════
         analyse_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("analyse_colorimetrique_detaillee", {}))
-        analyse_camel = PDFDataMapper._convert_snake_to_camel(analyse_raw)
         impact_visuel_raw = PDFDataMapper._safe_dict(analyse_raw.get("impact_visuel", {}))
-        analyse_camel["impactVisuel"] = PDFDataMapper._convert_snake_to_camel(impact_visuel_raw)
+        
+        # ✅ GARDER snake_case pour correspondre au template PDFMonkey
+        analyse_snake = {
+            "temperature": analyse_raw.get("temperature", ""),
+            "valeur": analyse_raw.get("valeur", ""),
+            "intensite": analyse_raw.get("intensite", ""),
+            "contraste_naturel": analyse_raw.get("contraste_naturel", analyse_raw.get("contrasteNaturel", "")),
+            "justification_saison": colorimetry_raw.get("justification_saison", analyse_raw.get("justification_saison", "")),
+            "description_teint": analyse_raw.get("description_teint", analyse_raw.get("descriptionTeint", "")),
+            "description_yeux": analyse_raw.get("description_yeux", analyse_raw.get("descriptionYeux", "")),
+            "description_cheveux": analyse_raw.get("description_cheveux", analyse_raw.get("descriptionCheveux", "")),
+            "harmonie_globale": analyse_raw.get("harmonie_globale", analyse_raw.get("harmonieGlobale", "")),
+            "bloc_emotionnel": analyse_raw.get("bloc_emotionnel", analyse_raw.get("blocEmotionnel", "")),
+            "impact_visuel": {
+                "effet_couleurs_chaudes": impact_visuel_raw.get("effet_couleurs_chaudes", impact_visuel_raw.get("effetCouleursChaudes", "")),
+                "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFroides", "")),
+                "pourquoi": impact_visuel_raw.get("pourquoi", ""),
+            }
+        }
         
         # ════════════════════════════════════════════════════════════
         # MORPHOLOGY
@@ -347,7 +367,7 @@ class PDFDataMapper:
         eviter = PDFDataMapper._safe_list(shopping_raw.get("eviter_absolument", []))
         
         # ════════════════════════════════════════════════════════════
-        # CONSTRUIRE STRUCTURE LIQUID
+        # CONSTRUIRE STRUCTURE LIQUID - ✅ SNAKE_CASE pour template!
         # ════════════════════════════════════════════════════════════
         
         liquid_data = {
@@ -361,19 +381,26 @@ class PDFDataMapper:
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
             },
             
+            # ✅ CORRIGÉ: Utiliser snake_case pour correspondre au template PDFMonkey
             "colorimetry": {
+                # ✅ snake_case pour template
+                "saison_confirmee": colorimetry_raw.get("saison_confirmee", ""),
+                "sous_ton_detecte": colorimetry_raw.get("sous_ton_detecte", ""),
+                "eye_color": colorimetry_raw.get("eye_color", user_data.get("eye_color", "")),
+                "hair_color": colorimetry_raw.get("hair_color", user_data.get("hair_color", "")),
+                
+                # ✅ snake_case pour template
+                "palette_personnalisee": palette,
+                "notes_compatibilite": notes_compatibilite,
+                "allColorsWithNotes": all_colors_with_notes,  # Celui-ci est camelCase dans le template
+                "unwanted_colors": unwanted_colors,
+                "alternatives_couleurs": alternatives,
+                "associations_gagnantes": associations,
+                "analyse_colorimetrique_detaillee": analyse_snake,
+                
+                # ✅ Aussi garder pour récap page 20
                 "season": colorimetry_raw.get("saison_confirmee", ""),
-                "soustonDetecte": colorimetry_raw.get("sous_ton_detecte", ""),
-                "seasonJustification": colorimetry_raw.get("justification_saison", ""),
-                "eyeColor": colorimetry_raw.get("eye_color", ""),
-                "hairColor": colorimetry_raw.get("hair_color", ""),
-                "palettePersonnalisee": palette,
-                "notesCompatibilite": notes_compatibilite,
-                "allColorsWithNotes": all_colors_with_notes,
-                "unwantedColors": unwanted_colors,  # ✅ NOUVEAU
-                "alternativesCouleurs": alternatives,
-                "associationsGagnantes": associations,
-                "analyseColorimetriqueDetaillee": analyse_camel,
+                "topColors": ", ".join([c.get("displayName", c.get("name", "")) for c in palette[:4]]) if palette else "",
             },
             
             "makeup": makeup_mapping,
@@ -408,6 +435,12 @@ class PDFDataMapper:
                 },
             },
             
+            # ✅ Pour récap page 20
+            "morphology": {
+                "bodyType": morphology_raw.get("silhouette_type", ""),
+                "objectiveShort": morphology_raw.get("objective_comment", "")[:50] + "..." if morphology_raw.get("objective_comment") else "",
+            },
+            
             "morpho": {
                 "recos": {
                     "hauts": morphology_raw.get("hauts_recommendations", ""),
@@ -427,6 +460,7 @@ class PDFDataMapper:
                 "basics": PDFDataMapper._safe_list(styling_raw.get("capsule_basics", [])),
                 "statement": PDFDataMapper._safe_list(styling_raw.get("capsule_statement_pieces", [])),
                 "totalBudget": styling_raw.get("capsule_total_budget", 0),
+                "totalPieces": len(PDFDataMapper._safe_list(styling_raw.get("capsule_basics", []))) + len(PDFDataMapper._safe_list(styling_raw.get("capsule_statement_pieces", []))),
             },
             
             "outfits": PDFDataMapper._safe_list(styling_raw.get("mix_and_match_outfits", [])),
@@ -446,12 +480,13 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"✅ Mapper v5.0 complet:")
+        print(f"✅ Mapper v5.1 (snake_case) complet:")
         print(f"   ✓ Palette: {len(palette)} + displayName")
+        print(f"   ✓ AllColorsWithNotes: {len(all_colors_with_notes)} couleurs")
         print(f"   ✓ Associations: {len(associations)} enrichies")
         print(f"   ✓ Unwanted colors: {len(unwanted_colors)} traitées")
         print(f"   ✓ Ongles: {len(nail_colors_transformed)} détaillés")
-        print(f"   ✓ Analyse: camelCase + impactVisuel")
+        print(f"   ✓ Analyse: snake_case + impact_visuel")
         
         return liquid_data
     

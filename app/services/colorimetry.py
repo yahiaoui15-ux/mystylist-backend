@@ -1,18 +1,21 @@
+# -*- coding: utf-8 -*-
 """
-Colorimetry Service Enhanced v7.1 - 3 APPELS OPTIMISÉS
+Colorimetry Service Enhanced v7.2 - 3 APPELS OPTIMISÉS
 ✅ Part 1: Saison + Analyses détaillées (50+ mots)
 ✅ Part 2: Palette + Couleurs génériques + Associations
 ✅ Part 3: Notes compatibilité + Unwanted colors + Maquillage + Vernis
+🔧 CORRIGÉ v7.2: Fix _clean_french_apostrophes - ne plus créer de \' invalides
 🔧 CORRIGÉ: Utilise FALLBACK_PALETTE_AND_ASSOCIATIONS si Part 2 échoue
 """
 
 import json
+import re
 from app.utils.openai_client import openai_client
 from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT, COLORIMETRY_PART1_USER_PROMPT
 from app.prompts.colorimetry_part2_prompt import (
     COLORIMETRY_PART2_SYSTEM_PROMPT, 
     COLORIMETRY_PART2_USER_PROMPT_TEMPLATE,
-    FALLBACK_PALETTE_AND_ASSOCIATIONS  # ✅ AJOUTÉ: Import du fallback
+    FALLBACK_PALETTE_AND_ASSOCIATIONS
 )
 from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
@@ -30,7 +33,7 @@ class ColorimetryService:
         Part 3: Notes compatibilité + Unwanted colors + Maquillage
         """
         try:
-            print("\n🎨 Analyse colorimétrie (3 APPELS - v7.1)...")
+            print("\n🎨 Analyse colorimétrie (3 APPELS - v7.2)...")
             
             face_photo_url = user_data.get("face_photo_url")
             if not face_photo_url:
@@ -116,16 +119,16 @@ class ColorimetryService:
             
             print("   🔍 Parsing JSON Part 2...")
             
-            # ✅ NOUVEAU: Nettoyage agressif des apostrophes AVANT parsing
-            response_part2_cleaned = self._clean_french_apostrophes(response_part2)
+            # ✅ CORRIGÉ v7.2: Nettoyage JSON qui ne crée PAS de \' invalides
+            response_part2_cleaned = self._fix_json_for_parsing(response_part2)
             result_part2 = RobustJSONParser.parse_json_with_fallback(response_part2_cleaned)
             
-            # ✅ CORRIGÉ: Vérifier si result_part2 est VRAIMENT utilisable
+            # ✅ Vérifier si result_part2 est VRAIMENT utilisable
             palette = result_part2.get("palette_personnalisee", []) if result_part2 else []
             associations = result_part2.get("associations_gagnantes", []) if result_part2 else []
             all_colors = result_part2.get("allColorsWithNotes", []) if result_part2 else []
             
-            # ✅ NOUVEAU: Si palette vide → utiliser FALLBACK
+            # ✅ Si palette vide → utiliser FALLBACK
             if not palette or len(palette) == 0:
                 print("   ⚠️ Palette vide après parsing, utilisation FALLBACK_PALETTE_AND_ASSOCIATIONS")
                 result_part2 = FALLBACK_PALETTE_AND_ASSOCIATIONS.copy()
@@ -134,10 +137,12 @@ class ColorimetryService:
                 all_colors = result_part2.get("allColorsWithNotes", [])
                 print(f"   ✅ FALLBACK activé:")
                 print(f"      • Palette fallback: {len(palette)} couleurs")
+                print(f"      • AllColorsWithNotes fallback: {len(all_colors)} couleurs")
                 print(f"      • Associations fallback: {len(associations)} occasions")
             else:
                 print(f"   ✅ Part 2 parsé:")
                 print(f"      • Palette: {len(palette)} couleurs")
+                print(f"      • AllColorsWithNotes: {len(all_colors)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
             
             # ═══════════════════════════════════════════════════════════
@@ -174,12 +179,12 @@ class ColorimetryService:
             
             print("   🔍 Parsing JSON Part 3...")
             
-            # ✅ NOUVEAU: Même nettoyage pour Part 3
-            response_part3_cleaned = self._clean_french_apostrophes(response_part3)
+            # ✅ CORRIGÉ v7.2: Même nettoyage pour Part 3
+            response_part3_cleaned = self._fix_json_for_parsing(response_part3)
             result_part3 = RobustJSONParser.parse_json_with_fallback(response_part3_cleaned)
             
             if not result_part3:
-                print("   ⚠️ Erreur Part 3, utilisant fallback")
+                print("   ⚠️ Erreur Part 3, utilisant fallback vide")
                 result_part3 = {}
             else:
                 unwanted = result_part3.get("unwanted_colors", [])
@@ -228,7 +233,7 @@ class ColorimetryService:
             print(f"\n✅ RÉSUMÉ FINAL:")
             print(f"   • Saison: {result.get('saison_confirmee')}")
             print(f"   • Palette: {len(result.get('palette_personnalisee', []))} couleurs")
-            print(f"   • Couleurs génériques: {len(result.get('allColorsWithNotes', []))}")
+            print(f"   • AllColorsWithNotes: {len(result.get('allColorsWithNotes', []))} couleurs")
             print(f"   • Associations: {len(result.get('associations_gagnantes', []))}")
             print(f"   • Couleurs refusées analysées: {len(result.get('unwanted_colors', []))}")
             print(f"   • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs\n")
@@ -241,30 +246,48 @@ class ColorimetryService:
             traceback.print_exc()
             raise
     
-    def _clean_french_apostrophes(self, text: str) -> str:
+    def _fix_json_for_parsing(self, text: str) -> str:
         """
-        ✅ NOUVEAU: Nettoie les apostrophes françaises problématiques
-        Convertit les apostrophes non échappées en versions échappées JSON-safe
+        ✅ CORRIGÉ v7.2: Nettoie le JSON pour parsing
+        
+        IMPORTANT: En JSON, les SEULES séquences d'échappement valides sont:
+        \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+        
+        \' n'est PAS valide en JSON !
+        
+        Cette méthode:
+        1. Supprime les \' invalides (remplace par ')
+        2. Supprime les backslash isolés avant caractères non-escape
+        3. Nettoie les caractères de contrôle
         """
-        import re
+        if not text:
+            return text
         
-        # Supprimer caractères de contrôle
-        text = text.replace('\r', ' ').replace('\x00', '')
+        # 1. Supprimer caractères de contrôle (sauf \n, \r, \t)
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
         
-        # Patterns d'apostrophes françaises courantes qui cassent le JSON
-        # On remplace les apostrophes dans les mots français courants
-        french_patterns = [
-            (r"([sl])'([aehiouy])", r"\1\\'\2"),  # s'harmonise, l'harmonie, etc.
-            (r"([dnc])'([aeiou])", r"\1\\'\2"),   # d'une, n'est, c'est, etc.
-            (r"qu'([aeiou])", r"qu\\'\1"),         # qu'il, qu'un, etc.
-            (r"j'([aeiou])", r"j\\'\1"),           # j'ai, etc.
-        ]
+        # 2. ✅ CRUCIAL: Remplacer \' par ' (car \' n'est pas valide en JSON)
+        text = text.replace("\\'", "'")
         
-        # Appliquer seulement DANS les strings JSON (entre guillemets)
-        # Approche simple: remplacer les patterns évidents
-        for pattern, replacement in french_patterns:
-            # Ne pas remplacer si déjà échappé
-            text = re.sub(r"(?<!\\)" + pattern, replacement, text, flags=re.IGNORECASE)
+        # 3. Supprimer les backslash isolés devant des caractères non-escape
+        # Les séquences valides sont: \", \\, \/, \b, \f, \n, \r, \t, \u
+        # Tout autre \X doit être corrigé
+        def fix_invalid_escapes(match):
+            char = match.group(1)
+            # Si c'est une séquence valide, la garder
+            if char in '"\\bfnrt/':
+                return match.group(0)
+            # Si c'est \u suivi de 4 hex, c'est valide
+            if char == 'u':
+                return match.group(0)
+            # Sinon, supprimer le backslash
+            return char
+        
+        # Chercher tous les \X où X n'est pas une séquence valide
+        text = re.sub(r'\\([^"\\bfnrtu/])', fix_invalid_escapes, text)
+        
+        # 4. Nettoyer les guillemets non échappés à l'intérieur des strings
+        # (approche conservative: ne rien faire de plus pour éviter de casser le JSON)
         
         return text
     
@@ -272,18 +295,18 @@ class ColorimetryService:
         """Fallback analyse si OpenAI échoue"""
         return {
             "temperature": "chaud" if saison in ["Automne", "Printemps"] else "froid",
-            "valeur": "médium",
-            "intensite": "médium",
+            "valeur": "medium",
+            "intensite": "medium",
             "contraste_naturel": "moyen",
             "description_teint": f"Votre teint s'harmonise naturellement avec la saison {saison}.",
-            "description_yeux": f"Vos yeux {user_data.get('eye_color', 'de couleur variée')} enrichissent votre profil colorimétrique.",
-            "description_cheveux": f"Vos cheveux {user_data.get('hair_color', 'de teinte naturelle')} complètent votre palette {saison}.",
-            "harmonie_globale": f"Tous vos éléments créent une harmonie cohérente typique de la saison {saison}.",
-            "bloc_emotionnel": f"Votre {saison} apporte luminosité et confiance à votre apparence naturelle.",
+            "description_yeux": f"Vos yeux {user_data.get('eye_color', 'de couleur variée')} enrichissent votre profil colorimetrique.",
+            "description_cheveux": f"Vos cheveux {user_data.get('hair_color', 'de teinte naturelle')} completent votre palette {saison}.",
+            "harmonie_globale": f"Tous vos elements creent une harmonie coherente typique de la saison {saison}.",
+            "bloc_emotionnel": f"Votre {saison} apporte luminosite et confiance a votre apparence naturelle.",
             "impact_visuel": {
                 "effet_couleurs_chaudes": "Illuminent votre teint naturellement.",
-                "effet_couleurs_froides": "Créent moins d'harmonie avec votre sous-ton.",
-                "pourquoi": "Votre sous-ton naturel réagit favorablement aux couleurs alignées à votre saison."
+                "effet_couleurs_froides": "Creent moins d'harmonie avec votre sous-ton.",
+                "pourquoi": "Votre sous-ton naturel reagit favorablement aux couleurs alignees a votre saison."
             }
         }
 

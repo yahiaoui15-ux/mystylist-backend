@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """
-JSON Parser Robuste v2.0 - Version corrigée
+JSON Parser Robuste v2.1 - Version corrigée
 ✅ Compte les accolades correctement
 ✅ Gère les objets imbriqués complexes
 ✅ Extrait TOUT le JSON valide (pas juste une partie)
 ✅ FIXÉ: Regex character set cassée
-✅ NOUVEAU: Nettoyage agressif apostrophes françaises
+✅ FIXÉ v2.1: Ne plus créer de \\' invalides - remplacer par guillemets ou supprimer
 """
 
 import json
@@ -17,12 +18,13 @@ class RobustJSONParser:
     @staticmethod
     def parse_json_with_fallback(response_text: str) -> dict:
         """
-        Parse JSON avec 4 stratégies de fallback
+        Parse JSON avec 5 stratégies de fallback
         
         ✅ Stratégie 1: Parser direct (JSON valide)
-        ✅ Stratégie 2: Nettoyage apostrophes + retry
+        ✅ Stratégie 2: Fix escapes invalides + retry
         ✅ Stratégie 3: Extraction complète (compte accolades)
-        ✅ Stratégie 4: Fallback minimal
+        ✅ Stratégie 4: Nettoyage agressif
+        ✅ Stratégie 5: Fallback minimal
         
         Retourne TOUJOURS un dict (jamais d'exception)
         """
@@ -37,12 +39,12 @@ class RobustJSONParser:
         except json.JSONDecodeError as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
-        # STRATÉGIE 2: Nettoyage apostrophes françaises + retry
-        print("   Tentative 2: Nettoyage apostrophes françaises...")
+        # STRATÉGIE 2: Fix escapes invalides + retry
+        print("   Tentative 2: Fix escapes invalides (\\' etc.)...")
         try:
-            cleaned_apostrophes = RobustJSONParser._fix_french_apostrophes(response_text)
-            data = json.loads(cleaned_apostrophes)
-            print("      ✅ JSON valide après nettoyage apostrophes!")
+            cleaned_escapes = RobustJSONParser._fix_invalid_escapes(response_text)
+            data = json.loads(cleaned_escapes)
+            print("      ✅ JSON valide après fix escapes!")
             return data
         except json.JSONDecodeError as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
@@ -53,7 +55,7 @@ class RobustJSONParser:
             extracted = RobustJSONParser._extract_complete_json(response_text)
             if extracted:
                 # Nettoyer puis parser
-                extracted_clean = RobustJSONParser._fix_french_apostrophes(extracted)
+                extracted_clean = RobustJSONParser._fix_invalid_escapes(extracted)
                 extracted_clean = RobustJSONParser._clean_json(extracted_clean)
                 data = json.loads(extracted_clean)
                 print("      ✅ JSON complet extrait et valide!")
@@ -80,12 +82,65 @@ class RobustJSONParser:
         return RobustJSONParser._minimal_fallback()
     
     @staticmethod
-    def _fix_french_apostrophes(text: str) -> str:
+    def _fix_invalid_escapes(text: str) -> str:
         """
-        ✅ NOUVEAU: Corrige les apostrophes françaises non échappées
+        ✅ CORRIGÉ v2.1: Corrige les séquences d'échappement JSON INVALIDES
         
-        Problème: OpenAI génère "s'harmonise" au lieu de "s\'harmonise"
-        Solution: Trouver et échapper les apostrophes dans les strings JSON
+        IMPORTANT - En JSON, les SEULES séquences valides sont:
+        - \\"  (guillemet)
+        - \\\\  (backslash)
+        - \\/  (slash)
+        - \\b  (backspace)
+        - \\f  (form feed)
+        - \\n  (newline)
+        - \\r  (carriage return)
+        - \\t  (tab)
+        - \\uXXXX (unicode)
+        
+        TOUT AUTRE \\X est INVALIDE !
+        Notamment: \\' (apostrophe échappée) N'EXISTE PAS en JSON !
+        
+        Cette méthode:
+        1. Remplace \\' par ' (apostrophe simple)
+        2. Corrige les autres escapes invalides
+        """
+        if not text:
+            return text
+        
+        # 1. Supprimer caractères de contrôle (sauf les utiles)
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', text)
+        
+        # 2. ✅ CRUCIAL: \\' → ' (l'apostrophe échappée n'existe pas en JSON!)
+        text = text.replace("\\'", "'")
+        
+        # 3. Corriger les autres escapes invalides
+        # Pattern: backslash suivi d'un caractère qui n'est pas une séquence valide
+        def fix_escape(match):
+            char_after = match.group(1)
+            
+            # Séquences valides à préserver
+            if char_after in '"\\bfnrt/':
+                return match.group(0)
+            
+            # \\u suivi de 4 hex est valide (on garde)
+            if char_after == 'u':
+                return match.group(0)
+            
+            # Tout le reste: supprimer le backslash, garder le caractère
+            return char_after
+        
+        # Appliquer la correction pour \\X où X n'est pas valide
+        text = re.sub(r'\\([^"\\bfnrtu/])', fix_escape, text)
+        
+        return text
+    
+    @staticmethod
+    def _remove_apostrophes_in_json_strings(text: str) -> str:
+        """
+        ✅ ALTERNATIVE: Supprime les apostrophes problématiques dans les strings JSON
+        au lieu d'essayer de les échapper (car \\' n'est pas valide)
+        
+        Approche: remplacer ' par ` ou supprimer
         """
         result = []
         in_string = False
@@ -101,14 +156,12 @@ class RobustJSONParser:
                 i += 1
                 continue
             
-            # Si dans une string et on trouve une apostrophe non échappée
+            # Si dans une string et on trouve une apostrophe
             if in_string and char == "'":
-                # Vérifier si déjà échappée
-                if i > 0 and text[i-1] == '\\':
-                    result.append(char)
-                else:
-                    # Échapper l'apostrophe
-                    result.append("\\'")
+                # Option 1: Remplacer par guillemet typographique ou rien
+                # On supprime simplement pour éviter tout problème
+                # (ou on pourrait utiliser ` ou ʼ)
+                result.append("")  # Supprimer l'apostrophe
                 i += 1
                 continue
             
@@ -180,7 +233,7 @@ class RobustJSONParser:
         ✅ Nettoie le JSON pour le rendre parsable
         
         Corrige les erreurs courantes d'OpenAI:
-        - Caractères de contrôle (FIXÉ: sans regex cassée!)
+        - Caractères de contrôle
         - Multi-lignes 
         - Quotes mal échappées
         - Virgules traînantes
@@ -197,8 +250,7 @@ class RobustJSONParser:
         result = json_str[start_idx:end_idx+1]
         
         # ✅ CORRECTION 1: Nettoyer les caractères de contrôle
-        # Utiliser une string normale (pas raw string) pour les séquences hex
-        result = re.sub('[\x00-\x1f\x7f]', ' ', result)
+        result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', result)
         
         # ✅ CORRECTION 2: Consolider les multi-lignes
         result = result.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
@@ -210,12 +262,15 @@ class RobustJSONParser:
         result = re.sub(r',(\s*})', r'\1', result)
         result = re.sub(r',(\s*])', r'\1', result)
         
+        # ✅ CORRECTION 5: Fix escapes invalides
+        result = RobustJSONParser._fix_invalid_escapes(result)
+        
         return result
     
     @staticmethod
     def _aggressive_clean(json_str: str) -> str:
         """
-        ✅ NOUVEAU: Nettoyage AGRESSIF pour cas désespérés
+        ✅ Nettoyage AGRESSIF pour cas désespérés
         
         Supprime tout ce qui n'est pas JSON valide
         """
@@ -229,11 +284,11 @@ class RobustJSONParser:
         result = json_str[start_idx:end_idx+1]
         
         # Nettoyage basique
-        result = re.sub('[\x00-\x1f\x7f]', ' ', result)
+        result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', result)
         result = result.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
         
-        # Fixer les apostrophes françaises
-        result = RobustJSONParser._fix_french_apostrophes(result)
+        # ✅ Fix escapes invalides (dont \\')
+        result = RobustJSONParser._fix_invalid_escapes(result)
         
         # Supprimer virgules traînantes
         result = re.sub(r',(\s*[}\]])', r'\1', result)
@@ -242,8 +297,8 @@ class RobustJSONParser:
         result = re.sub(r' +', ' ', result)
         
         # Essayer de réparer les strings non terminées
-        # Compter les guillemets
-        quote_count = result.count('"') - result.count('\\"')
+        # Compter les guillemets (en excluant les échappés)
+        quote_count = len(re.findall(r'(?<!\\)"', result))
         if quote_count % 2 != 0:
             # Nombre impair de guillemets = problème
             # Ajouter un guillemet avant la dernière }
@@ -261,6 +316,7 @@ class RobustJSONParser:
             "sous_ton_detecte": "",
             "justification_saison": "Analyse en cours...",
             "palette_personnalisee": [],
+            "allColorsWithNotes": [],
             "notes_compatibilite": {},
             "associations_gagnantes": [],
             "guide_maquillage": {
@@ -268,11 +324,11 @@ class RobustJSONParser:
                 "blush": "",
                 "bronzer": "",
                 "highlighter": "",
-                "yeux": "",
+                "eyeshadows": "",
                 "eyeliner": "",
                 "mascara": "",
                 "brows": "",
-                "lipsNude": "",
+                "lipsNatural": "",
                 "lipsDay": "",
                 "lipsEvening": "",
                 "lipsAvoid": "",
@@ -286,8 +342,8 @@ class RobustJSONParser:
             "alternatives_couleurs_refusees": {},
             "analyse_colorimetrique_detaillee": {
                 "temperature": "neutre",
-                "valeur": "médium",
-                "intensite": "médium",
+                "valeur": "medium",
+                "intensite": "medium",
                 "contraste_naturel": "moyen",
                 "description_teint": "",
                 "description_yeux": "",
@@ -300,6 +356,8 @@ class RobustJSONParser:
                     "pourquoi": ""
                 }
             },
+            "unwanted_colors": [],
+            "nailColors": [],
             "eye_color": "",
             "hair_color": ""
         }
