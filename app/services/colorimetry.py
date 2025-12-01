@@ -202,6 +202,12 @@ class ColorimetryService:
             print("🔗 FUSION Part 1 + Part 2 + Part 3")
             print("="*80)
             
+            
+            # Préparer données maquillage pour template
+            guide_maquillage = result_part3.get("guide_maquillage", {})
+            nail_colors = result_part3.get("nailColors", [])
+            makeup = {**guide_maquillage, "nailColors": nail_colors}
+            
             result = {
                 # Part 1
                 "saison_confirmee": result_part1.get("saison_confirmee", "Indéterminée"),
@@ -219,8 +225,8 @@ class ColorimetryService:
                 # Part 3
                 "notes_compatibilite": result_part3.get("notes_compatibilite", {}),
                 "unwanted_colors": result_part3.get("unwanted_colors", []),
-                "guide_maquillage": result_part3.get("guide_maquillage", {}),
-                "nailColors": result_part3.get("nailColors", [])
+                "makeup": makeup,
+                "nailColors": nail_colors
             }
             
             # Fallback analyse détaillée
