@@ -1,7 +1,7 @@
 """
 COLORIMETRY PART 3 - Notes compatibilite + Unwanted colors + Maquillage + Vernis
 Input: ~1200 tokens | Output: ~1400 tokens
-v7.3 FIX: Separation objective (compatibility) vs subjective (personal preference)
+v7.4 FIX: nailColors utilise "displayName" au lieu de "name"
 """
 
 COLORIMETRY_PART3_SYSTEM_PROMPT = """Vous êtes expert colorimètre final. Générez UNIQUEMENT JSON valide parfait. Commencez par { et terminez par }. Aucun texte avant/après."""
@@ -67,10 +67,10 @@ RETOURNEZ JSON VALIDE (doubles accolades {{ }} pour imbrication):
   }},
 
   "nailColors": [
-    {{"name": "Doré", "hex": "#E1AD01"}},
-    {{"name": "Bronze", "hex": "#CD7F32"}},
-    {{"name": "Cuivre", "hex": "#B87333"}},
-    {{"name": "Bordeaux", "hex": "#6D071A"}}
+    {{"displayName": "Doré", "hex": "#E1AD01"}},
+    {{"displayName": "Bronze", "hex": "#CD7F32"}},
+    {{"displayName": "Cuivre", "hex": "#B87333"}},
+    {{"displayName": "Bordeaux", "hex": "#6D071A"}}
   ]
 }}
 
@@ -83,8 +83,9 @@ REGLES CRITIQUES:
    - Ne PAS réduire la note juste parce que client refuse la couleur
    - Commentaire = Analyse objective + alternatives compatibles
 ✅ guide_maquillage = TOUTES les catégories (teint/blush/bronzer/eyeliner/mascara/brows/lips/etc.)
-✅ nailColors = 4 VRAIES couleurs (Doré, Bronze, Cuivre, Bordeaux - PAS moutarde!)
-   - name + hex correctes
+✅ nailColors = 4 couleurs avec displayName + hex correctes
+   - UTILISER "displayName" (pas "name")
+   - Vraies couleurs: Doré, Bronze, Cuivre, Bordeaux
 ✅ JSON valide complet
 ✅ Doubles accolades {{ }} pour imbrication
 ✅ ZERO texte avant/après
