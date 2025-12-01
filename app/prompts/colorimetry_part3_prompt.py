@@ -1,16 +1,22 @@
 """
-COLORIMETRY PART 3 - Notes compatibilité + Unwanted colors + Maquillage + Vernis
+COLORIMETRY PART 3 - Notes compatibilite + Unwanted colors + Maquillage + Vernis
 Input: ~1200 tokens | Output: ~1400 tokens
+v7.3 FIX: Separation objective (compatibility) vs subjective (personal preference)
 """
 
 COLORIMETRY_PART3_SYSTEM_PROMPT = """Vous êtes expert colorimètre final. Générez UNIQUEMENT JSON valide parfait. Commencez par { et terminez par }. Aucun texte avant/après."""
 
-COLORIMETRY_PART3_USER_PROMPT_TEMPLATE = """NOTES COMPATIBILITÉ + COULEURS REFUSÉES + MAQUILLAGE - Part 3.
+COLORIMETRY_PART3_USER_PROMPT_TEMPLATE = """NOTES COMPATIBILITE + COULEURS REFUSEES + MAQUILLAGE - Part 3.
 
-DONNÉES CLIENT:
+DONNEES CLIENT:
 Saison: {SAISON}
 Sous-ton: {SOUS_TON}
 Unwanted colors: {UNWANTED_COLORS}
+
+IMPORTANT: SEPAREZ BIEN:
+- "note" = NOTE DE COMPATIBILITE COLORIMETRIQUE OBJECTIVE (basée saison/sous-ton uniquement)
+- Si couleur refusée mais compatible = donnez la VRAIE note de compatibilité
+- Ne pas pénaliser la note parce que le client refuse la couleur personnellement
 
 RETOURNEZ JSON VALIDE (doubles accolades {{ }} pour imbrication):
 {{
@@ -38,11 +44,11 @@ RETOURNEZ JSON VALIDE (doubles accolades {{ }} pour imbrication):
 
   "unwanted_colors": [
     {{
-      "name": "couleur_refusee_1",
-      "note": 2,
-      "commentaire": "40 mots: Pourquoi client a raison/tort + comment remplacer. Ex: 'Vous avez raison: rose pâle froid contredit sous-ton chaud. Essayer rose_corail à la place: même warmth mais avec intensité. Ou beige chaud pour polyvalence.'"
+      "displayName": "couleur_refusee_1",
+      "note": 8,
+      "commentaire": "ANALYSE OBJECTIVE: Cette couleur est compatible avec votre colorimétrie Automne/chaud (note 8/10). Vous avez choisi de ne pas la porter - c'est votre préférence personnelle et c'est valide. Alternatives: camel, moutarde, bronze."
     }},
-    ...JUSQU'À 10 couleurs refusées si présentes
+    ...JUSQU'A 10 couleurs refusees si presentes
   ],
 
   "guide_maquillage": {{
@@ -68,16 +74,18 @@ RETOURNEZ JSON VALIDE (doubles accolades {{ }} pour imbrication):
   ]
 }}
 
-RÈGLES CRITIQUES:
+REGLES CRITIQUES:
 ✅ notes_compatibilite = 19 couleurs TOUTES présentes (identique Part 2)
 ✅ unwanted_colors = DYNAMIC basé input {UNWANTED_COLORS}
    - 1-10 couleurs refusées
-   - Chaque couleur a note (2-4 généralement) + commentaire 40 mots
-   - Commentaire = Validation IA (raison/tort) + Alternative recommandée
+   - Chaque couleur a "displayName", "note" (NOTE OBJECTIVE), "commentaire"
+   - NOTE = Compatibilité colorimétrique REELLE basée saison/sous-ton
+   - Ne PAS réduire la note juste parce que client refuse la couleur
+   - Commentaire = Analyse objective + alternatives compatibles
 ✅ guide_maquillage = TOUTES les catégories (teint/blush/bronzer/eyeliner/mascara/brows/lips/etc.)
 ✅ nailColors = 4 VRAIES couleurs (Doré, Bronze, Cuivre, Bordeaux - PAS moutarde!)
    - name + hex correctes
 ✅ JSON valide complet
 ✅ Doubles accolades {{ }} pour imbrication
-✅ ZÉRO texte avant/après
+✅ ZERO texte avant/après
 """
