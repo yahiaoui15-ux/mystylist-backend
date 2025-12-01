@@ -242,7 +242,7 @@ class ColorimetryService:
             print(f"   • AllColorsWithNotes: {len(result.get('allColorsWithNotes', []))} couleurs")
             print(f"   • Associations: {len(result.get('associations_gagnantes', []))}")
             print(f"   • Couleurs refusées analysées: {len(result.get('unwanted_colors', []))}")
-            print(f"   • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs\n")
+            print(f"   • Guide maquillage: {len(result.get('makeup', {}))} champs\n")
             
             return result
             
