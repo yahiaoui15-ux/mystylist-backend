@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-COLORIMETRY PART 2 v2.0 - SIMPLIFIE & ROBUSTE
+COLORIMETRY PART 2 v2.1 - SIMPLIFIE & ROBUSTE
 - Pas de {{ }} doubles - JSON direct
 - Escaping strict des apostrophes
 - Palette reduite 10 couleurs (au lieu de 12)
-- Associations reduites 3-4 (au lieu de 6)
-- Fallback hardcoded si erreur
+- Associations AUGMENTEES a 5 (professionnel, casual, soiree, weekend, famille)
 """
 
 COLORIMETRY_PART2_SYSTEM_PROMPT = """Vous etes expert colorimetre. Generez UNIQUEMENT JSON valide parfait.
@@ -74,6 +73,20 @@ RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples ac
       "color_hex": ["#6D071A", "#8B8589", "#E2725B"],
       "effet": "Sophistication chaleureuse",
       "description": "Harmonie riche et profonde qui respire l\\'elegance nocturne. Bordeaux apporte profondeur, gris taupe cree equilibre, terracotta ajoute chaleur. Parfait pour diners, cocktails, evenements ou vous souhaitez briller discretement avec raffinement."
+    }},
+    {{
+      "occasion": "weekend",
+      "colors": ["Olive", "Camel", "Terre"],
+      "color_hex": ["#808000", "#C19A6B", "#D2B48C"],
+      "effet": "Naturel energique",
+      "description": "Harmonie detente et exploration qui evoque la nature. Olive apporte energie decontractee, camel cree harmonie, terre ajoute stabilite. Parfait pour sorties nature, randonnees, visites ou vous souhaitez confort et authenticite."
+    }},
+    {{
+      "occasion": "famille",
+      "colors": ["Rose Corail", "Beige", "Marron"],
+      "color_hex": ["#FF7F50", "#F5F5DC", "#8B4513"],
+      "effet": "Chaleur accueillante",
+      "description": "Harmonie chaleureuse et bienveillante parfaite pour les moments importants. Rose corail apporte douceur, beige cree base rassurante, marron ajoute solidite. Ideal pour repas de famille, fetes, reunions ou vous souhaitez rayonner naturellement avec elegance."
     }}
   ]
 }}
@@ -81,14 +94,14 @@ RETOURNEZ UNIQUEMENT JSON VALIDE (PAS de doubles accolades - utiliser simples ac
 REGLES STRICTES - OBLIGATOIRE:
 - palette_personnalisee = 10 COULEURS EXACTEMENT
 - allColorsWithNotes = 19 couleurs FIXES (donnees ci-dessus)
-- associations_gagnantes = 3 OCCASIONS (professionnel, casual, soiree AVEC description 40+ mots)
+- associations_gagnantes = 5 OCCASIONS (professionnel, casual, soiree, weekend, famille - CHAQUE avec description 40+ mots)
 - ECHAPPER APOSTROPHES: s\\'harmonise (backslash-apostrophe)
 - Pas d\\'accents accentues dans JSON - utiliser version plain: e au lieu de e accent
 - JSON VALIDE COMPLET - Pas de caracteres de controle
 - ZERO texte avant/apres JSON
 """
 
-# Fallback hardcoded si OpenAI echoue
+# Fallback hardcoded si OpenAI echoue - AVEC 5 ASSOCIATIONS
 FALLBACK_PALETTE_AND_ASSOCIATIONS = {
     "palette_personnalisee": [
         {"name": "terracotta", "hex": "#E2725B", "note": 10, "commentaire": "Couleur centrale de votre palette. Apporte chaleur et luminosite au teint."},
@@ -142,6 +155,20 @@ FALLBACK_PALETTE_AND_ASSOCIATIONS = {
             "color_hex": ["#6D071A", "#8B8589", "#E2725B"],
             "effet": "Sophistication chaleureuse",
             "description": "Harmonie riche et profonde qui respire l'elegance nocturne. Bordeaux apporte profondeur, gris taupe cree equilibre, terracotta ajoute chaleur. Parfait pour diners, cocktails, evenements ou vous souhaitez briller discretement avec raffinement."
+        },
+        {
+            "occasion": "weekend",
+            "colors": ["Olive", "Camel", "Terre"],
+            "color_hex": ["#808000", "#C19A6B", "#D2B48C"],
+            "effet": "Naturel energique",
+            "description": "Harmonie detente et exploration qui evoque la nature. Olive apporte energie decontractee, camel cree harmonie, terre ajoute stabilite. Parfait pour sorties nature, randonnees, visites ou vous souhaitez confort et authenticite."
+        },
+        {
+            "occasion": "famille",
+            "colors": ["Rose Corail", "Beige", "Marron"],
+            "color_hex": ["#FF7F50", "#F5F5DC", "#8B4513"],
+            "effet": "Chaleur accueillante",
+            "description": "Harmonie chaleureuse et bienveillante parfaite pour les moments importants. Rose corail apporte douceur, beige cree base rassurante, marron ajoute solidite. Ideal pour repas de famille, fetes, reunions ou vous souhaitez rayonner naturellement avec elegance."
         }
     ]
 }
