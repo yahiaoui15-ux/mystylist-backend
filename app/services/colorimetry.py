@@ -247,7 +247,7 @@ class ColorimetryService:
             raise
     
     def _fix_json_for_parsing(self, text: str) -> str:
-        """
+        r"""
         ✅ CORRIGÉ v7.2: Nettoie le JSON pour parsing
         
         IMPORTANT: En JSON, les SEULES séquences d'échappement valides sont:
