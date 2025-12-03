@@ -280,6 +280,10 @@ class PDFDataMapper:
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling", {}))
         
+        # ✅ Page 8 & Pages 9-15
+        morphology_page1 = PDFDataMapper._transform_morphology_service_data(morphology_raw, user_data)
+        morpho_categories = PDFDataMapper._generate_morphology_categories(morphology_raw, user_data)
+
         # ════════════════════════════════════════════════════════════
         # COLORIMETRY - Enrichir displayName + unwanted_colors
         # ════════════════════════════════════════════════════════════
@@ -411,29 +415,7 @@ class PDFDataMapper:
                 "eviterAbsolument": eviter,
             },
             
-            "morphology_page1": {
-                "bodyType": morphology_raw.get("silhouette_type", ""),
-                "coherence": morphology_raw.get("silhouette_coherence", ""),
-                "ratios": {
-                    "waistToHips": morphology_raw.get("ratio_waist_hips", ""),
-                    "waistToShoulders": morphology_raw.get("ratio_waist_shoulders", ""),
-                },
-                "measures": {
-                    "shoulders": morphology_raw.get("measure_shoulders", ""),
-                    "waist": morphology_raw.get("measure_waist", ""),
-                    "hips": morphology_raw.get("measure_hips", ""),
-                    "heightCm": user_data.get("height", ""),
-                    "weightKg": user_data.get("weight", ""),
-                },
-                "comment": morphology_raw.get("objective_comment", ""),
-                "goals": PDFDataMapper._safe_list(morphology_raw.get("styling_goals", [])),
-                "highlights": PDFDataMapper._safe_list(morphology_raw.get("highlights", [])),
-                "minimizes": PDFDataMapper._safe_list(morphology_raw.get("minimizes", [])),
-                "instantTips": PDFDataMapper._safe_list(morphology_raw.get("instant_tips", [])),
-                "photos": {
-                    "body": user_data.get("body_photo_url", ""),
-                },
-            },
+             "morphology_page1": morphology_page1,
             
             # ✅ Pour récap page 20
             "morphology": {
@@ -442,12 +424,7 @@ class PDFDataMapper:
             },
             
             "morpho": {
-                "recos": {
-                    "hauts": morphology_raw.get("hauts_recommendations", ""),
-                },
-                "visuels": {
-                    "hauts": hauts_visuals,
-                },
+                "categories": morpho_categories,
             },
             
             "style": {
@@ -489,6 +466,75 @@ class PDFDataMapper:
         print(f"   ✓ Analyse: snake_case + impact_visuel")
         
         return liquid_data
+    
+    @staticmethod
+    def _transform_morphology_service_data(morphology_raw: dict, user_data: dict) -> dict:
+        """Transforme morphology_service.analyze() en morphology_page1"""
+        silhouette_type = morphology_raw.get("silhouette_type", "")
+        silhouette_explanation = morphology_raw.get("silhouette_explanation", "")
+        styling_objectives = PDFDataMapper._safe_list(morphology_raw.get("styling_objectives", []))
+        recommendations = PDFDataMapper._safe_dict(morphology_raw.get("recommendations", {}))
+        instant_tips = PDFDataMapper._safe_list(morphology_raw.get("instant_tips", []))
+        
+        hauts_recos = PDFDataMapper._safe_dict(recommendations.get("hauts", {}))
+        a_privilegier = PDFDataMapper._safe_list(hauts_recos.get("a_privilegier", []))
+        a_eviter = PDFDataMapper._safe_list(hauts_recos.get("a_eviter", []))
+        
+        highlights = []
+        for item in a_privilegier[:3]:
+            cut_display = item.get("cut_display", item.get("cut", ""))
+            why = item.get("why", "")
+            if cut_display:
+                highlights.append(f"{cut_display}: {why}" if why else cut_display)
+        
+        minimizes = []
+        for item in a_eviter[:3]:
+            cut = item.get("cut", item.get("cut_display", ""))
+            why = item.get("why", "")
+            if cut:
+                minimizes.append(f"{cut}: {why}" if why else cut)
+        
+        waist = user_data.get("waist_circumference", 0) or 0
+        shoulders = user_data.get("shoulder_circumference", 0) or 0
+        hips = user_data.get("hip_circumference", 0) or 0
+        
+        waist_hip_ratio = round(waist / hips, 2) if hips > 0 else ""
+        waist_shoulder_ratio = round(waist / shoulders, 2) if shoulders > 0 else ""
+        
+        return {
+            "bodyType": silhouette_type,
+            "coherence": silhouette_explanation,
+            "ratios": {
+                "waistToHips": str(waist_hip_ratio),
+                "waistToShoulders": str(waist_shoulder_ratio),
+            },
+            "measures": {
+                "shoulders": shoulders,
+                "waist": waist,
+                "hips": hips,
+                "heightCm": user_data.get("height", ""),
+                "weightKg": user_data.get("weight", ""),
+            },
+            "comment": " ".join(styling_objectives[:1]) if styling_objectives else "",
+            "goals": styling_objectives if styling_objectives else ["Créer de la verticalité"],
+            "highlights": highlights if highlights else ["Vos atouts naturels"],
+            "minimizes": minimizes if minimizes else ["Créer une transition fluide"],
+            "instantTips": instant_tips if instant_tips else ["Explorez les coupes qui vous flattent"],
+            "photos": {"body": user_data.get("body_photo_url", "")},
+        }
+
+    @staticmethod
+    def _generate_morphology_categories(morphology_raw: dict, user_data: dict) -> dict:
+        """Pages 9-15: 7 catégories vestimentaires"""
+        return {
+            "hauts": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "bas": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "robes": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "vestes": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "maillot_lingerie": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "chaussures": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "accessoires": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+        }
     
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
