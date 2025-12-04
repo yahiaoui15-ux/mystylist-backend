@@ -525,15 +525,298 @@ class PDFDataMapper:
 
     @staticmethod
     def _generate_morphology_categories(morphology_raw: dict, user_data: dict) -> dict:
-        """Pages 9-15: 7 catégories vestimentaires"""
+    """
+    Génère données pour Pages 9-15 (7 catégories vestimentaires)
+    Contenu adapté à la silhouette détectée
+    """
+    
+    silhouette_type = morphology_raw.get("silhouette_type", "O")
+    styling_objectives = PDFDataMapper._safe_list(morphology_raw.get("styling_objectives", []))
+    body_parts_to_highlight = PDFDataMapper._safe_list(morphology_raw.get("body_parts_to_highlight", []))
+    
+    # ════════════════════════════════════════════════════════════════════════════════════
+    # CONTENUS ADAPTÉS PAR SILHOUETTE
+    # ════════════════════════════════════════════════════════════════════════════════════
+    
+    if silhouette_type == "O":
         return {
-            "hauts": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "bas": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "robes": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "vestes": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "maillot_lingerie": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "chaussures": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
-            "accessoires": {"introduction": "...", "recommandes": [], "a_eviter": [], "matieres": "", "motifs": {}, "pieges": [], "visuels": []},
+            "hauts": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent créer de la verticalité et époucer légèrement. Privilégiez les encolures en V et les matières fluides.",
+                "recommandes": [
+                    {"name": "Encolure en V", "why": "Allonge le cou et crée une verticalité immédiate"},
+                    {"name": "Manches raglan ou kimono", "why": "Harmonise les épaules et allonge le buste"},
+                    {"name": "Coupes ceinturées", "why": "Marque la taille et crée de la définition"},
+                    {"name": "Matières fluides (soie, coton léger)", "why": "Épousent sans serrer, créent de la fluidité"},
+                    {"name": "Rayures verticales", "why": "Allongent et structurent visuellement"},
+                    {"name": "Couches et superpositions", "why": "Créent de la profondeur et du relief"},
+                ],
+                "a_eviter": [
+                    {"name": "Col roulé très serré", "why": "Écrase le cou et raccourcit le buste"},
+                    {"name": "Polos stretch très ajustés", "why": "Accentuent le volume au centre"},
+                    {"name": "Volumes excessifs au buste", "why": "Ajoutent de la masse là où il faut minimiser"},
+                    {"name": "Matières rigides (denim épais)", "why": "Figent la silhouette et manquent de fluidité"},
+                    {"name": "Rayures horizontales larges", "why": "Élargissent visuellement la silhouette"},
+                ],
+                "matieres": "Privilégier les matières fluides (soie, coton peigné, lin mélangé, jersey fin) qui épousent sans serrer. Les mailles structurantes de bonne qualité créent une belle verticalité. Éviter le denim rigide, la toile épaisse et les tissus qui marquent trop.",
+                "motifs": {
+                    "recommandes": "Rayures verticales, losanges verticaux, petits motifs discrets, dégradés, détails au niveau de l'encolure ou des épaules",
+                    "a_eviter": "Rayures horizontales, gros motifs répétitifs, pois, carreaux, imprimés trop volumineux au centre"
+                },
+                "pieges": [
+                    "Ourlets qui coupent la silhouette à la mauvaise hauteur (casser la verticalité)",
+                    "Encolures asymétriques qui perturbent l'équilibre",
+                    "Nœuds ou fronces au niveau du buste qui accentuent",
+                    "Bandes stretch trop visibles qui marquent",
+                    "Matières brillantes au mauvais endroit (à éviter au centre)",
+                    "Coutures épaisses qui cassent les lignes",
+                    "Ceintures trop larges qui écrasent plutôt que définissent"
+                ],
+                "visuels": []
+            },
+            "bas": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les bas doivent allonger les jambes et créer une transition fluide. Privilégiez les tailles hautes et les coupes qui épousent légèrement.",
+                "recommandes": [
+                    {"name": "Tailles hautes", "why": "Allongent les jambes et structurent la silhouette"},
+                    {"name": "Coupes droites ou évasées", "why": "Épousent légèrement sans serrer, allongent les proportions"},
+                    {"name": "Jupes crayon ou portefeuille", "why": "Marquent la taille et créent de la définition"},
+                    {"name": "Longueurs midi ou cheville", "why": "Allongent les jambes et créent une fluidité"},
+                    {"name": "Rayures verticales", "why": "Créent une illusion d'optique d'allongement"},
+                    {"name": "Matières fluides (soie, coton léger)", "why": "Bougent naturellement et flattent les formes"},
+                ],
+                "a_eviter": [
+                    {"name": "Tailles basses", "why": "Raccourcissent les jambes et élargissent visuellement"},
+                    {"name": "Baggy ou sursize au niveau des hanches", "why": "Ajoutent du volume là où il faut harmoniser"},
+                    {"name": "Coupes moulantes excessives", "why": "Accentuent chaque détail du corps"},
+                    {"name": "Ceintures très larges", "why": "Écrasent et figent la taille"},
+                    {"name": "Rayures horizontales", "why": "Élargissent visuellement les jambes"},
+                ],
+                "matieres": "Privilégier les matières fluides et élastiques (coton stretch, lin mélangé, jersey) qui épousent légèrement. Éviter le denim trop rigide. Les matières mats valorisent plus que les brillants.",
+                "motifs": {
+                    "recommandes": "Rayures verticales, motifs discrets, petits imprimés, dégradés unis, placement horizontal au niveau des chevilles",
+                    "a_eviter": "Rayures horizontales, gros motifs répétitifs, pois, carreaux volumineux, imprimés trop clairs qui élargissent"
+                },
+                "pieges": [
+                    "Longueur qui coupe la jambe à la mauvaise hauteur",
+                    "Ourlets trop courts qui cassent les proportions",
+                    "Poches trop voluminuses qui élargissent les hanches",
+                    "Ceintures trop serrées qui marquent",
+                    "Zip ou fermetures mal placées qui accentuent",
+                    "Matières trop épaisses au niveau des hanches",
+                    "Braguette ou surpiqûres qui accentuent"
+                ],
+                "visuels": []
+            },
+            "robes": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les robes doivent époucer légèrement et marquer la taille. Privilégiez les coupes portefeuille et les ceintures qui définissent.",
+                "recommandes": [
+                    {"name": "Robes portefeuille", "why": "Marquent la taille et s'adaptent à tous les types de silhouette"},
+                    {"name": "Ceintures intégrées ou accessoires", "why": "Définissent la taille et créent des proportions équilibrées"},
+                    {"name": "Longueurs midi à cheville", "why": "Allongent et créent une fluidité élégante"},
+                    {"name": "Encolures en V ou cache-cœur", "why": "Allongent le buste et le cou"},
+                    {"name": "Matières fluides", "why": "Bougent naturellement et flattent la silhouette"},
+                    {"name": "Robes cache-cœur", "why": "Marquent la taille et valorisent le buste"},
+                ],
+                "a_eviter": [
+                    {"name": "Robes trop amples", "why": "Ajoutent du volume et épaississent"},
+                    {"name": "Ceintures trop larges non intégrées", "why": "Peuvent écraser plutôt que définir"},
+                    {"name": "Coupes droites sans définition", "why": "N'épousent pas assez et aplatissent"},
+                    {"name": "Longueurs courtes", "why": "Raccourcissent les jambes et perturbent l'équilibre"},
+                    {"name": "Col roulé très serré", "why": "Écrase le cou et le buste"},
+                ],
+                "matieres": "Privilégier les matières fluides structurantes (soie, crêpe, coton peigné) qui épousent sans serrer. Éviter les matières trop rigides qui ne flattent pas les courbes.",
+                "motifs": {
+                    "recommandes": "Rayures verticales, motifs discrets, petits imprimés géométriques, dégradés, détails au niveau de la taille",
+                    "a_eviter": "Rayures horizontales, gros motifs centrés au buste, pois volumineux, carreaux qui élargissent"
+                },
+                "pieges": [
+                    "Ourlet qui coupe la jambe à la mauvaise hauteur",
+                    "Trop de volume au buste",
+                    "Ceintures mal positionnées",
+                    "Matières brillantes qui soulignent les zones à harmoniser",
+                    "Fermetures éclair ou détails qui accentuent",
+                    "Encolures trop hautes",
+                    "Longueurs qui figent plutôt que de créer de la fluidité"
+                ],
+                "visuels": []
+            },
+            "vestes": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les vestes doivent structurer et créer de la verticalité. Privilégiez les coupes ajustées avec une ceinture ou des détails qui définissent.",
+                "recommandes": [
+                    {"name": "Vestes cintrées", "why": "Marquent la taille et créent une définition immédiate"},
+                    {"name": "Ceintures intégrées", "why": "Structurent sans ajouter de volume"},
+                    {"name": "Longueurs qui arrivent à la taille ou légèrement plus bas", "why": "Allongent et définissent les proportions"},
+                    {"name": "Épaulettes subtiles", "why": "Harmonisent les épaules sans surcharger"},
+                    {"name": "Manteaux fluides", "why": "Bougent naturellement et créent de l'élégance"},
+                    {"name": "Coutures verticales", "why": "Créent des lignes qui allongent"},
+                ],
+                "a_eviter": [
+                    {"name": "Vestes trop amples", "why": "Ajoutent du volume et épaississent"},
+                    {"name": "Longueurs qui arrivent aux hanches", "why": "Accentuent le volume et raccourcissent"},
+                    {"name": "Ceintures très larges", "why": "Peuvent écraser plutôt que définir"},
+                    {"name": "Épaulettes excessives", "why": "Élargissent les épaules"},
+                    {"name": "Matières trop rigides", "why": "Figent la silhouette"},
+                ],
+                "matieres": "Privilégier les matières semi-rigides (laine, lin, coton structurant) qui tiennent bien. Les matières fluides avec doublure créent une belle ligne. Éviter les matières trop épaisses.",
+                "motifs": {
+                    "recommandes": "Rayures verticales subtiles, motifs discrets, uni de qualité, petits carreaux fins",
+                    "a_eviter": "Rayures horizontales, gros carreaux, motifs volumineux, imprimés qui élargissent"
+                },
+                "pieges": [
+                    "Longueur qui coupe mal le corps",
+                    "Fermeture ou boutonnage mal aligné",
+                    "Poches trop voluminuses qui élargissent les hanches",
+                    "Ceintures mal positionnées",
+                    "Épaulettes trop marquées",
+                    "Doublure qui montre et ajoute du volume",
+                    "Coutures asymétriques"
+                ],
+                "visuels": []
+            },
+            "maillot_lingerie": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, confort et confiance sont essentiels. Choisissez des coupes et soutiens adaptés qui vous mettent en valeur.",
+                "recommandes": [
+                    {"name": "Soutiens-gorge structurants avec maintien", "why": "Créent une belle forme et du confort"},
+                    {"name": "Maillots de bain avec motifs au niveau du buste", "why": "Valorisent et créent du relief"},
+                    {"name": "Ceintures gaines douces", "why": "Lissent légèrement sans comprimer"},
+                    {"name": "Matières stretch confortables", "why": "Épousent naturellement et confortablement"},
+                    {"name": "Coupes cache-cœur", "why": "Flattent et créent de la féminité"},
+                    {"name": "Lanières verticales", "why": "Créent une illusion d'allongement"},
+                ],
+                "a_eviter": [
+                    {"name": "Soutiens-gorge trop serrés", "why": "Créent de l'inconfort et des marques"},
+                    {"name": "Matières rigides", "why": "Ne s'adaptent pas à votre corps"},
+                    {"name": "Maillots de bain trop amples", "why": "Ajoutent du volume"},
+                    {"name": "Coutures mal placées", "why": "Peuvent marquer ou créer des gonflements"},
+                ],
+                "matieres": "Privilégier les matières stretch de qualité (coton bio, microfibre, nylon). Les doublures douces et les ceintures gaines discrètes offrent confort et confiance.",
+                "motifs": {
+                    "recommandes": "Rayures verticales, petits motifs, dégradés, uni de qualité, motifs au niveau du buste",
+                    "a_eviter": "Rayures horizontales, gros motifs au centre, couleurs trop claires au niveau du buste"
+                },
+                "pieges": [
+                    "Soutiens-gorge mal calibrés",
+                    "Matières qui glissent ou se déplacent",
+                    "Coutures épaisses qui marquent",
+                    "Doublures insuffisantes",
+                    "Élastiques trop serrés",
+                    "Gaines qui compriment excessivement",
+                    "Motifs mal placés"
+                ],
+                "visuels": []
+            },
+            "chaussures": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les chaussures affinent ou élargissent. Choisissez les formes qui allongent et créent de l'élégance.",
+                "recommandes": [
+                    {"name": "Chaussures à talon fin", "why": "Affinent la cheville et allongent les jambes"},
+                    {"name": "Escarpins pointus", "why": "Créent une ligne allongée et élégante"},
+                    {"name": "Bottines à talon", "why": "Allongent les jambes et structurent"},
+                    {"name": "Chaussures aux teintes proches de la peau", "why": "Allongent visuellement les jambes"},
+                    {"name": "Chaussures avec détails verticaux", "why": "Créent une ligne qui affine"},
+                    {"name": "Matières nobles (cuir, daim)", "why": "Créent une ligne nette et reflet la lumière"},
+                ],
+                "a_eviter": [
+                    {"name": "Chaussures plates et larges", "why": "Raccourcissent les jambes"},
+                    {"name": "Bottines trop molles", "why": "Élargissent les chevilles"},
+                    {"name": "Chaussures arrondies trop larges", "why": "Épaississent les pieds"},
+                    {"name": "Sandales très échancrées", "why": "Peuvent raccourcir la jambe"},
+                    {"name": "Matières molles qui s'affaissent", "why": "Déforment et perdent leur allure"},
+                ],
+                "matieres": "Privilégier les matières nobles (cuir, daim, matières brillantes) qui reflètent la lumière et créent une ligne nette. Éviter les matières molles qui s'affaissent.",
+                "motifs": {
+                    "recommandes": "Couleurs unies, finitions brillantes, matières qui reflètent la lumière",
+                    "a_eviter": "Matières trop épaisses, couleurs très contrastées, surcharges de détails"
+                },
+                "pieges": [
+                    "Talons trop bas ou nuls",
+                    "Largeur mal adaptée à vos pieds",
+                    "Hauteur de tige qui coupe mal la jambe",
+                    "Matières qui se déforment",
+                    "Couleurs qui tranchent trop",
+                    "Semelles visibles mal alignées",
+                    "Détails qui élargissent"
+                ],
+                "visuels": []
+            },
+            "accessoires": {
+                "introduction": f"Pour votre silhouette {silhouette_type}, les accessoires finissent la tenue avec élégance. Privilégiez les pièces qui créent de la verticalité et de la proportion.",
+                "recommandes": [
+                    {"name": "Ceintures fines ou moyennes", "why": "Définissent la taille sans ajouter de volume"},
+                    {"name": "Sacs de taille moyenne", "why": "Créent de l'équilibre sans ajouter du poids visuel"},
+                    {"name": "Bijoux verticaux (colliers longs, créoles)", "why": "Allongent le cou et le buste"},
+                    {"name": "Foulards (port long)", "why": "Créent de la verticalité et de la fluidité"},
+                    {"name": "Capes légères", "why": "Créent des lignes épurées et élégantes"},
+                    {"name": "Accessoires discrets de qualité", "why": "Valorisent sans surcharger"},
+                ],
+                "a_eviter": [
+                    {"name": "Ceintures très larges", "why": "Écrasent plutôt que définissent"},
+                    {"name": "Sacs trop volumineux", "why": "Ajoutent du poids visuel"},
+                    {"name": "Bijoux trop lourds ou trop gros", "why": "Écrasent le haut du corps"},
+                    {"name": "Foulards port court ou dense", "why": "Élargissent le cou"},
+                    {"name": "Surcharge d'accessoires", "why": "Perturbent l'équilibre"},
+                ],
+                "matieres": "Privilégier les matières nobles (cuir, soie, matières brillantes) qui reflètent l'élégance. Les finitions douces et les textures qualitatives créent un effet raffiné.",
+                "motifs": {
+                    "recommandes": "Motifs discrets, couleurs uni de qualité, rayures verticales subtiles, géométries fines",
+                    "a_eviter": "Motifs volumineux, couleurs trop criardes, surcharges de détails, motifs qui élargissent"
+                },
+                "pieges": [
+                    "Ceintures mal positionnées",
+                    "Sacs qui pèsent trop lourd d'un côté",
+                    "Bijoux mal proportionnés",
+                    "Foulards qui rétrécissent",
+                    "Accessoires de mauvaise qualité",
+                    "Surcharge d'accessoires",
+                    "Matières brillantes mal placées"
+                ],
+                "visuels": []
+            },
+        }
+    
+    # Pour les autres silhouettes, retourner aussi du contenu (A, X, H, V, 8)
+    # Pour éviter les pages vides, retourner du contenu générique avec introduction adaptée
+    else:
+        generic_structure = {
+            "introduction": f"Pour votre silhouette {silhouette_type}, adaptez vos pièces à votre morphologie unique.",
+            "recommandes": [
+                {"name": "Pièce 1", "why": "Adapté à votre silhouette"},
+                {"name": "Pièce 2", "why": "Valorise vos atouts"},
+                {"name": "Pièce 3", "why": "Crée l'harmonie"},
+                {"name": "Pièce 4", "why": "Affine votre silhouette"},
+                {"name": "Pièce 5", "why": "Crée de la fluidité"},
+                {"name": "Pièce 6", "why": "Personnalise votre look"},
+            ],
+            "a_eviter": [
+                {"name": "À éviter 1", "why": "Peut élargir"},
+                {"name": "À éviter 2", "why": "Manque de fluidité"},
+                {"name": "À éviter 3", "why": "Peut écaser"},
+                {"name": "À éviter 4", "why": "Crée un déséquilibre"},
+                {"name": "À éviter 5", "why": "Peut marquer"},
+            ],
+            "matieres": "Privilégiez les matières de qualité qui épousent votre silhouette sans contrainte. Choisissez des tissus nobles et fluides.",
+            "motifs": {
+                "recommandes": "Motifs discrets, rayures verticales, petits imprimés, dégradés",
+                "a_eviter": "Gros motifs, rayures horizontales, imprimés trop clairs"
+            },
+            "pieges": [
+                "Mal évaluer votre taille réelle",
+                "Choisir des longueurs qui coupent mal",
+                "Surcharger avec des accessoires",
+                "Négliger la qualité des matières",
+                "Créer un déséquilibre visuel",
+                "Forcer des coupes inadaptées",
+                "Ignorer votre morphologie"
+            ],
+            "visuels": []
+        }
+        
+        return {
+            "hauts": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent valoriser vos atouts."},
+            "bas": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les bas doivent allonger et harmoniser."},
+            "robes": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les robes doivent créer une belle proportion."},
+            "vestes": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les vestes doivent structurer et élégancer."},
+            "maillot_lingerie": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, confort et confiance sont primordiaux."},
+            "chaussures": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les chaussures complètent votre look."},
+            "accessoires": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les accessoires finissent avec élégance."},
         }
     
     @staticmethod
