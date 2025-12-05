@@ -46,6 +46,8 @@ class VisualsService:
         Récupère UN visuel pour une coupe spécifique
         Synchrone (pas async)
         
+        ULTRA-ROBUSTE: Gère les erreurs sans crash
+        
         Args:
             category: "hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"
             cut_name: "Encolure en V", "Tailles hautes", etc.
@@ -64,7 +66,7 @@ class VisualsService:
             if cache_key in self._cache:
                 return self._cache[cache_key]
             
-            # Map category vers type_vetement (si besoin)
+            # Map category vers type_vetement
             type_vetement_map = {
                 "hauts": "haut",
                 "bas": "bas",
@@ -77,11 +79,10 @@ class VisualsService:
             
             type_vetement = type_vetement_map.get(category, category)
             
-            # ✅ CORRECTION: Accéder au vrai client Supabase via _get_client()
+            # ✅ ULTRA-ROBUSTE: Wrapper avec try/except strict
             try:
                 client = self.supabase._get_client()
                 if client is None:
-                    print(f"⚠️  Client Supabase None pour {category}/{cut_name}")
                     return {}
                 
                 result = client.table("visuels").select("*").eq(
@@ -106,78 +107,109 @@ class VisualsService:
                 
                 return {}
                 
-            except Exception as e:
-                print(f"⚠️  Erreur Supabase pour {category}/{cut_name}: {e}")
+            except Exception as supabase_error:
+                # ✅ GESTION GRACIEUSE: Logging sans crash
+                print(f"⚠️  [SUPABASE_ERROR] {category}/{cut_name}: {type(supabase_error).__name__}: {str(supabase_error)[:100]}")
                 return {}
             
-        except Exception as e:
-            print(f"⚠️  Erreur visuel {category}/{cut_name}: {e}")
+        except Exception as general_error:
+            # Double protection
+            print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}: {str(general_error)[:100]}")
             return {}
     
     def fetch_visuals_for_category(self, category: str, recommendations: list) -> list:
         """
         Enrichit une liste de recommandations avec les visuels
         
+        ULTRA-ROBUSTE: Retourne data même si visuels vides
+        
         Args:
             category: "hauts", "bas", etc.
             recommendations: [{"name": "Encolure en V", "why": "..."}, ...]
         
         Returns:
-            [{"name": "Encolure en V", "why": "...", "visual_url": "..."}, ...]
+            [{"name": "Encolure en V", "why": "...", "visual_url": ""}, ...]
+            (visual_url peut être vide si pas trouvé)
         """
-        enriched = []
-        
-        for rec in recommendations:
-            cut_name = rec.get("name", "")
-            visual = self.fetch_visual_for_cut(category, cut_name)
+        try:
+            enriched = []
             
-            enriched_rec = {
-                **rec,
-                "visual_url": visual.get("url_image", ""),
-                "visual_key": visual.get("nom_simplifie", "")
-            }
-            enriched.append(enriched_rec)
-        
-        return enriched
+            for rec in recommendations:
+                try:
+                    cut_name = rec.get("name", "")
+                    visual = self.fetch_visual_for_cut(category, cut_name)
+                    
+                    enriched_rec = {
+                        **rec,
+                        "visual_url": visual.get("url_image", ""),
+                        "visual_key": visual.get("nom_simplifie", "")
+                    }
+                    enriched.append(enriched_rec)
+                except Exception as e:
+                    print(f"⚠️  [REC_ERROR] {category}: {str(e)[:100]}")
+                    # Ajouter quand même sans visuel
+                    enriched.append({
+                        **rec,
+                        "visual_url": "",
+                        "visual_key": ""
+                    })
+            
+            return enriched
+            
+        except Exception as e:
+            print(f"⚠️  [CATEGORY_ERROR] fetch_visuals_for_category {category}: {str(e)[:100]}")
+            # Retourner les recommendations sans visuels
+            return [
+                {
+                    **rec,
+                    "visual_url": "",
+                    "visual_key": ""
+                }
+                for rec in (recommendations or [])
+            ]
     
     def fetch_all_visuals_by_category(self) -> dict:
         """Récupère TOUS les visuels organisés par catégorie"""
         try:
-            # ✅ CORRECTION: Accéder au vrai client via _get_client()
-            client = self.supabase._get_client()
-            if client is None:
-                print("⚠️  Client Supabase None")
+            try:
+                client = self.supabase._get_client()
+                if client is None:
+                    return {}
+                
+                result = client.table("visuels").select("*").execute()
+                
+                if not result or not result.data:
+                    return {}
+                
+                organized = {}
+                for visual in result.data:
+                    category = visual.get("type_vetement", "autre")
+                    if category not in organized:
+                        organized[category] = []
+                    organized[category].append(visual)
+                
+                print(f"✅ Tous les visuels chargés: {sum(len(v) for v in organized.values())} images")
+                return organized
+                
+            except Exception as e:
+                print(f"⚠️  [SUPABASE] fetch_all_visuals: {str(e)[:100]}")
                 return {}
-            
-            result = client.table("visuels").select("*").execute()
-            
-            if not result or not result.data:
-                return {}
-            
-            organized = {}
-            for visual in result.data:
-                category = visual.get("type_vetement", "autre")
-                if category not in organized:
-                    organized[category] = []
-                organized[category].append(visual)
-            
-            print(f"✅ Tous les visuels chargés: {sum(len(v) for v in organized.values())} images")
-            return organized
             
         except Exception as e:
-            print(f"❌ Erreur fetch all visuals: {e}")
+            print(f"⚠️  [GENERAL] fetch_all_visuals: {str(e)[:100]}")
             return {}
     
     def fetch_for_recommendations(self, morphology_result: dict) -> dict:
         """
         Récupère visuels pour les recommandations morphologiques.
-        Cette méthode était appelée par report_generator.py mais n'existait pas!
+        
+        ULTRA-ROBUSTE: Retourne data même si visuels vides ou erreur Supabase
         
         Args:
             morphology_result: Dict avec les recommandations par catégorie
         
         Returns:
-            Dict organisé avec visuels enrichis
+            Dict organisé avec visuels enrichis (peut être vide si erreur)
         """
         try:
             print("🎨 Récupération visuels pour recommendations...")
@@ -194,23 +226,54 @@ class VisualsService:
                 return {}
             
             enriched_visuals = {}
+            total_enriched = 0
             
             # Pour chaque catégorie de vêtements
             for category, recs in recommendations.items():
-                if isinstance(recs, list) and len(recs) > 0:
-                    # Enrichir avec visuels
-                    enriched = self.fetch_visuals_for_category(category, recs)
-                    enriched_visuals[category] = enriched
-                    print(f"   ✅ {category}: {len(enriched)} visuels enrichis")
+                try:
+                    if isinstance(recs, list) and len(recs) > 0:
+                        # Enrichir avec visuels
+                        enriched = self.fetch_visuals_for_category(category, recs)
+                        enriched_visuals[category] = enriched
+                        count = len(enriched)
+                        total_enriched += count
+                        print(f"   ✅ {category}: {count} recommendations enrichies")
+                except Exception as e:
+                    print(f"   ⚠️  Erreur {category}: {str(e)[:100]}")
+                    # Ajouter les recommendations sans visuels
+                    enriched_visuals[category] = [
+                        {
+                            **rec,
+                            "visual_url": "",
+                            "visual_key": ""
+                        }
+                        for rec in recs
+                    ]
             
-            print(f"✅ Visuels récupérés: {sum(len(v) for v in enriched_visuals.values())} total")
+            print(f"✅ Visuels récupérés: {total_enriched} enrichies (peut avoir urls vides)")
             return enriched_visuals
             
         except Exception as e:
-            print(f"❌ Erreur fetch_for_recommendations: {e}")
+            print(f"❌ [FATAL] fetch_for_recommendations: {type(e).__name__}: {str(e)[:200]}")
             import traceback
             traceback.print_exc()
-            return {}
+            
+            # FALLBACK ULTIME: Retourner structure vide avec recommendations
+            try:
+                recommendations = morphology_result.get("recommandations", {})
+                return {
+                    category: [
+                        {
+                            **rec,
+                            "visual_url": "",
+                            "visual_key": ""
+                        }
+                        for rec in (recs or [])
+                    ]
+                    for category, recs in recommendations.items()
+                }
+            except:
+                return {}
 
 
 # Instance globale
