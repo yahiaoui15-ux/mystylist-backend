@@ -52,8 +52,8 @@ class ReportGenerator:
             # PHASE 3: Visuels + Produits (parallèle)
             print("⏳ Phase 3: Récupération visuels & produits (parallèle)...")
             
-            # ✅ FIX: fetch_for_recommendations() est synchrone, appeler directement
-            # Puis wrapper dans asyncio pour le paralléliser avec les autres tâches
+            # ✅ FIX: fetch_for_recommendations() est SYNCHRONE
+            # Donc on la wrapper avec run_in_executor() pour la paralléliser
             loop = asyncio.get_event_loop()
             
             visuals_task = loop.run_in_executor(
