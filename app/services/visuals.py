@@ -44,9 +44,6 @@ class VisualsService:
     def fetch_visual_for_cut(self, category: str, cut_name: str) -> dict:
         """
         Récupère UN visuel pour une coupe spécifique
-        Synchrone (pas async)
-        
-        ULTRA-ROBUSTE: Gère les erreurs sans crash
         
         Args:
             category: "hauts", "bas", "robes", "vestes", "chaussures", "accessoires"
@@ -79,14 +76,12 @@ class VisualsService:
             
             type_vetement = type_vetement_map.get(category, category)
             
-            # ✅ ULTRA-ROBUSTE: Wrapper avec try/except strict
             try:
                 client = self.supabase._get_client()
                 if client is None:
                     return {}
                 
-                # ✅ FIX: Supabase peut retourner 500 sur certains requêtes
-                # Si ça échoue, retourner vide plutôt que de crasher
+                # Gestion robuste des erreurs Supabase 500
                 try:
                     result = client.table("visuels").select("*").eq(
                         "type_vetement", type_vetement
@@ -94,7 +89,7 @@ class VisualsService:
                         "nom_simplifie", f"%{cut_key}%"
                     ).execute()
                 except Exception as supabase_query_error:
-                    print(f"⚠️  [SUPABASE_QUERY_ERROR] {category}/{cut_name}: {str(supabase_query_error)[:150]}")
+                    print(f"⚠️  [SUPABASE_QUERY] {category}/{cut_name}: Erreur requête")
                     return {}
                 
                 if result and result.data and len(result.data) > 0:
@@ -114,12 +109,10 @@ class VisualsService:
                 return {}
                 
             except Exception as supabase_error:
-                # ✅ GESTION GRACIEUSE: Logging sans crash
                 print(f"⚠️  [SUPABASE_ERROR] {category}/{cut_name}: {type(supabase_error).__name__}")
                 return {}
             
         except Exception as general_error:
-            # Double protection
             print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}")
             return {}
     
@@ -127,21 +120,20 @@ class VisualsService:
         """
         Enrichit une liste de recommandations avec les visuels
         
-        ULTRA-ROBUSTE: Retourne data même si visuels vides
-        
         Args:
             category: "hauts", "bas", etc.
-            recommendations: [{"name": "Encolure en V", "why": "..."}, ...]
+            recommendations: [{"cut_display": "Encolure en V", "why": "..."}, ...]
         
         Returns:
-            [{"name": "Encolure en V", "why": "...", "visual_url": ""}, ...]
+            [{"cut_display": "Encolure en V", "why": "...", "visual_url": ""}, ...]
         """
         try:
             enriched = []
             
             for rec in recommendations:
                 try:
-                    cut_name = rec.get("name", "")
+                    # ✅ FIX: utiliser "cut_display" au lieu de "name"
+                    cut_name = rec.get("cut_display", "") or rec.get("name", "")
                     visual = self.fetch_visual_for_cut(category, cut_name)
                     
                     enriched_rec = {
@@ -152,7 +144,6 @@ class VisualsService:
                     enriched.append(enriched_rec)
                 except Exception as e:
                     print(f"⚠️  [REC_ERROR] {category}: {str(e)[:100]}")
-                    # Ajouter quand même sans visuel
                     enriched.append({
                         **rec,
                         "visual_url": "",
@@ -163,7 +154,6 @@ class VisualsService:
             
         except Exception as e:
             print(f"⚠️  [CATEGORY_ERROR] {category}: {str(e)[:100]}")
-            # Retourner les recommendations sans visuels
             return [
                 {
                     **rec,
@@ -208,9 +198,13 @@ class VisualsService:
         """
         Récupère visuels pour les recommandations morphologiques.
         
-        ULTRA-ROBUSTE: Retourne data même si visuels vides ou erreur
-        
-        ✅ FIX: Utiliser "recommendations" (en anglais) au lieu de "recommandations"
+        ✅ FIX: Gère la structure RÉELLE du morphology:
+        {
+          "hauts": {
+            "a_privilegier": [...recommendations...],
+            "a_eviter": [...recommendations...]
+          }
+        }
         
         Args:
             morphology_result: Dict avec les recommandations par catégorie
@@ -225,38 +219,50 @@ class VisualsService:
                 print("   ⚠️  morphology_result vide")
                 return {}
             
-            # ✅ FIX: Utiliser "recommendations" (en anglais), pas "recommandations"!
+            # ✅ FIX: Utiliser "recommendations" (en anglais)
             recommendations = morphology_result.get("recommendations", {})
             
             if not recommendations:
-                print("   ⚠️  Pas de recommendations trouvées dans morphology_result")
-                print(f"      Clés disponibles: {list(morphology_result.keys())}")
+                print("   ⚠️  Pas de recommendations trouvées")
                 return {}
             
             enriched_visuals = {}
             total_enriched = 0
             
-            # Pour chaque catégorie de vêtements
-            for category, recs in recommendations.items():
+            # Pour chaque catégorie (hauts, bas, robes, etc.)
+            for category, category_data in recommendations.items():
                 try:
-                    if isinstance(recs, list) and len(recs) > 0:
+                    if not isinstance(category_data, dict):
+                        print(f"   ⚠️  {category}: structure attendue dict, reçue {type(category_data).__name__}")
+                        continue
+                    
+                    # ✅ FIX: Fusionner "a_privilegier" et "a_eviter"
+                    all_recs = []
+                    
+                    # Ajouter les recommandations à privilégier
+                    a_privilegier = category_data.get("a_privilegier", [])
+                    if isinstance(a_privilegier, list):
+                        all_recs.extend(a_privilegier)
+                    
+                    # Ajouter les recommandations à éviter (avec marqueur)
+                    a_eviter = category_data.get("a_eviter", [])
+                    if isinstance(a_eviter, list):
+                        all_recs.extend(a_eviter)
+                    
+                    if len(all_recs) > 0:
                         # Enrichir avec visuels
-                        enriched = self.fetch_visuals_for_category(category, recs)
+                        enriched = self.fetch_visuals_for_category(category, all_recs)
                         enriched_visuals[category] = enriched
                         count = len(enriched)
                         total_enriched += count
-                        print(f"   ✅ {category}: {count} recommendations enrichies")
+                        print(f"   ✅ {category}: {count} recommendations enrichies ({len(a_privilegier)} + {len(a_eviter)})")
+                    else:
+                        print(f"   ⚠️  {category}: aucune recommendation trouvée")
+                        enriched_visuals[category] = []
+                        
                 except Exception as e:
                     print(f"   ⚠️  Erreur {category}: {str(e)[:100]}")
-                    # Ajouter les recommendations sans visuels
-                    enriched_visuals[category] = [
-                        {
-                            **rec,
-                            "visual_url": "",
-                            "visual_key": ""
-                        }
-                        for rec in recs
-                    ]
+                    enriched_visuals[category] = []
             
             print(f"✅ Visuels récupérés: {total_enriched} enrichies")
             return enriched_visuals
@@ -265,23 +271,7 @@ class VisualsService:
             print(f"❌ [FATAL] fetch_for_recommendations: {type(e).__name__}: {str(e)[:200]}")
             import traceback
             traceback.print_exc()
-            
-            # FALLBACK ULTIME: Retourner structure vide avec recommendations
-            try:
-                recommendations = morphology_result.get("recommendations", {})
-                return {
-                    category: [
-                        {
-                            **rec,
-                            "visual_url": "",
-                            "visual_key": ""
-                        }
-                        for rec in (recs or [])
-                    ]
-                    for category, recs in recommendations.items()
-                }
-            except:
-                return {}
+            return {}
 
 
 # Instance globale
