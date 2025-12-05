@@ -13,7 +13,7 @@ PDF Data Mapper v5.1 - CORRIGÉ SNAKE_CASE
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
-
+from app.services.visuals import visuals_service
 
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
@@ -528,18 +528,16 @@ class PDFDataMapper:
         """
         Génère données pour Pages 9-15 (7 catégories vestimentaires)
         Contenu adapté à la silhouette détectée
+        ✅ ENRICHI: Chaque recommandation inclut visual_url et visual_key
         """
         
         silhouette_type = morphology_raw.get("silhouette_type", "O")
         styling_objectives = PDFDataMapper._safe_list(morphology_raw.get("styling_objectives", []))
         body_parts_to_highlight = PDFDataMapper._safe_list(morphology_raw.get("body_parts_to_highlight", []))
         
-        # ════════════════════════════════════════════════════════════════════════════════════
-        # CONTENUS ADAPTÉS PAR SILHOUETTE
-        # ════════════════════════════════════════════════════════════════════════════════════
-        
         if silhouette_type == "O":
-            return {
+            # ✅ Structure de base
+            categories_data = {
                 "hauts": {
                     "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent créer de la verticalité et époucer légèrement. Privilégiez les encolures en V et les matières fluides.",
                     "recommandes": [
@@ -771,25 +769,43 @@ class PDFDataMapper:
                     "visuels": []
                 },
             }
+            
+            # ✅ ENRICHIR CHAQUE CATÉGORIE AVEC LES VISUELS
+            for category_name, category_data in categories_data.items():
+                # Enrichir recommandations avec visuels
+                enriched_recommandes = visuals_service.fetch_visuals_for_category(
+                    category_name,
+                    category_data.get("recommandes", [])
+                )
+                category_data["recommandes"] = enriched_recommandes
+                
+                # Enrichir aussi les à éviter
+                enriched_a_eviter = visuals_service.fetch_visuals_for_category(
+                    category_name,
+                    category_data.get("a_eviter", [])
+                )
+                category_data["a_eviter"] = enriched_a_eviter
+            
+            return categories_data
         
-        # Pour les autres silhouettes, retourner aussi du contenu (A, X, H, V, 8)
+        # Pour les autres silhouettes (reste du code identique...)
         else:
             generic_structure = {
                 "introduction": f"Pour votre silhouette {silhouette_type}, adaptez vos pièces à votre morphologie unique.",
                 "recommandes": [
-                    {"name": "Pièce 1", "why": "Adapté à votre silhouette"},
-                    {"name": "Pièce 2", "why": "Valorise vos atouts"},
-                    {"name": "Pièce 3", "why": "Crée l'harmonie"},
-                    {"name": "Pièce 4", "why": "Affine votre silhouette"},
-                    {"name": "Pièce 5", "why": "Crée de la fluidité"},
-                    {"name": "Pièce 6", "why": "Personnalise votre look"},
+                    {"name": "Pièce 1", "why": "Adapté à votre silhouette", "visual_url": "", "visual_key": ""},
+                    {"name": "Pièce 2", "why": "Valorise vos atouts", "visual_url": "", "visual_key": ""},
+                    {"name": "Pièce 3", "why": "Crée l'harmonie", "visual_url": "", "visual_key": ""},
+                    {"name": "Pièce 4", "why": "Affine votre silhouette", "visual_url": "", "visual_key": ""},
+                    {"name": "Pièce 5", "why": "Crée de la fluidité", "visual_url": "", "visual_key": ""},
+                    {"name": "Pièce 6", "why": "Personnalise votre look", "visual_url": "", "visual_key": ""},
                 ],
                 "a_eviter": [
-                    {"name": "À éviter 1", "why": "Peut élargir"},
-                    {"name": "À éviter 2", "why": "Manque de fluidité"},
-                    {"name": "À éviter 3", "why": "Peut écaser"},
-                    {"name": "À éviter 4", "why": "Crée un déséquilibre"},
-                    {"name": "À éviter 5", "why": "Peut marquer"},
+                    {"name": "À éviter 1", "why": "Peut élargir", "visual_url": "", "visual_key": ""},
+                    {"name": "À éviter 2", "why": "Manque de fluidité", "visual_url": "", "visual_key": ""},
+                    {"name": "À éviter 3", "why": "Peut écaser", "visual_url": "", "visual_key": ""},
+                    {"name": "À éviter 4", "why": "Crée un déséquilibre", "visual_url": "", "visual_key": ""},
+                    {"name": "À éviter 5", "why": "Peut marquer", "visual_url": "", "visual_key": ""},
                 ],
                 "matieres": "Privilégiez les matières de qualité qui épousent votre silhouette sans contrainte. Choisissez des tissus nobles et fluides.",
                 "motifs": {
@@ -817,7 +833,7 @@ class PDFDataMapper:
                 "chaussures": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les chaussures complètent votre look."},
                 "accessoires": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les accessoires finissent avec élégance."},
             }
-    
+
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
         """Wrapper compatibilité"""
