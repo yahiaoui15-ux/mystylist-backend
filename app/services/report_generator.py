@@ -52,7 +52,15 @@ class ReportGenerator:
             # PHASE 3: Visuels + Produits (parallèle)
             print("⏳ Phase 3: Récupération visuels & produits (parallèle)...")
             
-            visuals_task = visuals_service.fetch_for_recommendations(morphology_result)
+            # ✅ FIX: fetch_for_recommendations() est synchrone, appeler directement
+            # Puis wrapper dans asyncio pour le paralléliser avec les autres tâches
+            loop = asyncio.get_event_loop()
+            
+            visuals_task = loop.run_in_executor(
+                None,
+                visuals_service.fetch_for_recommendations,
+                morphology_result
+            )
             
             # Tâches produits pour 5 catégories
             products_tasks = [
@@ -90,6 +98,8 @@ class ReportGenerator:
             
         except Exception as e:
             print(f"❌ Erreur génération rapport: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
 # Instance globale

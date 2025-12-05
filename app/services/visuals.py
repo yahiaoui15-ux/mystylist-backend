@@ -152,6 +152,62 @@ class VisualsService:
             print(f"❌ Erreur fetch all visuals: {e}")
             return {}
 
+    def fetch_for_recommendations(self, morphology_result: dict) -> dict:
+    """
+    🆕 METHODE MANQUANTE - Récupère visuels pour les recommandations morphologiques
+    
+    Cette méthode était appelée par report_generator.py ligne 56 mais n'existait pas!
+    C'est pourquoi le rapport échouait.
+    
+    Args:
+        morphology_result: Dict avec structure:
+            {
+                "silhouette": "O",
+                "objectifs": [...],
+                "recommandations": {
+                    "hauts": [{"name": "Encolure en V", "why": "..."}, ...],
+                    "bas": [...],
+                    "robes": [...],
+                    "vestes": [...]
+                },
+                ...
+            }
+    
+    Returns:
+        Dict organisé avec visuels enrichis par catégorie
+    """
+    try:
+        print("🎨 Récupération visuels pour recommendations...")
+        
+        if not morphology_result:
+            print("   ⚠️  morphology_result vide")
+            return {}
+        
+        # Extraire les recommandations par catégorie
+        recommendations = morphology_result.get("recommandations", {})
+        
+        if not recommendations:
+            print("   ⚠️  Pas de recommandations trouvées")
+            return {}
+        
+        enriched_visuals = {}
+        
+        # Pour chaque catégorie de vêtements
+        for category, recs in recommendations.items():
+            if isinstance(recs, list) and len(recs) > 0:
+                # Enrichir avec visuels
+                enriched = self.fetch_visuals_for_category(category, recs)
+                enriched_visuals[category] = enriched
+                print(f"   ✅ {category}: {len(enriched)} visuels enrichis")
+        
+        print(f"✅ Visuels récupérés: {sum(len(v) for v in enriched_visuals.values())} total")
+        return enriched_visuals
+        
+    except Exception as e:
+        print(f"❌ Erreur fetch_for_recommendations: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}
 
 # Instance globale
 visuals_service = VisualsService()
