@@ -77,28 +77,38 @@ class VisualsService:
             
             type_vetement = type_vetement_map.get(category, category)
             
-            # ✅ UTILISER LA VRAIE API SUPABASE
-            result = self.supabase.table("visuels").select("*").eq(
-                "type_vetement", type_vetement
-            ).ilike(
-                "nom_simplifie", f"%{cut_key}%"  # Utiliser ilike pour flexibility
-            ).execute()
-            
-            if result and result.data and len(result.data) > 0:
-                visual = result.data[0]
-                cached_visual = {
-                    "url_image": visual.get("url_image", ""),
-                    "nom_simplifie": visual.get("nom_simplifie", ""),
-                    "coupe": visual.get("coupe", "")
-                }
+            # ✅ CORRECTION: Accéder au vrai client Supabase via _get_client()
+            try:
+                client = self.supabase._get_client()
+                if client is None:
+                    print(f"⚠️  Client Supabase None pour {category}/{cut_name}")
+                    return {}
                 
-                # Mettre en cache
-                self._cache[cache_key] = cached_visual
+                result = client.table("visuels").select("*").eq(
+                    "type_vetement", type_vetement
+                ).ilike(
+                    "nom_simplifie", f"%{cut_key}%"
+                ).execute()
                 
-                print(f"✅ Visuel trouvé: {category}/{cut_key} → {visual.get('nom_simplifie')}")
-                return cached_visual
-            
-            return {}
+                if result and result.data and len(result.data) > 0:
+                    visual = result.data[0]
+                    cached_visual = {
+                        "url_image": visual.get("url_image", ""),
+                        "nom_simplifie": visual.get("nom_simplifie", ""),
+                        "coupe": visual.get("coupe", "")
+                    }
+                    
+                    # Mettre en cache
+                    self._cache[cache_key] = cached_visual
+                    
+                    print(f"✅ Visuel trouvé: {category}/{cut_key} → {visual.get('nom_simplifie')}")
+                    return cached_visual
+                
+                return {}
+                
+            except Exception as e:
+                print(f"⚠️  Erreur Supabase pour {category}/{cut_name}: {e}")
+                return {}
             
         except Exception as e:
             print(f"⚠️  Erreur visuel {category}/{cut_name}: {e}")
@@ -133,7 +143,13 @@ class VisualsService:
     def fetch_all_visuals_by_category(self) -> dict:
         """Récupère TOUS les visuels organisés par catégorie"""
         try:
-            result = self.supabase.table("visuels").select("*").execute()
+            # ✅ CORRECTION: Accéder au vrai client via _get_client()
+            client = self.supabase._get_client()
+            if client is None:
+                print("⚠️  Client Supabase None")
+                return {}
+            
+            result = client.table("visuels").select("*").execute()
             
             if not result or not result.data:
                 return {}
