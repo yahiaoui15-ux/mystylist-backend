@@ -49,7 +49,7 @@ class VisualsService:
         ULTRA-ROBUSTE: Gère les erreurs sans crash
         
         Args:
-            category: "hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"
+            category: "hauts", "bas", "robes", "vestes", "chaussures", "accessoires"
             cut_name: "Encolure en V", "Tailles hautes", etc.
         
         Returns:
@@ -85,11 +85,17 @@ class VisualsService:
                 if client is None:
                     return {}
                 
-                result = client.table("visuels").select("*").eq(
-                    "type_vetement", type_vetement
-                ).ilike(
-                    "nom_simplifie", f"%{cut_key}%"
-                ).execute()
+                # ✅ FIX: Supabase peut retourner 500 sur certains requêtes
+                # Si ça échoue, retourner vide plutôt que de crasher
+                try:
+                    result = client.table("visuels").select("*").eq(
+                        "type_vetement", type_vetement
+                    ).ilike(
+                        "nom_simplifie", f"%{cut_key}%"
+                    ).execute()
+                except Exception as supabase_query_error:
+                    print(f"⚠️  [SUPABASE_QUERY_ERROR] {category}/{cut_name}: {str(supabase_query_error)[:150]}")
+                    return {}
                 
                 if result and result.data and len(result.data) > 0:
                     visual = result.data[0]
@@ -109,12 +115,12 @@ class VisualsService:
                 
             except Exception as supabase_error:
                 # ✅ GESTION GRACIEUSE: Logging sans crash
-                print(f"⚠️  [SUPABASE_ERROR] {category}/{cut_name}: {type(supabase_error).__name__}: {str(supabase_error)[:100]}")
+                print(f"⚠️  [SUPABASE_ERROR] {category}/{cut_name}: {type(supabase_error).__name__}")
                 return {}
             
         except Exception as general_error:
             # Double protection
-            print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}: {str(general_error)[:100]}")
+            print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}")
             return {}
     
     def fetch_visuals_for_category(self, category: str, recommendations: list) -> list:
@@ -129,7 +135,6 @@ class VisualsService:
         
         Returns:
             [{"name": "Encolure en V", "why": "...", "visual_url": ""}, ...]
-            (visual_url peut être vide si pas trouvé)
         """
         try:
             enriched = []
@@ -157,7 +162,7 @@ class VisualsService:
             return enriched
             
         except Exception as e:
-            print(f"⚠️  [CATEGORY_ERROR] fetch_visuals_for_category {category}: {str(e)[:100]}")
+            print(f"⚠️  [CATEGORY_ERROR] {category}: {str(e)[:100]}")
             # Retourner les recommendations sans visuels
             return [
                 {
@@ -203,13 +208,15 @@ class VisualsService:
         """
         Récupère visuels pour les recommandations morphologiques.
         
-        ULTRA-ROBUSTE: Retourne data même si visuels vides ou erreur Supabase
+        ULTRA-ROBUSTE: Retourne data même si visuels vides ou erreur
+        
+        ✅ FIX: Utiliser "recommendations" (en anglais) au lieu de "recommandations"
         
         Args:
             morphology_result: Dict avec les recommandations par catégorie
         
         Returns:
-            Dict organisé avec visuels enrichis (peut être vide si erreur)
+            Dict organisé avec visuels enrichis
         """
         try:
             print("🎨 Récupération visuels pour recommendations...")
@@ -218,11 +225,12 @@ class VisualsService:
                 print("   ⚠️  morphology_result vide")
                 return {}
             
-            # Extraire les recommandations par catégorie
-            recommendations = morphology_result.get("recommandations", {})
+            # ✅ FIX: Utiliser "recommendations" (en anglais), pas "recommandations"!
+            recommendations = morphology_result.get("recommendations", {})
             
             if not recommendations:
-                print("   ⚠️  Pas de recommandations trouvées")
+                print("   ⚠️  Pas de recommendations trouvées dans morphology_result")
+                print(f"      Clés disponibles: {list(morphology_result.keys())}")
                 return {}
             
             enriched_visuals = {}
@@ -250,7 +258,7 @@ class VisualsService:
                         for rec in recs
                     ]
             
-            print(f"✅ Visuels récupérés: {total_enriched} enrichies (peut avoir urls vides)")
+            print(f"✅ Visuels récupérés: {total_enriched} enrichies")
             return enriched_visuals
             
         except Exception as e:
@@ -260,7 +268,7 @@ class VisualsService:
             
             # FALLBACK ULTIME: Retourner structure vide avec recommendations
             try:
-                recommendations = morphology_result.get("recommandations", {})
+                recommendations = morphology_result.get("recommendations", {})
                 return {
                     category: [
                         {
