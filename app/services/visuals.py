@@ -1,12 +1,13 @@
 from app.utils.supabase_client import supabase
 import re
+from difflib import SequenceMatcher
 
 
 class VisualsService:
     def __init__(self):
         self.supabase = supabase
-        # Cache les visuels pour éviter requêtes répétées
         self._cache = {}
+        self._all_visuels = None  # Cache tous les visuels au startup
     
     @staticmethod
     def _normalize_cut_name(cut_name: str) -> str:
@@ -18,13 +19,9 @@ class VisualsService:
         if not cut_name:
             return ""
         
-        # Lowercase + remplacer espaces par underscores
         normalized = cut_name.lower().strip()
-        
-        # Remplacer les espaces par underscores
         normalized = re.sub(r'\s+', '_', normalized)
         
-        # Remplacer les accents
         accents = {
             'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a',
             'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
@@ -36,29 +33,65 @@ class VisualsService:
         for accent, replacement in accents.items():
             normalized = normalized.replace(accent, replacement)
         
-        # Supprimer les caractères spéciaux sauf underscores
         normalized = re.sub(r'[^a-z0-9_]', '', normalized)
         
         return normalized
     
+    @staticmethod
+    def _similarity_ratio(a: str, b: str) -> float:
+        """Calcule la similarité entre 2 strings (0.0 à 1.0)"""
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+    
+    def _preload_all_visuels(self) -> dict:
+        """Précharge TOUS les visuels au startup pour éviter requêtes répétées"""
+        try:
+            client = self.supabase._get_client()
+            if client is None:
+                return {}
+            
+            try:
+                result = client.table("visuels").select("*").execute()
+                if result and result.data:
+                    organized = {}
+                    for visual in result.data:
+                        category = visual.get("type_vetement", "autre")
+                        if category not in organized:
+                            organized[category] = []
+                        organized[category].append({
+                            "coupe": visual.get("coupe", ""),
+                            "nom_simplifie": visual.get("nom_simplifie", ""),
+                            "url_image": visual.get("url_image", ""),
+                            "nom_simplifie_normalized": self._normalize_cut_name(visual.get("nom_simplifie", ""))
+                        })
+                    print(f"✅ Visuels préchargés: {sum(len(v) for v in organized.values())} images")
+                    return organized
+            except Exception as e:
+                print(f"⚠️  [PRELOAD] Erreur: {str(e)[:100]}")
+                return {}
+        
+        except Exception as e:
+            print(f"⚠️  [PRELOAD_GENERAL] {str(e)[:100]}")
+            return {}
+    
     def fetch_visual_for_cut(self, category: str, cut_name: str) -> dict:
         """
-        Récupère UN visuel pour une coupe spécifique
+        Récupère UN visuel pour une coupe spécifique avec FUZZY MATCHING.
+        
+        Si le match exact échoue, cherche le match le plus proche!
         
         Args:
-            category: "hauts", "bas", "robes", "vestes", "chaussures", "accessoires"
-            cut_name: "Encolure en V", "Tailles hautes", etc.
+            category: "hauts", "bas", "robes", "vestes", etc.
+            cut_name: "Encolure en V", "Manches raglan ou kimono", etc.
         
         Returns:
             dict avec {"url_image": "...", "nom_simplifie": "..."} ou vide {}
         """
         try:
-            # Normaliser le nom
             cut_key = self._normalize_cut_name(cut_name)
             if not cut_key:
                 return {}
             
-            # Vérifier le cache
+            # Vérifier le cache d'abord
             cache_key = f"{category}:{cut_key}"
             if cache_key in self._cache:
                 return self._cache[cache_key]
@@ -71,47 +104,57 @@ class VisualsService:
                 "vestes": "veste",
                 "maillot_lingerie": "lingerie",
                 "chaussures": "chaussure",
-                "accessoires": "accessoire"
+                "accessoires": "accessoire",
+                "Maillot de bain": "Maillot de bain",
+                "manteau": "manteau"
             }
             
             type_vetement = type_vetement_map.get(category, category)
             
-            try:
-                client = self.supabase._get_client()
-                if client is None:
-                    return {}
-                
-                # Gestion robuste des erreurs Supabase 500
-                try:
-                    result = client.table("visuels").select("*").eq(
-                        "type_vetement", type_vetement
-                    ).ilike(
-                        "nom_simplifie", f"%{cut_key}%"
-                    ).execute()
-                except Exception as supabase_query_error:
-                    print(f"⚠️  [SUPABASE_QUERY] {category}/{cut_name}: Erreur requête")
-                    return {}
-                
-                if result and result.data and len(result.data) > 0:
-                    visual = result.data[0]
-                    cached_visual = {
-                        "url_image": visual.get("url_image", ""),
-                        "nom_simplifie": visual.get("nom_simplifie", ""),
-                        "coupe": visual.get("coupe", "")
-                    }
-                    
-                    # Mettre en cache
-                    self._cache[cache_key] = cached_visual
-                    
-                    print(f"✅ Visuel trouvé: {category}/{cut_key} → {visual.get('nom_simplifie')}")
-                    return cached_visual
-                
-                return {}
-                
-            except Exception as supabase_error:
-                print(f"⚠️  [SUPABASE_ERROR] {category}/{cut_name}: {type(supabase_error).__name__}")
+            # Précharger les visuels si pas fait
+            if self._all_visuels is None:
+                self._all_visuels = self._preload_all_visuels()
+            
+            # Chercher dans les visuels préchargés
+            if not self._all_visuels or type_vetement not in self._all_visuels:
                 return {}
             
+            visuels_category = self._all_visuels.get(type_vetement, [])
+            
+            # 1️⃣ Chercher MATCH EXACT d'abord
+            for visual in visuels_category:
+                if visual["nom_simplifie_normalized"] == cut_key:
+                    cached_visual = {
+                        "url_image": visual.get("url_image", ""),
+                        "nom_simplifie": visual.get("nom_simplifie", "")
+                    }
+                    self._cache[cache_key] = cached_visual
+                    print(f"✅ Visuel EXACT: {category}/{cut_key}")
+                    return cached_visual
+            
+            # 2️⃣ Si pas de match exact, chercher FUZZY MATCH (similarité > 0.6)
+            best_match = None
+            best_score = 0.6  # Seuil minimum de similarité
+            
+            for visual in visuels_category:
+                score = self._similarity_ratio(cut_key, visual["nom_simplifie_normalized"])
+                if score > best_score:
+                    best_score = score
+                    best_match = visual
+            
+            if best_match:
+                cached_visual = {
+                    "url_image": best_match.get("url_image", ""),
+                    "nom_simplifie": best_match.get("nom_simplifie", "")
+                }
+                self._cache[cache_key] = cached_visual
+                print(f"📊 Visuel FUZZY (score {best_score:.2f}): {category}/{cut_key} → {best_match['nom_simplifie']}")
+                return cached_visual
+            
+            # 3️⃣ Si rien ne match, retourner vide (gracieusement)
+            print(f"⚠️  Aucun visuel trouvé: {category}/{cut_key}")
+            return {}
+                
         except Exception as general_error:
             print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}")
             return {}
@@ -132,7 +175,6 @@ class VisualsService:
             
             for rec in recommendations:
                 try:
-                    # ✅ Utiliser "name" au lieu de "cut_display"
                     cut_name = rec.get("name", "")
                     visual = self.fetch_visual_for_cut(category, cut_name)
                     
@@ -163,42 +205,11 @@ class VisualsService:
                 for rec in (recommendations or [])
             ]
     
-    def fetch_all_visuals_by_category(self) -> dict:
-        """Récupère TOUS les visuels organisés par catégorie"""
-        try:
-            try:
-                client = self.supabase._get_client()
-                if client is None:
-                    return {}
-                
-                result = client.table("visuels").select("*").execute()
-                
-                if not result or not result.data:
-                    return {}
-                
-                organized = {}
-                for visual in result.data:
-                    category = visual.get("type_vetement", "autre")
-                    if category not in organized:
-                        organized[category] = []
-                    organized[category].append(visual)
-                
-                print(f"✅ Tous les visuels chargés: {sum(len(v) for v in organized.values())} images")
-                return organized
-                
-            except Exception as e:
-                print(f"⚠️  [SUPABASE] fetch_all_visuals: {str(e)[:100]}")
-                return {}
-            
-        except Exception as e:
-            print(f"⚠️  [GENERAL] fetch_all_visuals: {str(e)[:100]}")
-            return {}
-    
     def fetch_for_recommendations(self, morphology_result: dict) -> dict:
         """
         Récupère visuels pour les recommandations morphologiques.
         
-        ✅ FIX FINAL: Cherche dans morphology.morpho.categories
+        ✅ Cherche dans morphology.morpho.categories
         Structure réelle du payload:
         {
           "morpho": {
@@ -218,13 +229,13 @@ class VisualsService:
             Dict organisé avec visuels enrichis
         """
         try:
-            print("🎨 Récupération visuels pour recommendations...")
+            print("🎨 Récupération visuels pour recommendations (FUZZY MATCHING)...")
             
             if not morphology_result:
                 print("   ⚠️  morphology_result vide")
                 return {}
             
-            # ✅ FIX: Chercher dans morpho.categories (vraie structure!)
+            # Chercher dans morpho.categories
             morpho = morphology_result.get("morpho", {})
             if not morpho:
                 print("   ⚠️  Pas de 'morpho' trouvé")
@@ -245,26 +256,26 @@ class VisualsService:
                         print(f"   ⚠️  {category}: structure invalide")
                         continue
                     
-                    # ✅ Fusionner "recommandes" + "a_eviter"
+                    # Fusionner "recommandes" + "a_eviter"
                     all_recs = []
                     
-                    # Ajouter les recommandations
                     recommandes = category_data.get("recommandes", [])
                     if isinstance(recommandes, list):
                         all_recs.extend(recommandes)
                     
-                    # Ajouter les recommandations à éviter
                     a_eviter = category_data.get("a_eviter", [])
                     if isinstance(a_eviter, list):
                         all_recs.extend(a_eviter)
                     
                     if len(all_recs) > 0:
-                        # Enrichir avec visuels
                         enriched = self.fetch_visuals_for_category(category, all_recs)
                         enriched_visuals[category] = enriched
                         count = len(enriched)
                         total_enriched += count
-                        print(f"   ✅ {category}: {count} recommendations enrichies ({len(recommandes)} + {len(a_eviter)})")
+                        
+                        # Compter les visuels trouvés vs demandés
+                        found = sum(1 for e in enriched if e.get("visual_url"))
+                        print(f"   ✅ {category}: {found}/{count} visuels trouvés ({len(recommandes)} + {len(a_eviter)})")
                     else:
                         print(f"   ⚠️  {category}: aucune recommendation")
                         enriched_visuals[category] = []
@@ -273,7 +284,7 @@ class VisualsService:
                     print(f"   ⚠️  Erreur {category}: {str(e)[:100]}")
                     enriched_visuals[category] = []
             
-            print(f"✅ Visuels récupérés: {total_enriched} enrichies")
+            print(f"✅ Visuels récupérés: {total_enriched} recommendations enrichies")
             return enriched_visuals
             
         except Exception as e:
