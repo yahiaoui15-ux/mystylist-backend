@@ -7,21 +7,25 @@ class VisualsService:
     def __init__(self):
         self.supabase = supabase
         self._cache = {}
-        self._all_visuels = None  # Cache tous les visuels au startup
+        self._all_visuels = None
     
     @staticmethod
     def _normalize_cut_name(cut_name: str) -> str:
-        """
-        Transforme un nom de coupe en clé de recherche
-        "Encolure en V" → "encolure_en_v"
-        "Manches raglan ou kimono" → "manches_raglan"
-        """
+        """Normalise nom de coupe en clé de recherche"""
         if not cut_name:
             return ""
         
         normalized = cut_name.lower().strip()
+        
+        # Supprimer les conjonctions et mots vides
+        remove_words = ['ou', 'et', 'de', 'des', 'la', 'le', 'très', 'très', 'trop']
+        for word in remove_words:
+            normalized = re.sub(r'\b' + word + r'\b', '', normalized)
+        
+        # Espaces → underscores
         normalized = re.sub(r'\s+', '_', normalized)
         
+        # Accents
         accents = {
             'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a',
             'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
@@ -33,17 +37,21 @@ class VisualsService:
         for accent, replacement in accents.items():
             normalized = normalized.replace(accent, replacement)
         
+        # Caractères spéciaux
         normalized = re.sub(r'[^a-z0-9_]', '', normalized)
+        
+        # Supprimer underscores multiples
+        normalized = re.sub(r'_+', '_', normalized).strip('_')
         
         return normalized
     
     @staticmethod
     def _similarity_ratio(a: str, b: str) -> float:
-        """Calcule la similarité entre 2 strings (0.0 à 1.0)"""
+        """Calcule similarité entre 2 strings"""
         return SequenceMatcher(None, a.lower(), b.lower()).ratio()
     
     def _preload_all_visuels(self) -> dict:
-        """Précharge TOUS les visuels au startup pour éviter requêtes répétées"""
+        """Précharge TOUS les visuels au startup"""
         try:
             client = self.supabase._get_client()
             if client is None:
@@ -75,28 +83,25 @@ class VisualsService:
     
     def fetch_visual_for_cut(self, category: str, cut_name: str) -> dict:
         """
-        Récupère UN visuel pour une coupe spécifique avec FUZZY MATCHING.
+        Récupère visuel pour coupe avec FUZZY MATCHING RELAXE (score ≥ 0.45).
         
-        Si le match exact échoue, cherche le match le plus proche!
-        
-        Args:
-            category: "hauts", "bas", "robes", "vestes", etc.
-            cut_name: "Encolure en V", "Manches raglan ou kimono", etc.
-        
-        Returns:
-            dict avec {"url_image": "...", "nom_simplifie": "..."} ou vide {}
+        Stratégie:
+        1. Match EXACT (nom_simplifie exact)
+        2. Match FUZZY (score ≥ 0.45)
+        3. Match par MOTS-CLES (cherche mots importants dans nom_simplifie)
+        4. Retour vide gracieux
         """
         try:
             cut_key = self._normalize_cut_name(cut_name)
             if not cut_key:
                 return {}
             
-            # Vérifier le cache d'abord
+            # Cache
             cache_key = f"{category}:{cut_key}"
             if cache_key in self._cache:
                 return self._cache[cache_key]
             
-            # Map category vers type_vetement
+            # Map category
             type_vetement_map = {
                 "hauts": "haut",
                 "bas": "bas",
@@ -111,17 +116,16 @@ class VisualsService:
             
             type_vetement = type_vetement_map.get(category, category)
             
-            # Précharger les visuels si pas fait
+            # Précharger
             if self._all_visuels is None:
                 self._all_visuels = self._preload_all_visuels()
             
-            # Chercher dans les visuels préchargés
             if not self._all_visuels or type_vetement not in self._all_visuels:
                 return {}
             
             visuels_category = self._all_visuels.get(type_vetement, [])
             
-            # 1️⃣ Chercher MATCH EXACT d'abord
+            # 1️⃣ MATCH EXACT
             for visual in visuels_category:
                 if visual["nom_simplifie_normalized"] == cut_key:
                     cached_visual = {
@@ -129,12 +133,12 @@ class VisualsService:
                         "nom_simplifie": visual.get("nom_simplifie", "")
                     }
                     self._cache[cache_key] = cached_visual
-                    print(f"✅ Visuel EXACT: {category}/{cut_key}")
+                    print(f"✅ EXACT: {category}/{cut_key}")
                     return cached_visual
             
-            # 2️⃣ Si pas de match exact, chercher FUZZY MATCH (similarité > 0.6)
+            # 2️⃣ FUZZY MATCH (score ≥ 0.45)
             best_match = None
-            best_score = 0.6  # Seuil minimum de similarité
+            best_score = 0.45  # RELAXE: 0.6 → 0.45 pour trouver plus!
             
             for visual in visuels_category:
                 score = self._similarity_ratio(cut_key, visual["nom_simplifie_normalized"])
@@ -148,28 +152,36 @@ class VisualsService:
                     "nom_simplifie": best_match.get("nom_simplifie", "")
                 }
                 self._cache[cache_key] = cached_visual
-                print(f"📊 Visuel FUZZY (score {best_score:.2f}): {category}/{cut_key} → {best_match['nom_simplifie']}")
+                print(f"📊 FUZZY ({best_score:.2f}): {category}/{cut_key} → {best_match['nom_simplifie']}")
                 return cached_visual
             
-            # 3️⃣ Si rien ne match, retourner vide (gracieusement)
-            print(f"⚠️  Aucun visuel trouvé: {category}/{cut_key}")
+            # 3️⃣ MATCH PAR MOTS-CLES (alternative if fuzzy failed)
+            # Chercher si des mots importants de cut_name matchent
+            keywords = [word for word in cut_key.split('_') if len(word) > 2]  # Mots > 2 chars
+            
+            if keywords:
+                for visual in visuels_category:
+                    visual_words = visual["nom_simplifie_normalized"].split('_')
+                    # Si au moins 1 mot-clé match
+                    if any(kw in visual_words for kw in keywords):
+                        cached_visual = {
+                            "url_image": visual.get("url_image", ""),
+                            "nom_simplifie": visual.get("nom_simplifie", "")
+                        }
+                        self._cache[cache_key] = cached_visual
+                        print(f"🔑 KEYWORD: {category}/{cut_key} → {visual['nom_simplifie']}")
+                        return cached_visual
+            
+            # 4️⃣ Retour vide gracieux
+            print(f"⚠️  Aucun visuel: {category}/{cut_name}")
             return {}
                 
-        except Exception as general_error:
-            print(f"⚠️  [GENERAL_ERROR] fetch_visual_for_cut: {type(general_error).__name__}")
+        except Exception as e:
+            print(f"⚠️  [ERROR] {type(e).__name__}: {str(e)[:50]}")
             return {}
     
     def fetch_visuals_for_category(self, category: str, recommendations: list) -> list:
-        """
-        Enrichit une liste de recommandations avec les visuels
-        
-        Args:
-            category: "hauts", "bas", etc.
-            recommendations: [{"name": "Encolure en V", "why": "..."}, ...]
-        
-        Returns:
-            [{"name": "Encolure en V", "why": "...", "visual_url": ""}, ...]
-        """
+        """Enrichit recommandations avec visuels"""
         try:
             enriched = []
             
@@ -185,80 +197,40 @@ class VisualsService:
                     }
                     enriched.append(enriched_rec)
                 except Exception as e:
-                    print(f"⚠️  [REC_ERROR] {category}: {str(e)[:100]}")
-                    enriched.append({
-                        **rec,
-                        "visual_url": "",
-                        "visual_key": ""
-                    })
+                    print(f"⚠️  [REC] {str(e)[:50]}")
+                    enriched.append({**rec, "visual_url": "", "visual_key": ""})
             
             return enriched
             
         except Exception as e:
-            print(f"⚠️  [CATEGORY_ERROR] {category}: {str(e)[:100]}")
-            return [
-                {
-                    **rec,
-                    "visual_url": "",
-                    "visual_key": ""
-                }
-                for rec in (recommendations or [])
-            ]
+            print(f"⚠️  [CAT] {str(e)[:50]}")
+            return [{**rec, "visual_url": "", "visual_key": ""} for rec in (recommendations or [])]
     
     def fetch_for_recommendations(self, morphology_result: dict) -> dict:
-        """
-        Récupère visuels pour les recommandations morphologiques.
-        
-        ✅ Cherche dans morphology.morpho.categories
-        Structure réelle du payload:
-        {
-          "morpho": {
-            "categories": {
-              "hauts": {
-                "recommandes": [{name, why, visual_url, visual_key}, ...],
-                "a_eviter": [{name, why, visual_url, visual_key}, ...]
-              }
-            }
-          }
-        }
-        
-        Args:
-            morphology_result: Dict avec morpho.categories
-        
-        Returns:
-            Dict organisé avec visuels enrichis
-        """
+        """Récupère visuels pour morphologie"""
         try:
-            print("🎨 Récupération visuels pour recommendations (FUZZY MATCHING)...")
+            print("🎨 Récupération visuels (FUZZY MATCHING RELAXE 0.45)...")
             
             if not morphology_result:
-                print("   ⚠️  morphology_result vide")
                 return {}
             
-            # Chercher dans morpho.categories
             morpho = morphology_result.get("morpho", {})
             if not morpho:
-                print("   ⚠️  Pas de 'morpho' trouvé")
                 return {}
             
             categories = morpho.get("categories", {})
             if not categories:
-                print("   ⚠️  Pas de 'categories' trouvées")
                 return {}
             
             enriched_visuals = {}
             total_enriched = 0
             
-            # Pour chaque catégorie (hauts, bas, robes, etc.)
             for category, category_data in categories.items():
                 try:
                     if not isinstance(category_data, dict):
-                        print(f"   ⚠️  {category}: structure invalide")
                         continue
                     
-                    # Fusionner "recommandes" + "a_eviter"
                     all_recs = []
-                    
                     recommandes = category_data.get("recommandes", [])
                     if isinstance(recommandes, list):
                         all_recs.extend(recommandes)
@@ -270,27 +242,21 @@ class VisualsService:
                     if len(all_recs) > 0:
                         enriched = self.fetch_visuals_for_category(category, all_recs)
                         enriched_visuals[category] = enriched
-                        count = len(enriched)
-                        total_enriched += count
-                        
-                        # Compter les visuels trouvés vs demandés
                         found = sum(1 for e in enriched if e.get("visual_url"))
-                        print(f"   ✅ {category}: {found}/{count} visuels trouvés ({len(recommandes)} + {len(a_eviter)})")
+                        total_enriched += found
+                        print(f"   ✅ {category}: {found}/{len(enriched)} visuels")
                     else:
-                        print(f"   ⚠️  {category}: aucune recommendation")
                         enriched_visuals[category] = []
                         
                 except Exception as e:
-                    print(f"   ⚠️  Erreur {category}: {str(e)[:100]}")
+                    print(f"   ⚠️  {category}: {str(e)[:50]}")
                     enriched_visuals[category] = []
             
-            print(f"✅ Visuels récupérés: {total_enriched} recommendations enrichies")
+            print(f"✅ Total: {total_enriched} visuels trouvés")
             return enriched_visuals
             
         except Exception as e:
-            print(f"❌ [FATAL] fetch_for_recommendations: {type(e).__name__}: {str(e)[:200]}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ [FATAL] {type(e).__name__}: {str(e)[:100]}")
             return {}
 
 
