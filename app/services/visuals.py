@@ -122,18 +122,18 @@ class VisualsService:
         
         Args:
             category: "hauts", "bas", etc.
-            recommendations: [{"cut_display": "Encolure en V", "why": "..."}, ...]
+            recommendations: [{"name": "Encolure en V", "why": "..."}, ...]
         
         Returns:
-            [{"cut_display": "Encolure en V", "why": "...", "visual_url": ""}, ...]
+            [{"name": "Encolure en V", "why": "...", "visual_url": ""}, ...]
         """
         try:
             enriched = []
             
             for rec in recommendations:
                 try:
-                    # ✅ FIX: utiliser "cut_display" au lieu de "name"
-                    cut_name = rec.get("cut_display", "") or rec.get("name", "")
+                    # ✅ Utiliser "name" au lieu de "cut_display"
+                    cut_name = rec.get("name", "")
                     visual = self.fetch_visual_for_cut(category, cut_name)
                     
                     enriched_rec = {
@@ -198,16 +198,21 @@ class VisualsService:
         """
         Récupère visuels pour les recommandations morphologiques.
         
-        ✅ FIX: Gère la structure RÉELLE du morphology:
+        ✅ FIX FINAL: Cherche dans morphology.morpho.categories
+        Structure réelle du payload:
         {
-          "hauts": {
-            "a_privilegier": [...recommendations...],
-            "a_eviter": [...recommendations...]
+          "morpho": {
+            "categories": {
+              "hauts": {
+                "recommandes": [{name, why, visual_url, visual_key}, ...],
+                "a_eviter": [{name, why, visual_url, visual_key}, ...]
+              }
+            }
           }
         }
         
         Args:
-            morphology_result: Dict avec les recommandations par catégorie
+            morphology_result: Dict avec morpho.categories
         
         Returns:
             Dict organisé avec visuels enrichis
@@ -219,32 +224,36 @@ class VisualsService:
                 print("   ⚠️  morphology_result vide")
                 return {}
             
-            # ✅ FIX: Utiliser "recommendations" (en anglais)
-            recommendations = morphology_result.get("recommendations", {})
+            # ✅ FIX: Chercher dans morpho.categories (vraie structure!)
+            morpho = morphology_result.get("morpho", {})
+            if not morpho:
+                print("   ⚠️  Pas de 'morpho' trouvé")
+                return {}
             
-            if not recommendations:
-                print("   ⚠️  Pas de recommendations trouvées")
+            categories = morpho.get("categories", {})
+            if not categories:
+                print("   ⚠️  Pas de 'categories' trouvées")
                 return {}
             
             enriched_visuals = {}
             total_enriched = 0
             
             # Pour chaque catégorie (hauts, bas, robes, etc.)
-            for category, category_data in recommendations.items():
+            for category, category_data in categories.items():
                 try:
                     if not isinstance(category_data, dict):
-                        print(f"   ⚠️  {category}: structure attendue dict, reçue {type(category_data).__name__}")
+                        print(f"   ⚠️  {category}: structure invalide")
                         continue
                     
-                    # ✅ FIX: Fusionner "a_privilegier" et "a_eviter"
+                    # ✅ Fusionner "recommandes" + "a_eviter"
                     all_recs = []
                     
-                    # Ajouter les recommandations à privilégier
-                    a_privilegier = category_data.get("a_privilegier", [])
-                    if isinstance(a_privilegier, list):
-                        all_recs.extend(a_privilegier)
+                    # Ajouter les recommandations
+                    recommandes = category_data.get("recommandes", [])
+                    if isinstance(recommandes, list):
+                        all_recs.extend(recommandes)
                     
-                    # Ajouter les recommandations à éviter (avec marqueur)
+                    # Ajouter les recommandations à éviter
                     a_eviter = category_data.get("a_eviter", [])
                     if isinstance(a_eviter, list):
                         all_recs.extend(a_eviter)
@@ -255,9 +264,9 @@ class VisualsService:
                         enriched_visuals[category] = enriched
                         count = len(enriched)
                         total_enriched += count
-                        print(f"   ✅ {category}: {count} recommendations enrichies ({len(a_privilegier)} + {len(a_eviter)})")
+                        print(f"   ✅ {category}: {count} recommendations enrichies ({len(recommandes)} + {len(a_eviter)})")
                     else:
-                        print(f"   ⚠️  {category}: aucune recommendation trouvée")
+                        print(f"   ⚠️  {category}: aucune recommendation")
                         enriched_visuals[category] = []
                         
                 except Exception as e:
