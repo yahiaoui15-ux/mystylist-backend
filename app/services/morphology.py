@@ -1,10 +1,12 @@
 """
-MORPHOLOGY SERVICE - Analyse morphologie corporelle
-Utilise OpenAI Vision pour analyser photo + mensurations
+MORPHOLOGY SERVICE v2.0 - Avec call_tracker pour logs structurés
+✅ Logs clairs avant/après appel OpenAI
+✅ Tracking des tokens et parsing
 """
 
 import json
 from app.utils.openai_client import openai_client
+from app.utils.openai_call_tracker import call_tracker
 from app.prompts.morphology_prompt import MORPHOLOGY_SYSTEM_PROMPT, MORPHOLOGY_USER_PROMPT
 
 
@@ -14,33 +16,31 @@ class MorphologyService:
     
     async def analyze(self, user_data: dict) -> dict:
         """
-        Analyse la morphologie d'une cliente.
-        
-        Args:
-            user_data: dict avec:
-                - body_photo_url: URL de la photo du corps
-                - shoulder_circumference: Tour d'épaules (cm)
-                - waist_circumference: Tour de taille (cm)
-                - hip_circumference: Tour de hanches (cm)
-        
-        Returns:
-            dict avec silhouette_type, recommendations pour 7 catégories, etc.
+        Analyse la morphologie d'une cliente
         """
         try:
-            print("🔍 Analyse morphologie...")
+            print("\n" + "="*80)
+            print("📊 MORPHOLOGIE: Analyses et recommandations")
+            print("="*80 + "\n")
             
             # Vérifier que la photo existe
             body_photo_url = user_data.get("body_photo_url")
             if not body_photo_url:
                 print("❌ Pas de photo du corps fournie")
+                call_tracker.log_error("Morphology", "No body photo provided")
                 return {}
             
-            print(f"   📸 Photo: {body_photo_url[:50]}...")
-            print(f"   📏 Épaules: {user_data.get('shoulder_circumference')} cm")
-            print(f"   📏 Taille: {user_data.get('waist_circumference')} cm")
-            print(f"   📏 Hanches: {user_data.get('hip_circumference')} cm")
+            # Définir le contexte
+            self.openai.set_context("Morphology", "")
+            self.openai.set_system_prompt(MORPHOLOGY_SYSTEM_PROMPT)
             
-            # Construire le prompt utilisateur
+            print(f"📸 Photo: {body_photo_url[:50]}...")
+            print(f"📏 Mensurations:")
+            print(f"   • Épaules: {user_data.get('shoulder_circumference')} cm")
+            print(f"   • Taille: {user_data.get('waist_circumference')} cm")
+            print(f"   • Hanches: {user_data.get('hip_circumference')} cm\n")
+            
+            # Construire le prompt
             user_prompt = MORPHOLOGY_USER_PROMPT.format(
                 body_photo_url=body_photo_url,
                 shoulder_circumference=user_data.get("shoulder_circumference", 0),
@@ -49,58 +49,55 @@ class MorphologyService:
                 bust_circumference=user_data.get("bust_circumference", 0)
             )
             
-            # Appel OpenAI Vision
-            print("   🤖 Envoi à OpenAI GPT-4 Vision...")
+            print(f"🤖 Appel OpenAI Vision...")
             response = await self.openai.analyze_image(
                 image_urls=[body_photo_url],
                 prompt=user_prompt,
                 model="gpt-4-turbo"
             )
             
-            response_length = len(response) if response else 0
-            print(f"   ✅ Réponse reçue ({response_length} caractères)")
+            # Le call_tracker a déjà loggé via openai_client
+            content = response["content"]
             
-            # ✅ NETTOYAGE ROBUSTE: Extraire JSON valide
-            response_text = response.strip() if response else ""
+            # Parser robuste
+            response_text = content.strip() if content else ""
             
             if not response_text:
                 print("❌ Réponse vide reçue")
+                call_tracker.log_error("Morphology", "Empty response")
                 return {}
             
-            # Chercher le début du JSON
+            # Chercher JSON
             json_start = response_text.find('{')
             if json_start == -1:
-                print(f"❌ Pas de '{{' trouvé dans réponse: {response_text[:100]}")
+                print(f"❌ Pas de JSON trouvé")
+                call_tracker.log_error("Morphology", "No JSON found in response")
                 return {}
             
             response_text = response_text[json_start:]
-            print(f"   ✅ JSON trouvé à position {json_start}")
-            
-            # Chercher la fin du JSON
             json_end = response_text.rfind('}')
             if json_end == -1:
-                print(f"❌ Pas de '}}' trouvé dans réponse nettoyée")
+                print(f"❌ JSON incomplet")
+                call_tracker.log_error("Morphology", "Incomplete JSON")
                 return {}
             
             response_text = response_text[:json_end+1]
-            print(f"   ✅ JSON extrait ({len(response_text)} caractères)")
             
-            # Parser la réponse JSON
+            # Parser
             try:
                 result = json.loads(response_text)
-                print(f"   ✅ JSON parsé avec succès")
+                print(f"✅ JSON parsé avec succès")
             except json.JSONDecodeError as e:
                 print(f"❌ Erreur parsing JSON: {e}")
-                print(f"   Contexte: {response_text[:200]}...")
+                call_tracker.log_error("Morphology", f"JSON parsing failed: {str(e)}")
                 
-                # Tentative de correction simple: ajouter accolade manquante
+                # Tentative correction
                 if response_text.count('{') > response_text.count('}'):
                     response_text += '}'
                     try:
                         result = json.loads(response_text)
-                        print(f"   ✅ JSON corrigé et parsé")
+                        print(f"✅ JSON corrigé et parsé")
                     except:
-                        print(f"❌ Impossible de corriger le JSON")
                         return {}
                 else:
                     return {}
@@ -109,23 +106,22 @@ class MorphologyService:
                 print("❌ Résultat vide après parsing")
                 return {}
             
+            # Log résultat
             silhouette = result.get('silhouette_type', 'Unknown')
-            print(f"✅ Morphologie analysée: Silhouette {silhouette}")
+            objectives = len(result.get('styling_objectives', []))
+            tips = len(result.get('instant_tips', []))
             
-            # Log résumé
-            has_recommendations = 'recommendations' in result and result['recommendations']
-            has_objectives = 'styling_objectives' in result and result['styling_objectives']
-            has_tips = 'instant_tips' in result and result['instant_tips']
-            
+            print(f"\n✅ RÉSULTAT MORPHOLOGIE:")
             print(f"   • Silhouette: {silhouette}")
-            print(f"   • Objectifs: {len(result.get('styling_objectives', []))} trouvés")
-            print(f"   • Recommandations: {'Oui' if has_recommendations else 'Non'}")
-            print(f"   • Conseils immédiats: {len(result.get('instant_tips', []))} trouvés")
+            print(f"   • Objectifs: {objectives} trouvés")
+            print(f"   • Conseils immédiats: {tips} trouvés")
+            print("="*80 + "\n")
             
             return result
             
         except Exception as e:
-            print(f"❌ Erreur analyse morphologie: {e}")
+            print(f"\n❌ ERREUR MORPHOLOGIE: {e}")
+            call_tracker.log_error("Morphology", str(e))
             import traceback
             traceback.print_exc()
             raise

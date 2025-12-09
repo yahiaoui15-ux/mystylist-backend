@@ -1,22 +1,29 @@
+"""
+REPORT GENERATOR v2.0 - Avec résumé final call_tracker
+✅ Affiche le résumé de TOUS les appels OpenAI à la fin
+"""
+
 import asyncio
 from app.services.colorimetry import colorimetry_service
 from app.services.morphology import morphology_service
 from app.services.styling import styling_service
 from app.services.visuals import visuals_service
 from app.services.products import products_service
+from app.utils.openai_call_tracker import call_tracker
+
 
 class ReportGenerator:
-    """Orchestre la génération complète du rapport"""
+    """Orchestre la génération complète du rapport avec tracking"""
     
     async def generate_complete_report(self, user_data: dict) -> dict:
         """
-        Génère le rapport complet en parallélisant les appels
+        Génère le rapport complet avec résumé final des appels OpenAI
         
         Timeline:
         - Colorimétrie + Morphologie: parallèle (20s max)
         - Profil Styling: dépend des 2 (15s)
-        - Visuels + 5x Produits: parallèle (5s)
-        Total: ~40s au lieu de 60-90s
+        - Visuels + Produits: parallèle (5s)
+        Total: ~40s
         
         Args:
             user_data: Données utilisateur complètes
@@ -25,10 +32,11 @@ class ReportGenerator:
             dict avec tous les résultats
         """
         try:
-            print("🚀 Début génération rapport...")
+            print("\n🚀 GÉNÉRATION RAPPORT COMPLET")
+            print("="*80 + "\n")
             
             # PHASE 1: Paralléliser colorimétrie + morphologie
-            print("⏳ Phase 1: Analyses colorimétrie & morphologie (parallèle)...")
+            print("⏳ PHASE 1: Analyses colorimétrie & morphologie (parallèle)...\n")
             colorimetry_task = colorimetry_service.analyze(user_data)
             morphology_task = morphology_service.analyze(user_data)
             
@@ -39,21 +47,21 @@ class ReportGenerator:
             
             if not colorimetry_result or not morphology_result:
                 print("❌ Erreur analyses IA")
+                call_tracker.print_summary()
                 return {}
             
-            # PHASE 2: Profil Styling (séquentiel, dépend des 2 autres)
-            print("⏳ Phase 2: Génération profil stylistique...")
+            # PHASE 2: Profil Styling
+            print("\n⏳ PHASE 2: Génération profil stylistique...\n")
             styling_result = await styling_service.generate(
                 colorimetry_result,
                 morphology_result,
                 user_data
             )
             
-            # PHASE 3: Visuels + Produits (parallèle)
-            print("⏳ Phase 3: Récupération visuels & produits (parallèle)...")
+            # PHASE 3: Visuels + Produits
+            print("\n⏳ PHASE 3: Récupération visuels & produits (parallèle)...\n")
             
             # ✅ FIX: fetch_for_recommendations() est SYNCHRONE
-            # Donc on la wrapper avec run_in_executor() pour la paralléliser
             loop = asyncio.get_event_loop()
             
             visuals_task = loop.run_in_executor(
@@ -93,14 +101,24 @@ class ReportGenerator:
                 }
             }
             
-            print("✅ Rapport généré avec succès!")
+            print("\n✅ Rapport généré avec succès!")
+            
+            # ✅ AFFICHER LE RÉSUMÉ FINAL DE TOUS LES APPELS
+            call_tracker.print_summary()
+            
             return report
             
         except Exception as e:
-            print(f"❌ Erreur génération rapport: {e}")
+            print(f"\n❌ ERREUR GÉNÉRATION RAPPORT: {e}")
+            call_tracker.log_error("ReportGenerator", str(e))
+            
+            # Afficher quand même le résumé des appels effectués avant l'erreur
+            call_tracker.print_summary()
+            
             import traceback
             traceback.print_exc()
             raise
+
 
 # Instance globale
 report_generator = ReportGenerator()
