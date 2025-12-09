@@ -1,15 +1,16 @@
 """
-COLORIMETRY PART 2 v8.0 - OPTIMIZED TOKEN USAGE
-✅ Structures minimales
-✅ Pas de duplication
-✅ Estimé: 2500 tokens max vs 5688 avant
+COLORIMETRY PART 2 v8.1 - FIX KeyError ' END WITH '
+✅ Échappement {{ }} correct pour .format()
+✅ Pas de texte confus dans le template
 """
 
 COLORIMETRY_PART2_SYSTEM_PROMPT = """You are a color analysis expert. You MUST respond with ONLY valid JSON, no text before or after.
 Start with { and end with }. Every response must be valid JSON.
 Escape apostrophes with backslash in strings (example: s\'harmonise)."""
 
+# ⚠️ IMPORTANT: Use triple quotes and escape {{ }} properly for .format()
 COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """RETURN ONLY JSON. NO TEXT BEFORE OR AFTER.
+Start immediately with double curly brace and end with double curly brace.
 
 CLIENT PROFILE:
 Season: {SAISON}
@@ -19,12 +20,20 @@ Hair: {HAIR_COLOR}
 
 TASK: Generate a personalized color palette and associations.
 
-REQUIRED JSON STRUCTURE (no text, no preamble, start with {{ end with }}):
+REQUIRED JSON STRUCTURE (start with single {{ end with single }}, no text):
 
 {{
   "palette_personnalisee": [
     {{"name": "color1", "hex": "#HEX", "note": 10, "commentaire": "Brief description max 15 words"}},
-    ... 10 colors total (notes 10,10,9,9,9,9,8,8,8,8)
+    {{"name": "color2", "hex": "#HEX", "note": 10, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color3", "hex": "#HEX", "note": 9, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color4", "hex": "#HEX", "note": 9, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color5", "hex": "#HEX", "note": 9, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color6", "hex": "#HEX", "note": 9, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color7", "hex": "#HEX", "note": 8, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color8", "hex": "#HEX", "note": 8, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color9", "hex": "#HEX", "note": 8, "commentaire": "Brief description max 15 words"}},
+    {{"name": "color10", "hex": "#HEX", "note": 8, "commentaire": "Brief description max 15 words"}}
   ],
   "allColorsWithNotes": [
     {{"name": "camel", "displayName": "Camel", "note": 10, "commentaire": "Essential harmony", "hex": "#C19A6B"}},
@@ -61,9 +70,8 @@ INSTRUCTIONS:
 2. For allColorsWithNotes: ONLY update the 10 from your palette above to have note 10,9,8. Keep other 9 colors unchanged.
 3. For associations_gagnantes: Use your 10 palette colors (C1-C10) to create 5 winning associations
 4. ALL commentaires must be max 15 words
-5. Escape apostrophes: s\'harmonise not s'harmonise
-6. START WITH { END WITH }
-7. NO TEXT BEFORE OR AFTER JSON
+5. Escape apostrophes with backslash: s\'harmonise not s'harmonise
+6. MANDATORY: Start with single brace, end with single brace. NO TEXT BEFORE OR AFTER JSON.
 """
 
 # Keep fallback exactly the same
