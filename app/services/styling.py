@@ -1,10 +1,10 @@
 """
-STYLING SERVICE v2.0 - Avec call_tracker pour logs structurés
-✅ Logs clairs des appels OpenAI
-✅ Tracking des tokens et parsing
+Styling Service v3.0 - Logging STRUCTURÉ et CLOISONNÉ
+✅ Bloc isolé: Before → Call → Tokens → Response → Parsing
 """
 
 import json
+from datetime import datetime
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.styling_prompt import STYLING_SYSTEM_PROMPT, STYLING_USER_PROMPT
@@ -20,27 +20,12 @@ class StylingService:
         morphology_result: dict,
         user_data: dict
     ) -> dict:
-        """
-        Génère le profil stylistique avec logs clairs
+        """Génère le profil stylistique - 1 APPEL OPENAI CHAT"""
+        print("\n" + "="*80)
+        print("📋 APPEL STYLING: PROFIL STYLISTIQUE + GARDE-ROBE CAPSULE")
+        print("="*80)
         
-        Args:
-            colorimetry_result: Résultat colorimétrie
-            morphology_result: Résultat morphologie
-            user_data: Données utilisateur
-        
-        Returns:
-            Profil stylistique complet
-        """
         try:
-            print("\n" + "="*80)
-            print("📊 STYLING: Profil & Garde-robe capsule")
-            print("="*80 + "\n")
-            
-            # Définir le contexte
-            self.openai.set_context("Styling", "")
-            self.openai.set_system_prompt(STYLING_SYSTEM_PROMPT)
-            
-            # Extraire les données essentielles
             palette = colorimetry_result.get("palette_personnalisee", [])
             top_colors = []
             for i, color in enumerate(palette[:4]):
@@ -49,14 +34,8 @@ class StylingService:
             
             season = colorimetry_result.get("saison_confirmee", "Indéterminée")
             under_tone = colorimetry_result.get("sous_ton_detecte", "")
-            silhouette_type = morphology_result.get("silhouette_type", "O")
+            silhouette_type = morphology_result.get("silhouette_type", "?")
             
-            print(f"🎨 Données synthétisées:")
-            print(f"   • Saison: {season} ({under_tone})")
-            print(f"   • Palette: {palette_str}")
-            print(f"   • Silhouette: {silhouette_type}\n")
-            
-            # Extraire recommendations morpho
             recommendations = morphology_result.get("recommendations", {})
             recommendations_simple = ""
             if isinstance(recommendations, dict):
@@ -70,7 +49,16 @@ class StylingService:
             if not recommendations_simple:
                 recommendations_simple = f"Silhouette {silhouette_type}"
             
-            # Préparer le prompt
+            print("\n📌 AVANT APPEL:")
+            print(f"   • Type: OpenAI Chat (gpt-4)")
+            print(f"   • Max tokens: 3500")
+            print(f"   • Saison: {season} ({under_tone})")
+            print(f"   • Palette: {palette_str}")
+            print(f"   • Silhouette: {silhouette_type}")
+            
+            self.openai.set_context("Styling", "")
+            self.openai.set_system_prompt(STYLING_SYSTEM_PROMPT)
+            
             style_prefs = user_data.get("style_preferences", "")[:100]
             brand_prefs_list = user_data.get("brand_preferences", [])[:3]
             brand_prefs = ", ".join(brand_prefs_list) if brand_prefs_list else "Aucune"
@@ -85,58 +73,74 @@ class StylingService:
                 brand_preferences=brand_prefs
             )
             
-            print(f"🤖 Appel OpenAI Chat...")
+            print(f"\n🤖 APPEL OPENAI EN COURS...")
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4",
                 max_tokens=3500
             )
+            print(f"✅ RÉPONSE REÇUE")
             
-            # Le call_tracker a déjà loggé via openai_client
-            content = response["content"]
+            prompt_tokens = response.get("prompt_tokens", 0)
+            completion_tokens = response.get("completion_tokens", 0)
+            total_tokens = response.get("total_tokens", 0)
+            budget_percent = (total_tokens / 4000) * 100
             
-            # Parser
+            print(f"\n📊 TOKENS CONSOMMÉS:")
+            print(f"   • Prompt: {prompt_tokens}")
+            print(f"   • Completion: {completion_tokens}")
+            print(f"   • Total: {total_tokens}")
+            print(f"   • Budget: {budget_percent:.1f}% (vs 4000 max)")
+            print(f"   • Status: {'⚠️ DÉPASSEMENT!' if budget_percent > 100 else '⚠️ Approche limite' if budget_percent > 90 else '✅ OK'}")
+            
+            content = response.get("content", "")
+            print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
+            print(f"   {content[:400]}...")
+            
+            print(f"\n🔍 PARSING JSON:")
+            
             try:
                 result = json.loads(content)
-                print(f"✅ JSON parsé avec succès")
+                print(f"   ✅ Succès (parsing direct)")
+                
+                formulas = result.get("mix_and_match_formulas", [])
+                archetypes = result.get("archetypes", [])
+                capsule = result.get("capsule_wardrobe", [])
+                
+                print(f"      • Archetypes: {len(archetypes)}")
+                print(f"      • Capsule wardrobe: {len(capsule)} pièces")
+                print(f"      • Mix & match formulas: {len(formulas)}")
+                
             except json.JSONDecodeError:
-                # Extraire JSON
                 try:
                     start = content.find('{')
                     end = content.rfind('}') + 1
                     if start != -1 and end > start:
                         json_str = content[start:end]
                         result = json.loads(json_str)
-                        print(f"✅ JSON extrait et parsé")
+                        print(f"   ✅ Succès (extraction JSON)")
+                        
+                        formulas = result.get("mix_and_match_formulas", [])
+                        archetypes = result.get("archetypes", [])
+                        capsule = result.get("capsule_wardrobe", [])
+                        
+                        print(f"      • Archetypes: {len(archetypes)}")
+                        print(f"      • Capsule wardrobe: {len(capsule)} pièces")
+                        print(f"      • Mix & match formulas: {len(formulas)}")
                     else:
+                        print(f"   ❌ Pas de JSON trouvé")
                         result = {}
-                except:
-                    print(f"❌ Erreur parsing JSON")
-                    call_tracker.log_error("Styling", "JSON parsing failed")
+                except Exception as e:
+                    print(f"   ❌ Erreur parsing JSON: {e}")
                     result = {}
             
-            if not result:
-                print("❌ Erreur parsing JSON styling")
-                return {}
-            
-            # Log résultat
-            formulas = result.get("mix_and_match_formulas", [])
-            profile = result.get("profil_mode", {})
-            
-            print(f"\n✅ RÉSULTAT STYLING:")
-            print(f"   • Profil défini: {'Oui' if profile else 'Non'}")
-            print(f"   • Formules mix&match: {len(formulas)}")
-            print("="*80 + "\n")
-            
+            print("\n" + "="*80 + "\n")
             return result
             
         except Exception as e:
             print(f"\n❌ ERREUR STYLING: {e}")
             call_tracker.log_error("Styling", str(e))
-            import traceback
-            traceback.print_exc()
             raise
 
 
-# Instance globale
 styling_service = StylingService()

@@ -529,6 +529,7 @@ class PDFDataMapper:
         Génère données pour Pages 9-15 (7 catégories vestimentaires)
         Contenu adapté à la silhouette détectée
         ✅ ENRICHI: Chaque recommandation inclut visual_url et visual_key
+        ✅ DEBUG: Affiche si les visuels sont chargés
         """
         
         silhouette_type = morphology_raw.get("silhouette_type", "O")
@@ -536,7 +537,7 @@ class PDFDataMapper:
         body_parts_to_highlight = PDFDataMapper._safe_list(morphology_raw.get("body_parts_to_highlight", []))
         
         if silhouette_type == "O":
-            # ✅ Structure de base
+            # ✅ Structure de base (COMPLÈTE - voir fichiers précédents)
             categories_data = {
                 "hauts": {
                     "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent créer de la verticalité et époucer légèrement. Privilégiez les encolures en V et les matières fluides.",
@@ -771,7 +772,13 @@ class PDFDataMapper:
             }
             
             # ✅ ENRICHIR CHAQUE CATÉGORIE AVEC LES VISUELS
+            print("\n🎨 ════════════════════════════════════════════════════════════════")
+            print("🎨 ENRICHISSEMENT VISUELS - DÉBUT")
+            print("🎨 ════════════════════════════════════════════════════════════════")
+            
             for category_name, category_data in categories_data.items():
+                print(f"\n📍 Catégorie: {category_name}")
+                
                 # Enrichir recommandations avec visuels
                 enriched_recommandes = visuals_service.fetch_visuals_for_category(
                     category_name,
@@ -779,12 +786,32 @@ class PDFDataMapper:
                 )
                 category_data["recommandes"] = enriched_recommandes
                 
+                # ✅ DEBUG: AFFICHER LES VISUELS ENRICHIS (RECOMMANDÉS)
+                print(f"   ✅ Recommandées enrichies: {len(enriched_recommandes)} items")
+                for i, item in enumerate(enriched_recommandes[:2]):
+                    visual_url = item.get("visual_url", "VIDE")
+                    visual_key = item.get("visual_key", "N/A")
+                    url_status = "✅" if visual_url else "❌"
+                    print(f"      {url_status} Item {i}: '{item.get('name')}' → visual_url: {visual_url[:50] if visual_url else 'VIDE'}... | key: {visual_key}")
+                
                 # Enrichir aussi les à éviter
                 enriched_a_eviter = visuals_service.fetch_visuals_for_category(
                     category_name,
                     category_data.get("a_eviter", [])
                 )
                 category_data["a_eviter"] = enriched_a_eviter
+                
+                # ✅ DEBUG: AFFICHER LES VISUELS ENRICHIS (À ÉVITER)
+                print(f"   ⚠️ À éviter enrichies: {len(enriched_a_eviter)} items")
+                for i, item in enumerate(enriched_a_eviter[:2]):
+                    visual_url = item.get("visual_url", "VIDE")
+                    visual_key = item.get("visual_key", "N/A")
+                    url_status = "✅" if visual_url else "❌"
+                    print(f"      {url_status} Item {i}: '{item.get('name')}' → visual_url: {visual_url[:50] if visual_url else 'VIDE'}... | key: {visual_key}")
+            
+            print("\n🎨 ════════════════════════════════════════════════════════════════")
+            print("🎨 ENRICHISSEMENT VISUELS - FIN ✅")
+            print("🎨 ════════════════════════════════════════════════════════════════\n")
             
             return categories_data
         
