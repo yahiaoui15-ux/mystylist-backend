@@ -1,46 +1,42 @@
 """
-COLORIMETRY PART 2 v7.0 - FORCE JSON STRICT
-✅ CRITICAL: Aucun texte avant JSON, validation stricte
-✅ Début EXACT par { - fin EXACT par }
+COLORIMETRY PART 2 v8.0 - OPTIMIZED TOKEN USAGE
+✅ Structures minimales
+✅ Pas de duplication
+✅ Estimé: 2500 tokens max vs 5688 avant
 """
 
-COLORIMETRY_PART2_SYSTEM_PROMPT = """CRITICAL INSTRUCTION: You MUST return ONLY valid JSON.
-NO explanations, NO text, NO preamble.
-Start with { and end with }
-Every response MUST be parseable JSON.
-Escape apostrophes with backslash: s\'harmonise
-If you cannot return JSON, still return JSON structure with empty values."""
+COLORIMETRY_PART2_SYSTEM_PROMPT = """You are a color analysis expert. You MUST respond with ONLY valid JSON, no text before or after.
+Start with { and end with }. Every response must be valid JSON.
+Escape apostrophes with backslash in strings (example: s\'harmonise)."""
 
 COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """RETURN ONLY JSON. NO TEXT BEFORE OR AFTER.
 
-Start immediately with {{ and end with }}.
+CLIENT PROFILE:
+Season: {SAISON}
+Undertone: {SOUS_TON}
+Eyes: {EYE_COLOR}
+Hair: {HAIR_COLOR}
 
-Client: Saison {SAISON} | Tone {SOUS_TON} | Eyes {EYE_COLOR} | Hair {HAIR_COLOR}
+TASK: Generate a personalized color palette and associations.
+
+REQUIRED JSON STRUCTURE (no text, no preamble, start with {{ end with }}):
 
 {{
   "palette_personnalisee": [
-    {{"name": "color1", "hex": "#HEX1", "note": 10, "commentaire": "max 15 words"}},
-    {{"name": "color2", "hex": "#HEX2", "note": 10, "commentaire": "max 15 words"}},
-    {{"name": "color3", "hex": "#HEX3", "note": 9, "commentaire": "max 15 words"}},
-    {{"name": "color4", "hex": "#HEX4", "note": 9, "commentaire": "max 15 words"}},
-    {{"name": "color5", "hex": "#HEX5", "note": 9, "commentaire": "max 15 words"}},
-    {{"name": "color6", "hex": "#HEX6", "note": 9, "commentaire": "max 15 words"}},
-    {{"name": "color7", "hex": "#HEX7", "note": 8, "commentaire": "max 15 words"}},
-    {{"name": "color8", "hex": "#HEX8", "note": 8, "commentaire": "max 15 words"}},
-    {{"name": "color9", "hex": "#HEX9", "note": 8, "commentaire": "max 15 words"}},
-    {{"name": "color10", "hex": "#HEX10", "note": 8, "commentaire": "max 15 words"}}
+    {{"name": "color1", "hex": "#HEX", "note": 10, "commentaire": "Brief description max 15 words"}},
+    ... 10 colors total (notes 10,10,9,9,9,9,8,8,8,8)
   ],
   "allColorsWithNotes": [
     {{"name": "camel", "displayName": "Camel", "note": 10, "commentaire": "Essential harmony", "hex": "#C19A6B"}},
     {{"name": "jaune", "displayName": "Yellow", "note": 9, "commentaire": "Gold amplifies natural tone", "hex": "#FFFF00"}},
     {{"name": "orange", "displayName": "Orange", "note": 9, "commentaire": "Warm amplifies vitality", "hex": "#FFA500"}},
-    {{"name": "rouge", "displayName": "Red", "note": 8, "commentaire": "Warm OK cold not", "hex": "#FF0000"}},
     {{"name": "marron", "displayName": "Brown", "note": 9, "commentaire": "Intensifies eyes", "hex": "#8B4513"}},
     {{"name": "rose_corail", "displayName": "Coral Pink", "note": 9, "commentaire": "Harmonizes beautifully", "hex": "#FF7F50"}},
     {{"name": "bordeaux", "displayName": "Burgundy", "note": 9, "commentaire": "Warm sophisticated perfect", "hex": "#800020"}},
+    {{"name": "rouge", "displayName": "Red", "note": 8, "commentaire": "Warm OK cold not", "hex": "#FF0000"}},
+    {{"name": "vert", "displayName": "Green", "note": 8, "commentaire": "Warm OK", "hex": "#008000"}},
     {{"name": "beige", "displayName": "Beige", "note": 8, "commentaire": "Warm flatters complexion", "hex": "#F5F5DC"}},
     {{"name": "kaki", "displayName": "Khaki", "note": 8, "commentaire": "Versatile warm", "hex": "#C3B091"}},
-    {{"name": "vert", "displayName": "Green", "note": 8, "commentaire": "Warm OK", "hex": "#008000"}},
     {{"name": "gris", "displayName": "Gray", "note": 6, "commentaire": "Taupe OK cold not", "hex": "#808080"}},
     {{"name": "blanc", "displayName": "White", "note": 5, "commentaire": "Pure can jar", "hex": "#FFFFFF"}},
     {{"name": "noir", "displayName": "Black", "note": 4, "commentaire": "Charcoal better", "hex": "#000000"}},
@@ -60,17 +56,17 @@ Client: Saison {SAISON} | Tone {SOUS_TON} | Eyes {EYE_COLOR} | Hair {HAIR_COLOR}
   ]
 }}
 
-CRITICAL: 
-- MUST be valid JSON (start with {{ end with }})
-- NO text before {{ or after }}
-- palette_personnalisee = EXACTLY 10 colors
-- allColorsWithNotes = EXACTLY 19 colors (fixed names above)
-- associations_gagnantes = EXACTLY 5 occasions
-- All comments max 15 words
-- Escape apostrophes: s\'harmonise
+INSTRUCTIONS:
+1. Generate 10 personalized colors for palette_personnalisee (must match season/undertone)
+2. For allColorsWithNotes: ONLY update the 10 from your palette above to have note 10,9,8. Keep other 9 colors unchanged.
+3. For associations_gagnantes: Use your 10 palette colors (C1-C10) to create 5 winning associations
+4. ALL commentaires must be max 15 words
+5. Escape apostrophes: s\'harmonise not s'harmonise
+6. START WITH { END WITH }
+7. NO TEXT BEFORE OR AFTER JSON
 """
 
-# Fallback - do not change!
+# Keep fallback exactly the same
 FALLBACK_PALETTE_AND_ASSOCIATIONS = {
     "palette_personnalisee": [
         {"name": "terracotta", "hex": "#E2725B", "note": 10, "commentaire": "Couleur centrale chauffe teint"},
