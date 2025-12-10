@@ -62,3 +62,6 @@ FALLBACK_PALETTE_PERSONALISEE = {
         {"name": "chocolat", "hex": "#7B3F00", "note": 8, "commentaire": "Marron foncé élégant stable"}
     ]
 }
+
+# ALIAS pour compatibilité avec colorimetry.py qui importe l'ancien nom
+FALLBACK_PALETTE_AND_ASSOCIATIONS = FALLBACK_PALETTE_PERSONALISEE
