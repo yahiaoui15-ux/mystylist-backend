@@ -58,6 +58,45 @@ class SupabaseClient:
         except Exception as e:
             print(f"❌ Erreur insert {table}: {e}")
             raise
+    
+    def upload_pdf(self, bucket_name: str, file_path: str, file_data: bytes) -> str:
+        """
+        Upload un PDF dans Supabase Storage de manière PERMANENTE.
+        
+        Args:
+            bucket_name (str): Nom du bucket (ex: "reports" ou "user-reports")
+            file_path (str): Chemin du fichier dans le bucket (ex: "user_123/rapport_dec2025.pdf")
+            file_data (bytes): Contenu du PDF en bytes
+        
+        Returns:
+            str: URL publique du PDF (permanente, valable 2+ mois)
+        
+        Exemple:
+            with open("rapport.pdf", "rb") as f:
+                url = supabase.upload_pdf("reports", "user_123/rapport.pdf", f.read())
+            print(f"PDF uploadé: {url}")
+        """
+        try:
+            client = self._get_client()
+            if client is None:
+                raise Exception("Client Supabase non initialisé")
+            
+            # Upload le fichier dans Supabase Storage
+            response = client.storage.from_(bucket_name).upload(file_path, file_data)
+            
+            print(f"✅ PDF uploadé avec succès: {file_path}")
+            
+            # Construire l'URL publique permanente
+            # Format: https://supabase-url/storage/v1/object/public/bucket_name/file_path
+            public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{file_path}"
+            
+            print(f"✅ URL public: {public_url}")
+            
+            return public_url
+            
+        except Exception as e:
+            print(f"❌ Erreur upload PDF: {e}")
+            raise
 
 
 # Instance globale
