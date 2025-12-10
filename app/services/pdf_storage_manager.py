@@ -1,49 +1,42 @@
 """
-PDF Storage Manager - Sauvegarder les PDFs de manière permanente
-Télécharge du lien S3 temporaire de PDFMonkey → Supabase Storage (permanent)
-v2 FIX: Download IMMÉDIATEMENT + meilleur error handling
+PDF Storage Manager FIXED v3 - REST API Supabase
+✅ Utilise REST API HTTP directe (pas la lib Python cassée)
+✅ Upload permanent vers Supabase Storage
+✅ Gère les erreurs correctement
 """
 
 import httpx
-from typing import Optional
-from app.utils.supabase_client import supabase
 import logging
+from typing import Optional
+from app.config_prod import settings
 
 logger = logging.getLogger(__name__)
 
 
 class PDFStorageManager:
     """
-    Gère le stockage permanent des PDFs
+    Sauvegarde PDF de maniére permanente via REST API Supabase
     
-    PROBLÈME v1:
-    - PDFMonkey envoie lien S3 prédéfini avec expiration 30min
-    - Tentative de téléchargement APRÈS 30min → AccessDenied/404
+    ❌ ANCIEN: Tentait d'utiliser client.storage (n'existe pas en Python)
+    ✅ NOUVEAU: Utilise REST API HTTP directement
     
-    SOLUTION v2:
-    1. Télécharger le PDF IMMÉDIATEMENT depuis lien temporaire
-    2. Sauvegarder dans Supabase Storage (permanent)
-    3. Envoyer lien Supabase au client
-    4. Si échec download → utiliser URL temporaire avec avertissement
+    Workflow:
+    1. Télécharger PDF depuis lien temporaire PDFMonkey (30min)
+    2. Upload vers Supabase Storage via REST API HTTP (permanent)
+    3. Retourner URL permanente Supabase
     """
     
     BUCKET_NAME = "reports"
-    TIMEOUT = 30.0  # Timeout download en secondes
+    TIMEOUT = 30.0
     
     @staticmethod
     async def download_pdf_from_url(pdf_url: str) -> Optional[bytes]:
         """
-        Télécharge le PDF depuis un URL (temporaire ou pas)
-        ⚠️ CRITIQUE: Doit s'exécuter dans les 30 premières minutes!
-        
-        Args:
-            pdf_url: URL complète du PDF (lien PDFMonkey temporaire)
-            
-        Returns:
-            bytes: Contenu du PDF, ou None si erreur
+        Télécharge le PDF depuis URL temporaire
+        ⏰ CRITIQUE: Exécuter immédiatement! (URL expire 30min)
         """
         try:
-            print(f"📥 Téléchargement PDF depuis: {pdf_url[:80]}...")
+            print(f"🔥 Téléchargement PDF depuis: {pdf_url[:80]}...")
             
             async with httpx.AsyncClient(timeout=PDFStorageManager.TIMEOUT) as client:
                 response = await client.get(pdf_url, follow_redirects=True)
@@ -53,23 +46,20 @@ class PDFStorageManager:
                     return None
                 
                 pdf_content = response.content
-                print(f"   ✅ PDF téléchargé: {len(pdf_content)} bytes")
                 
-                # Validation: vérifier que c'est bien un PDF
+                # Validation
                 if len(pdf_content) < 100:
-                    print(f"   ⚠️  PDF trop petit ({len(pdf_content)} bytes) - probablement erreur")
+                    print(f"   ⚠️  PDF trop petit ({len(pdf_content)} bytes) - erreur probable")
                     return None
                 
+                print(f"   ✅ PDF téléchargé: {len(pdf_content)} bytes")
                 return pdf_content
                 
         except httpx.TimeoutException:
-            print(f"   ❌ Timeout (>{PDFStorageManager.TIMEOUT}s) - URL peut-être expirée")
-            return None
-        except httpx.HTTPError as e:
-            print(f"   ❌ Erreur HTTP: {e}")
+            print(f"   ❌ Timeout (>{PDFStorageManager.TIMEOUT}s) - URL probablement expirée")
             return None
         except Exception as e:
-            print(f"   ❌ Erreur inattendue: {type(e).__name__}: {e}")
+            print(f"   ❌ Erreur download: {type(e).__name__}: {e}")
             return None
     
     @staticmethod
@@ -79,44 +69,59 @@ class PDFStorageManager:
         report_id: str
     ) -> Optional[str]:
         """
-        Sauvegarde le PDF dans Supabase Storage (permanent)
+        Upload PDF vers Supabase Storage via REST API HTTP
         
-        Args:
-            pdf_content: Contenu binaire du PDF
-            user_id: ID utilisateur
-            report_id: ID rapport (payment_id)
-            
+        Utilise: POST {SUPABASE_URL}/storage/v1/object/{bucket}/{file_path}
+        Documentation: https://supabase.com/docs/reference/api/post-object
+        
         Returns:
-            str: URL publique du PDF (permanent), ou None si erreur
+            str: URL permanente du PDF (genre: https://...supabase.co/storage/v1/object/public/reports/...)
         """
         try:
             print(f"💾 Sauvegarde dans Supabase Storage...")
             
-            # Créer un chemin unique
+            # Créer chemin unique
             file_path = f"{user_id}/report_{report_id[:12]}.pdf"
             
-            # Upload
-            print(f"   Chemin: {file_path}")
-            response = supabase.storage.from_(PDFStorageManager.BUCKET_NAME).upload(
-                path=file_path,
-                file=pdf_content,
-                file_options={"content-type": "application/pdf"}
-            )
+            # URL REST API Supabase
+            upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/{PDFStorageManager.BUCKET_NAME}/{file_path}"
             
-            print(f"   ✅ Upload terminé")
+            print(f"   📍 Bucket: {PDFStorageManager.BUCKET_NAME}")
+            print(f"   📝 Chemin: {file_path}")
+            print(f"   🔗 URL: {upload_url[:80]}...")
             
-            # Récupérer l'URL publique (permanente!)
-            public_url = supabase.storage.from_(PDFStorageManager.BUCKET_NAME).get_public_url(file_path)
+            # ✅ FIX: Utiliser REST API HTTP au lieu de client.storage
+            async with httpx.AsyncClient(timeout=PDFStorageManager.TIMEOUT) as client:
+                response = await client.post(
+                    upload_url,
+                    content=pdf_content,
+                    headers={
+                        "Authorization": f"Bearer {settings.SUPABASE_KEY}",
+                        "Content-Type": "application/pdf",
+                        "x-upsert": "true"  # Overwrite si exists
+                    }
+                )
             
-            if not public_url:
-                print(f"   ❌ Impossible récupérer URL public")
+            if response.status_code not in [200, 201]:
+                error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
+                print(f"   ❌ Erreur upload: {error_msg}")
                 return None
             
-            print(f"   ✅ URL permanente: {public_url[:80]}...")
-            return public_url
+            print(f"   ✅ Upload réussi!")
             
+            # Construire URL permanente Supabase
+            permanent_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{PDFStorageManager.BUCKET_NAME}/{file_path}"
+            
+            print(f"   🔗 URL permanente: {permanent_url[:80]}...")
+            
+            return permanent_url
+            
+        except httpx.TimeoutException:
+            print(f"   ❌ Timeout lors upload")
+            return None
         except Exception as e:
             print(f"   ❌ Erreur Supabase: {type(e).__name__}: {e}")
+            logger.error(f"PDF Storage error: {e}")
             return None
     
     @staticmethod
@@ -126,13 +131,13 @@ class PDFStorageManager:
         report_id: str
     ) -> Optional[str]:
         """
-        FONCTION PRINCIPALE: Télécharge et sauvegarde le PDF
+        FONCTION PRINCIPALE: Télécharge + sauvegarde PDF
         
-        ⏱️  CRITIQUE: Doit s'exécuter IMMÉDIATEMENT!
+        ⏰ CRITIQUE: Doit s'exécuter IMMÉDIATEMENT!
         L'URL temporaire de PDFMonkey expire après 30 minutes.
         
         Workflow:
-        1. Télécharge depuis lien temporaire (30min)
+        1. Télécharge depuis lien temporaire (30min window)
         2. Sauvegarde dans Supabase Storage (permanent)
         3. Retourne URL permanente
         
@@ -142,30 +147,27 @@ class PDFStorageManager:
             report_id: ID rapport (payment_id)
             
         Returns:
-            str: URL permanente Supabase, ou None si tous les steps échouent
+            str: URL permanente Supabase, ou None si erreur
         """
         
         print("\n" + "="*70)
-        print("🔄 PDF STORAGE MANAGER v2 - Sauvegarder PDF de manière permanente")
+        print("📄 PDF STORAGE MANAGER FIXED - Supabase REST API")
         print("="*70)
-        print(f"⏱️  ⚠️  CRITIQUE: URL temporaire expire dans ~30 minutes!")
-        
-        print(f"\n📋 Rapport: {report_id[:12]}")
-        print(f"👤 Utilisateur: {user_id}")
-        print(f"🔗 URL temporaire: {pdf_url[:60]}...\n")
+        print(f"⏰ ⚠️  URL temporaire expire dans ~30 minutes!")
+        print(f"📋 Rapport: {report_id[:12]}")
+        print(f"👤 Utilisateur: {user_id}\n")
         
         # ÉTAPE 1: Télécharger IMMÉDIATEMENT
-        print(">>> ÉTAPE 1: Téléchargement du PDF temporaire...")
+        print(">>> ÉTAPE 1: Téléchargement du PDF (URL temporaire)...")
         pdf_content = await PDFStorageManager.download_pdf_from_url(pdf_url)
         
         if not pdf_content:
-            print("❌ Impossible de télécharger le PDF - URL probablement expirée!")
-            print("   FALLBACK: Envoi URL temporaire au client")
-            print("   ⚠️  ATTENTION: Client aura 30min pour télécharger avant 404!\n")
-            return None  # Retourner None force main.py à utiliser pdf_url_temporary
+            print("❌ Impossible de télécharger - URL probablement expirée!")
+            print("   FALLBACK: Client recevra URL temporaire (30min)\n")
+            return None
         
-        # ÉTAPE 2: Sauvegarder dans Supabase
-        print("\n>>> ÉTAPE 2: Sauvegarde dans Supabase Storage...")
+        # ÉTAPE 2: Upload permanent
+        print("\n>>> ÉTAPE 2: Upload permanent vers Supabase Storage...")
         permanent_url = await PDFStorageManager.save_pdf_to_supabase(
             pdf_content,
             user_id,
@@ -173,26 +175,27 @@ class PDFStorageManager:
         )
         
         if not permanent_url:
-            print("❌ Impossible de sauvegarder - Supabase Storage peut être hors-ligne")
-            print("   FALLBACK: Envoi URL temporaire au client\n")
+            print("❌ Impossible de sauvegarder")
+            print("   FALLBACK: Client recevra URL temporaire (30min)\n")
             return None
         
         # SUCCÈS!
         print("\n" + "="*70)
-        print("✅ PDF sauvegardé de manière PERMANENTE!")
+        print("✅ PDF SAUVEGARDÉ DE MANIÈRE PERMANENTE!")
         print("="*70)
         print(f"   📥 Téléchargé depuis: {pdf_url[:60]}...")
-        print(f"   💾 Sauvegardé dans: Supabase Storage")
+        print(f"   💾 SauvegardÃ© dans: Supabase Storage")
         print(f"   🔗 URL permanente: {permanent_url}")
+        print("   ⏰ Validité: 2+ mois (pas d'expiration)")
         print("="*70 + "\n")
         
         return permanent_url
     
     @staticmethod
     def get_public_url(user_id: str, report_id: str) -> str:
-        """Récupère l'URL publique d'un PDF stocké"""
+        """Récupère l'URL publique d'un PDF déjà stocké"""
         file_path = f"{user_id}/report_{report_id[:12]}.pdf"
-        public_url = supabase.storage.from_(PDFStorageManager.BUCKET_NAME).get_public_url(file_path)
+        public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{PDFStorageManager.BUCKET_NAME}/{file_path}"
         return public_url
 
 
