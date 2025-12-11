@@ -9,7 +9,7 @@ STYLING PROMPT FIXED v2.2 - Archétypes PERSONNALISÉS + primaryArchetype + esse
 STYLING_SYSTEM_PROMPT = """Expert stylistique personnel. Générez profil stylistique complet.
 Retournez UNIQUEMENT JSON valide, sans texte avant/après."""
 
-STYLING_USER_PROMPT_TEMPLATE = """Créez profil stylistique PERSONNALISÉ pour client.
+STYLING_USER_PROMPT = """Créez profil stylistique PERSONNALISÉ pour client.
 
 CLIENT ANALYSIS:
 Saison colorimetrie: {SAISON}
