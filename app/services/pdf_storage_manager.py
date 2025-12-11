@@ -1,8 +1,9 @@
 """
-PDF Storage Manager FIXED v3 - REST API Supabase
-✅ Utilise REST API HTTP directe (pas la lib Python cassée)
-✅ Upload permanent vers Supabase Storage
-✅ Gère les erreurs correctement
+PDF Storage Manager FIXED v3.1 - REST API Supabase
+✓ Utilise REST API HTTP directe (pas la lib Python cassée)
+✓ Upload permanent vers Supabase Storage
+✓ Gère les erreurs correctement
+✓ ENCODAGE UTF-8 CORRECT
 """
 
 import httpx
@@ -15,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 class PDFStorageManager:
     """
-    Sauvegarde PDF de maniére permanente via REST API Supabase
+    Sauvegarde PDF de manière permanente via REST API Supabase
     
-    ❌ ANCIEN: Tentait d'utiliser client.storage (n'existe pas en Python)
-    ✅ NOUVEAU: Utilise REST API HTTP directement
+    ✗ ANCIEN: Tentait d'utiliser client.storage (n'existe pas en Python)
+    ✓ NOUVEAU: Utilise REST API HTTP directement
     
     Workflow:
     1. Télécharger PDF depuis lien temporaire PDFMonkey (30min)
@@ -36,13 +37,13 @@ class PDFStorageManager:
         ⏰ CRITIQUE: Exécuter immédiatement! (URL expire 30min)
         """
         try:
-            print(f"🔥 Téléchargement PDF depuis: {pdf_url[:80]}...")
+            print(f"📥 Téléchargement PDF depuis: {pdf_url[:80]}...")
             
             async with httpx.AsyncClient(timeout=PDFStorageManager.TIMEOUT) as client:
                 response = await client.get(pdf_url, follow_redirects=True)
                 
                 if response.status_code != 200:
-                    print(f"   ❌ HTTP {response.status_code}")
+                    print(f"   ✗ HTTP {response.status_code}")
                     return None
                 
                 pdf_content = response.content
@@ -52,14 +53,14 @@ class PDFStorageManager:
                     print(f"   ⚠️  PDF trop petit ({len(pdf_content)} bytes) - erreur probable")
                     return None
                 
-                print(f"   ✅ PDF téléchargé: {len(pdf_content)} bytes")
+                print(f"   ✓ PDF téléchargé: {len(pdf_content)} bytes")
                 return pdf_content
                 
         except httpx.TimeoutException:
-            print(f"   ❌ Timeout (>{PDFStorageManager.TIMEOUT}s) - URL probablement expirée")
+            print(f"   ✗ Timeout (>{PDFStorageManager.TIMEOUT}s) - URL probablement expirée")
             return None
         except Exception as e:
-            print(f"   ❌ Erreur download: {type(e).__name__}: {e}")
+            print(f"   ✗ Erreur download: {type(e).__name__}: {e}")
             return None
     
     @staticmethod
@@ -86,11 +87,11 @@ class PDFStorageManager:
             # URL REST API Supabase
             upload_url = f"{settings.SUPABASE_URL}/storage/v1/object/{PDFStorageManager.BUCKET_NAME}/{file_path}"
             
-            print(f"   📍 Bucket: {PDFStorageManager.BUCKET_NAME}")
-            print(f"   📝 Chemin: {file_path}")
-            print(f"   🔗 URL: {upload_url[:80]}...")
+            print(f"   🏠 Bucket: {PDFStorageManager.BUCKET_NAME}")
+            print(f"   📁 Chemin: {file_path}")
+            print(f"   🌐 URL: {upload_url[:80]}...")
             
-            # ✅ FIX: Utiliser REST API HTTP au lieu de client.storage
+            # ✓ FIX: Utiliser REST API HTTP au lieu de client.storage
             async with httpx.AsyncClient(timeout=PDFStorageManager.TIMEOUT) as client:
                 response = await client.post(
                     upload_url,
@@ -104,23 +105,23 @@ class PDFStorageManager:
             
             if response.status_code not in [200, 201]:
                 error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
-                print(f"   ❌ Erreur upload: {error_msg}")
+                print(f"   ✗ Erreur upload: {error_msg}")
                 return None
             
-            print(f"   ✅ Upload réussi!")
+            print(f"   ✓ Upload réussi!")
             
             # Construire URL permanente Supabase
             permanent_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{PDFStorageManager.BUCKET_NAME}/{file_path}"
             
-            print(f"   🔗 URL permanente: {permanent_url[:80]}...")
+            print(f"   🌐 URL permanente: {permanent_url[:80]}...")
             
             return permanent_url
             
         except httpx.TimeoutException:
-            print(f"   ❌ Timeout lors upload")
+            print(f"   ✗ Timeout lors upload")
             return None
         except Exception as e:
-            print(f"   ❌ Erreur Supabase: {type(e).__name__}: {e}")
+            print(f"   ✗ Erreur Supabase: {type(e).__name__}: {e}")
             logger.error(f"PDF Storage error: {e}")
             return None
     
@@ -151,7 +152,7 @@ class PDFStorageManager:
         """
         
         print("\n" + "="*70)
-        print("📄 PDF STORAGE MANAGER FIXED - Supabase REST API")
+        print("📘 PDF STORAGE MANAGER FIXED - Supabase REST API")
         print("="*70)
         print(f"⏰ ⚠️  URL temporaire expire dans ~30 minutes!")
         print(f"📋 Rapport: {report_id[:12]}")
@@ -162,7 +163,7 @@ class PDFStorageManager:
         pdf_content = await PDFStorageManager.download_pdf_from_url(pdf_url)
         
         if not pdf_content:
-            print("❌ Impossible de télécharger - URL probablement expirée!")
+            print("✗ Impossible de télécharger - URL probablement expirée!")
             print("   FALLBACK: Client recevra URL temporaire (30min)\n")
             return None
         
@@ -175,17 +176,17 @@ class PDFStorageManager:
         )
         
         if not permanent_url:
-            print("❌ Impossible de sauvegarder")
+            print("✗ Impossible de sauvegarder")
             print("   FALLBACK: Client recevra URL temporaire (30min)\n")
             return None
         
         # SUCCÈS!
         print("\n" + "="*70)
-        print("✅ PDF SAUVEGARDÉ DE MANIÈRE PERMANENTE!")
+        print("✓ PDF SAUVEGARDÉ DE MANIÈRE PERMANENTE!")
         print("="*70)
         print(f"   📥 Téléchargé depuis: {pdf_url[:60]}...")
-        print(f"   💾 SauvegardÃ© dans: Supabase Storage")
-        print(f"   🔗 URL permanente: {permanent_url}")
+        print(f"   💾 Sauvegardé dans: Supabase Storage")
+        print(f"   🌐 URL permanente: {permanent_url}")
         print("   ⏰ Validité: 2+ mois (pas d'expiration)")
         print("="*70 + "\n")
         

@@ -1,15 +1,16 @@
 """
-COLORIMETRY PART 2 FIXED v9.0 - NOMS FRANÇAIS DANS PALETTE
-✅ Demande les vrais noms (camel, moutarde, bordeaux) pas color1-10
-✅ Prompt simplifié et clair
-✅ Fallback avec données françaises complètes
+COLORIMETRY PART 2 FIXED v9.1 - NOMS FRANCAIS DANS PALETTE
+✓ Demande les vrais noms (camel, moutarde, bordeaux) pas color1-10
+✓ Prompt simplifié et clair
+✓ Fallback avec données françaises complètes
+✓ ENCODAGE UTF-8 CORRECT
 """
 
 COLORIMETRY_PART2_SYSTEM_PROMPT = """You are a color analysis expert. You MUST respond with ONLY valid JSON, no text before or after.
 Start with { and end with }. Every response must be valid JSON.
-Escape apostrophes with backslash in strings (example: s\\'harmonise)."""
+Escape apostrophes with backslash in strings (example: s\'harmonise)."""
 
-# ✅ FIX: Demander NOMS FRANÇAIS au lieu de color1-10
+# ✓ FIX: Demander NOMS FRANCAIS au lieu de color1-10
 COLORIMETRY_PART2_USER_PROMPT_TEMPLATE = """RETURN ONLY JSON. NO TEXT BEFORE OR AFTER.
 Start immediately with single brace and end with single brace.
 
@@ -28,7 +29,7 @@ REQUIRED JSON STRUCTURE (start with single {{ end with single }}):
     {{"name": "camel", "hex": "#C19A6B", "note": 10, "commentaire": "Couleur essentielle reproduit harmonie naturelle cliente", "displayName": "Camel"}},
     {{"name": "moutarde", "hex": "#E1AD01", "note": 10, "commentaire": "Jaune doré illumine teint de manière subtile", "displayName": "Moutarde"}},
     {{"name": "bordeaux", "hex": "#800020", "note": 9, "commentaire": "Élégance nocturne par excellence", "displayName": "Bordeaux"}},
-    {{"name": "rose_corail", "hex": "#FF7F50", "note": 9, "commentaire": "Rose chaud s'harmonise magnifiquement avec carnation", "displayName": "Rose Corail"}},
+    {{"name": "rose_corail", "hex": "#FF7F50", "note": 9, "commentaire": "Rose chaud s\'harmonise magnifiquement avec carnation", "displayName": "Rose Corail"}},
     {{"name": "olive", "hex": "#808000", "note": 9, "commentaire": "Vert-brun chaud naturel très polyvalent", "displayName": "Olive"}},
     {{"name": "cuivre", "hex": "#B87333", "note": 9, "commentaire": "Métallique chaud sophistiqué amplifies dorure", "displayName": "Cuivre"}},
     {{"name": "brique", "hex": "#CB4154", "note": 8, "commentaire": "Rouge-brun subtil et très sophistiqué", "displayName": "Brique"}},
@@ -42,8 +43,8 @@ REQUIRED JSON STRUCTURE (start with single {{ end with single }}):
     {{"name": "jaune", "displayName": "Jaune", "note": 9, "commentaire": "Jaunes dorés amplifient or naturel.", "hex": "#FFFF00"}},
     {{"name": "orange", "displayName": "Orange", "note": 9, "commentaire": "Orange chaud amplifie vitalité.", "hex": "#FFA500"}},
     {{"name": "marron", "displayName": "Marron", "note": 9, "commentaire": "Marrons chauds intensifient yeux.", "hex": "#8B4513"}},
-    {{"name": "rose_corail", "displayName": "Rose Corail", "note": 9, "commentaire": "Rose corail chaud s'harmonise magnifiquement.", "hex": "#FF7F50"}},
-    {{"name": "bordeaux", "displayName": "Bordeaux", "note": 9, "commentaire": "Bordeaux chaud sophistiqué s'harmonise parfait.", "hex": "#800020"}},
+    {{"name": "rose_corail", "displayName": "Rose Corail", "note": 9, "commentaire": "Rose corail chaud s\'harmonise magnifiquement.", "hex": "#FF7F50"}},
+    {{"name": "bordeaux", "displayName": "Bordeaux", "note": 9, "commentaire": "Bordeaux chaud sophistiqué s\'harmonise parfait.", "hex": "#800020"}},
     {{"name": "rouge", "displayName": "Rouge", "note": 8, "commentaire": "Rouges chauds harmonisent. Froids ternissent.", "hex": "#FF0000"}},
     {{"name": "vert", "displayName": "Vert", "note": 8, "commentaire": "Verts chauds harmonisent. Acides froids non.", "hex": "#008000"}},
     {{"name": "beige", "displayName": "Beige", "note": 8, "commentaire": "Beiges chauds flattent carnation.", "hex": "#F5F5DC"}},
@@ -75,12 +76,12 @@ INSTRUCTIONS (CRITICAL):
 3. For allColorsWithNotes: Update the 10 from your palette above to have proper notes. Keep other 9 colors unchanged.
 4. For associations_gagnantes: Create 5 winning color combinations using your 10 palette colors
 5. ALL commentaires must be in FRENCH and max 15 words
-6. Escape apostrophes: s\\'harmonise not s'harmonise
+6. Escape apostrophes: s\'harmonise not s'harmonise
 7. MANDATORY: Start with single brace {{, end with single brace }}. NO TEXT BEFORE OR AFTER JSON.
 8. Return response in French language throughout
 """
 
-# ✅ FALLBACK avec noms français corrects
+# ✓ FALLBACK avec noms français corrects
 FALLBACK_PALETTE_AND_ASSOCIATIONS = {
     "palette_personnalisee": [
         {"name": "camel", "hex": "#C19A6B", "note": 10, "commentaire": "Couleur essentielle reproduit harmonie naturelle", "displayName": "Camel"},

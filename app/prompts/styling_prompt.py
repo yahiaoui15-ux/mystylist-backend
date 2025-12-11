@@ -1,8 +1,9 @@
 """
-STYLING PROMPT FIXED v2.0 - Archétypes + essenceShort + primaryArchetype
-✅ Génère la structure "style" avec archétypes personnalisés
-✅ Inclut primaryArchetype (meilleur archétype pour client)
-✅ Inclut essenceShort (essence du style en une phrase)
+STYLING PROMPT FIXED v2.1 - Archétypes + essenceShort + primaryArchetype
+✓ Génère la structure "style" avec archétypes personnalisés
+✓ Inclut primaryArchetype (meilleur archétype pour client)
+✓ Inclut essenceShort (essence du style en une phrase)
+✓ ENCODAGE UTF-8 CORRECT
 """
 
 STYLING_SYSTEM_PROMPT = """Vous êtes un expert en styling personnel.
@@ -98,11 +99,11 @@ INSTRUCTIONS (CRITICAL):
 1. STRUCTURE "style": Générer style.archetypes, style.primaryArchetype, style.essenceShort
    - archetypes: Tableau de 5 archétypes (objets avec name + description)
    - primaryArchetype: Le MEILLEUR archétype pour ce client basé sur saison + silhouette (string)
-   - essenceShort: Description courte (max 10 mots) de l'essence du style du client
+   - essenceShort: Description courte (max 10 mots) de l\'essence du style du client
 2. Adapter les archétypes et essenceShort à la saison: {season} et silhouette: {silhouette_type}
 3. capsule_wardrobe: 5 pièces essentielles avec couleurs de la palette
 4. mix_and_match_formulas: 5 combinaisons pour différentes occasions
 5. ALL descriptions en FRANÇAIS
-6. Escape apostrophes: s\\'harmonise
+6. Escape apostrophes: s\'harmonise
 7. MANDATORY: Start {{, end }}. NO TEXT BEFORE OR AFTER JSON.
 """
