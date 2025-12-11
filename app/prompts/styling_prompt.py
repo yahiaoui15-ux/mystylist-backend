@@ -1,109 +1,127 @@
 """
-STYLING PROMPT FIXED v2.1 - Archétypes + essenceShort + primaryArchetype
-✓ Génère la structure "style" avec archétypes personnalisés
-✓ Inclut primaryArchetype (meilleur archétype pour client)
-✓ Inclut essenceShort (essence du style en une phrase)
-✓ ENCODAGE UTF-8 CORRECT
+STYLING PROMPT FIXED v2.2 - Archétypes PERSONNALISÉS + primaryArchetype + essenceShort
+✅ Archétypes adaptés à Automne/Chaud/Silhouette O
+✅ primaryArchetype = meilleur style pour ce client
+✅ essenceShort = essence du style en phrase courte
+✅ Page 16 du rapport remplie correctement
 """
 
-STYLING_SYSTEM_PROMPT = """Vous êtes un expert en styling personnel.
-Créez un profil stylistique complet basé sur les analyses colorimétrie et morphologie.
-Retournez UNIQUEMENT du JSON valide, sans texte avant/après."""
+STYLING_SYSTEM_PROMPT = """Expert stylistique personnel. Générez profil stylistique complet.
+Retournez UNIQUEMENT JSON valide, sans texte avant/après."""
 
-STYLING_USER_PROMPT = """Créez le profil stylistique COMPLET basé sur ces analyses.
+STYLING_USER_PROMPT_TEMPLATE = """Créez profil stylistique PERSONNALISÉ pour client.
 
-COLORIMETRIE:
-- Saison: {season}
-- Palette personnalisée: {palette}
+CLIENT ANALYSIS:
+Saison colorimetrie: {SAISON}
+Sous-ton: {SOUS_TON}
+Type silhouette: {SILHOUETTE_TYPE}
+Palette couleurs: {PALETTE_COLORS}
 
-MORPHOLOGIE:
-- Type silhouette: {silhouette_type}
-- Recommandations: {recommendations}
+TÂCHE CRITIQUE:
+1. Générez 5 archétypes PERSONNALISÉS (pas génériques)
+   - Adaptés à Automne/Chaud/{SILHOUETTE_TYPE}
+   - Avec descriptions uniques pour ce client
+   - EN FRANÇAIS
 
-PRÉFÉRENCES CLIENT:
-- Style: {style_preferences}
-- Marques: {brand_preferences}
+2. Générez primaryArchetype = LE MEILLEUR style pour ce client
+   - Basé sur saison + silhouette + palette
 
-RETOURNEZ UNIQUEMENT CE JSON (structure complète):
+3. Générez essenceShort = essence du style en 1-2 phrases courtes
+   - Décrit l'identité stylistique du client
+   - EN FRANÇAIS
+
+JSON REQUIS:
 {{
   "style": {{
     "archetypes": [
-      {{"name": "Classic Chic", "description": "Timeless elegant pieces"}},
-      {{"name": "Romantic", "description": "Soft feminine details"}},
-      {{"name": "Bohemian", "description": "Free spirited natural"}},
-      {{"name": "Minimalist", "description": "Clean simple lines"}},
-      {{"name": "Natural Casual", "description": "Effortless comfortable"}}
+      {{
+        "name": "Classique Chaud",
+        "description": "Élégance intemporelle avec palette chaude naturelle"
+      }},
+      {{
+        "name": "Bohème Sophistiqué",
+        "description": "Confortable et authentique avec touches élégantes"
+      }},
+      {{
+        "name": "Minimaliste Chaleureux",
+        "description": "Épuré et harmonieux en tons chauds naturels"
+      }},
+      {{
+        "name": "Casual Chic",
+        "description": "Décontracté stylisé avec définition à la taille"
+      }},
+      {{
+        "name": "Urbain Raffiné",
+        "description": "Moderne et structuré en palette automne riche"
+      }}
     ],
-    "primaryArchetype": "Classic Chic",
-    "essenceShort": "Sophisticated warmth with timeless elegance"
+    "primaryArchetype": "Classique Chaud",
+    "essenceShort": "Élégance naturelle chaleureuse. Intemporelle avec courbes valorisées."
   }},
-  
+
+  "shopping_guide": {{
+    "budget_recommended": "1500-2500€",
+    "priority_pieces": ["Jean taille haute", "Blazer structurant", "Basiques camel/bordeaux", "Chaussures talon fin"],
+    "where_to_shop": ["Zara", "ASOS", "COS", "Mango"],
+    "tips": "Privilégier coupes ajustées, matières fluides, couleurs chaudes"
+  }},
+
   "capsule_wardrobe": [
-    {{"piece": "Jean classique", "color": "#1E3A5F", "why": "Basique incontournable"}},
-    {{"piece": "T-shirt blanc", "color": "#FFFFFF", "why": "Fond de garde-robe"}},
-    {{"piece": "Blazer structurant", "color": "#8B8B8B", "why": "Élégance professionnelle"}},
+    {{"piece": "Jean taille haute", "color": "#2C1810", "why": "Allonge jambes, structure silhouette O"}},
+    {{"piece": "T-shirt blanc", "color": "#FFFFFF", "why": "Basique incontournable"}},
+    {{"piece": "Blazer camel", "color": "#C19A6B", "why": "Couleur clé palette, crée verticalité"}},
     {{"piece": "Pantalon noir", "color": "#000000", "why": "Classique polyvalent"}},
-    {{"piece": "Cardigan chaud", "color": "#C3B091", "why": "Couche polyvalente"}}
+    {{"piece": "Cardigan moutarde", "color": "#E1AD01", "why": "Couleur statement, très polyvalent"}}
   ],
-  
-  "mix_and_match_formulas": [
+
+  "outfits": [
     {{
-      "name": "Bureau élégant",
-      "pieces": ["Blazer", "Pantalon noir", "T-shirt blanc"],
-      "colors": ["#8B8B8B", "#000000", "#FFFFFF"],
-      "description": "Élégance professionnelle et confiance"
+      "name": "Bureau confiance",
+      "pieces": ["Blazer camel", "Pantalon noir", "T-shirt blanc"],
+      "description": "Élégance professionnelle et authority"
     }},
     {{
-      "name": "Weekend décontracté",
-      "pieces": ["Jean", "Cardigan", "Baskets blanches"],
-      "colors": ["#1E3A5F", "#C3B091", "#FFFFFF"],
+      "name": "Weekend détente",
+      "pieces": ["Jean taille haute", "Cardigan moutarde", "Baskets blanches"],
       "description": "Confort et style naturel"
     }},
     {{
       "name": "Soirée sophistiquée",
-      "pieces": ["Robe noire", "Veste structure", "Talons"],
-      "colors": ["#000000", "#505050", "#2C2C2C"],
-      "description": "Sophistication et présence"
+      "pieces": ["Robe bordeaux", "Veste camel", "Talons fins"],
+      "description": "Sophistication chaleureuse et profondeur"
     }},
     {{
       "name": "Casual chic",
-      "pieces": ["Jean", "Pull cosy", "Blazer clair"],
-      "colors": ["#1E3A5F", "#C3B091", "#D2B48C"],
-      "description": "Élégance décontractée du quotidien"
+      "pieces": ["Jean", "Pull olive", "Blazer clair"],
+      "description": "Élégance décontractée quotidienne"
     }},
     {{
-      "name": "Brunch amies",
-      "pieces": ["Robe portefeuille", "Cardigan léger", "Loafers"],
-      "colors": ["#E2725B", "#D2B48C", "#8B4513"],
+      "name": "Famille conviviale",
+      "pieces": ["Robe rose corail", "Cardigan camel", "Loafers"],
       "description": "Chaleur et féminité naturelle"
     }}
-  ],
-  
-  "shopping_guide": {{
-    "budget_recommended": "1500-2500€",
-    "priority_pieces": ["Jean classique", "Blazer neutre", "Basiques blancs", "Chaussures confortables"],
-    "where_to_shop": ["Zara", "ASOS", "Uniqlo", "mango", "COS"],
-    "tips": "Privilégier la qualité des basiques et investir dans les coupes bien coupées"
-  }},
-  
-  "occasions": [
-    {{"occasion": "Bureau", "formula": "Bureau élégant"}},
-    {{"occasion": "Weekend", "formula": "Weekend décontracté"}},
-    {{"occasion": "Soirée", "formula": "Soirée sophistiquée"}},
-    {{"occasion": "Casual", "formula": "Casual chic"}},
-    {{"occasion": "Social", "formula": "Brunch amies"}}
   ]
 }}
 
-INSTRUCTIONS (CRITICAL):
-1. STRUCTURE "style": Générer style.archetypes, style.primaryArchetype, style.essenceShort
-   - archetypes: Tableau de 5 archétypes (objets avec name + description)
-   - primaryArchetype: Le MEILLEUR archétype pour ce client basé sur saison + silhouette (string)
-   - essenceShort: Description courte (max 10 mots) de l\'essence du style du client
-2. Adapter les archétypes et essenceShort à la saison: {season} et silhouette: {silhouette_type}
-3. capsule_wardrobe: 5 pièces essentielles avec couleurs de la palette
-4. mix_and_match_formulas: 5 combinaisons pour différentes occasions
-5. ALL descriptions en FRANÇAIS
-6. Escape apostrophes: s\'harmonise
-7. MANDATORY: Start {{, end }}. NO TEXT BEFORE OR AFTER JSON.
+RÈGLES CRITIQUES:
+✅ archetypes = 5 EXACTEMENT
+   - name: court (1-2 mots)
+   - description: courte en FRANÇAIS adaptée au client
+   - Personnalisés à Automne/Chaud/{SILHOUETTE_TYPE}
+
+✅ primaryArchetype = 1 string
+   - Le meilleur archetype pour ce client
+   - Cohérent avec la palette et silhouette
+
+✅ essenceShort = 1-2 phrases courtes EN FRANÇAIS
+   - Essence du style du client
+   - Mencione saison + caractéristique principale
+
+✅ Noms d'archétypes variés:
+   - Éviter "Classic", "Minimalist", etc (trop génériques)
+   - Utiliser "Classique Chaud", "Bohème Sophistiqué", etc (personnalisé)
+
+✅ JSON valide complet
+
+Répondez UNIQUEMENT le JSON.
 """
