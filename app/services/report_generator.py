@@ -1,7 +1,7 @@
 """
-REPORT GENERATOR v3.0 - Appels SÉQUENTIELS (pas parallèles)
-✅ Colorimetry → Morphology → Styling (dans cet ordre)
-✅ Aucun mélange de logs entre les sections
+REPORT GENERATOR v3.2 - Morphologie découpage 2 appels + styling params fix
+✅ Morphology: Part 1 (vision) + Part 2 (text) - 600 tokens total
+✅ Styling: paramètres nommés corrects
 """
 
 import asyncio
@@ -14,15 +14,13 @@ from app.utils.openai_call_tracker import call_tracker
 
 
 class ReportGenerator:
-    """Orchestre la génération complète du rapport - SÉQUENTIELLE"""
+    """Orchestre génération rapport - SÉQUENTIELLE"""
     
     async def generate_complete_report(self, user_data: dict) -> dict:
-        """
-        Génère le rapport complet - APPELS SÉQUENTIELS pour logs cloisonnés
-        """
+        """Génère rapport complet"""
         try:
             print("\n" + "="*80)
-            print("🚀 GÉNÉRATION RAPPORT COMPLET - APPELS SÉQUENTIELS")
+            print("🚀 GÉNÉRATION RAPPORT COMPLET")
             print("="*80)
             
             # PHASE 1: COLORIMETRY (3 appels)
@@ -37,9 +35,9 @@ class ReportGenerator:
                 call_tracker.print_summary()
                 return {}
             
-            # PHASE 2: MORPHOLOGY (1 appel)
+            # PHASE 2: MORPHOLOGY (2 appels)
             print("\n" + "█"*80)
-            print("█ PHASE 2: MORPHOLOGY (1 appel)")
+            print("█ PHASE 2: MORPHOLOGY (2 appels - Part 1 vision + Part 2 text)")
             print("█"*80)
             
             morphology_result = await morphology_service.analyze(user_data)
@@ -53,19 +51,21 @@ class ReportGenerator:
             print("█ PHASE 3: STYLING (1 appel)")
             print("█"*80)
             
+            # FIX: Paramètres nommés extraits de colorimetry + morphology
             styling_result = await styling_service.generate(
-                colorimetry_result,
-                morphology_result,
-                user_data
+                season=colorimetry_result.get("season"),
+                sous_ton=colorimetry_result.get("sous_ton_detecte"),
+                silhouette_type=morphology_result.get("bodyType"),
+                palette=colorimetry_result.get("palette_personnalisee")
             )
             
             if not styling_result:
                 print("\n⚠️ Erreur styling - continuation avec données vides")
                 styling_result = {}
             
-            # PHASE 4: VISUALS + PRODUCTS (parallèle - pas d'appels OpenAI)
+            # PHASE 4: VISUALS + PRODUCTS (parallèle)
             print("\n" + "█"*80)
-            print("█ PHASE 4: VISUALS + PRODUCTS (parallèle - pas d'appels OpenAI)")
+            print("█ PHASE 4: VISUALS + PRODUCTS (parallèle)")
             print("█"*80)
             
             loop = asyncio.get_event_loop()
@@ -110,7 +110,6 @@ class ReportGenerator:
             
             print("✅ Rapport généré avec succès!")
             
-            # RÉSUMÉ FINAL
             call_tracker.print_summary()
             
             return report
