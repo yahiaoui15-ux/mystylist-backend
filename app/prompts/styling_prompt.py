@@ -12,14 +12,14 @@ Retournez UNIQUEMENT JSON valide, sans texte avant/après."""
 STYLING_USER_PROMPT = """Créez profil stylistique PERSONNALISÉ pour client.
 
 CLIENT ANALYSIS:
-Saison colorimetrie: {SAISON}
-Sous-ton: {SOUS_TON}
-Type silhouette: {SILHOUETTE_TYPE}
-Palette couleurs: {PALETTE_COLORS}
+Saison colorimetrie: {season}
+Sous-ton: {sous_ton}
+Type silhouette: {silhouette_type}
+Palette couleurs: {palette}
 
 TÂCHE CRITIQUE:
 1. Générez 5 archétypes PERSONNALISÉS (pas génériques)
-   - Adaptés à Automne/Chaud/{SILHOUETTE_TYPE}
+   - Adaptés à {season}/Chaud/{silhouette_type}
    - Avec descriptions uniques pour ce client
    - EN FRANÇAIS
 
@@ -107,7 +107,7 @@ RÈGLES CRITIQUES:
 ✅ archetypes = 5 EXACTEMENT
    - name: court (1-2 mots)
    - description: courte en FRANÇAIS adaptée au client
-   - Personnalisés à Automne/Chaud/{SILHOUETTE_TYPE}
+   - Personnalisés à {season}/Chaud/{silhouette_type}
 
 ✅ primaryArchetype = 1 string
    - Le meilleur archetype pour ce client
