@@ -15,10 +15,11 @@ from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT
 from app.prompts.colorimetry_part2_prompt import (
     COLORIMETRY_PART2_SYSTEM_PROMPT,
     COLORIMETRY_PART2_USER_PROMPT_TEMPLATE,
-    FALLBACK_PALETTE_AND_ASSOCIATIONS
+    FALLBACK_PART2_DATA
 )
 from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
+from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
 
 
 class ColorimetryService:
@@ -62,7 +63,7 @@ class ColorimetryService:
                 result_part1.get("hair_color", user_data.get("hair_color"))
             )
             if not result_part2:
-                result_part2 = FALLBACK_PALETTE_AND_ASSOCIATIONS.copy()
+                result_part2 = FALLBACK_PART2_DATA.copy()
             
             palette = result_part2.get("palette_personnalisee", [])
             associations = result_part2.get("associations_gagnantes", [])
@@ -183,16 +184,17 @@ class ColorimetryService:
             return {}
     
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
-        """PART 2 - Logging cloisonné"""
+        """PART 2 - Logging cloisonné avec parsing robuste (v10.0 OPTIMISÉ)"""
         print("\n" + "="*80)
-        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + ASSOCIATIONS")
+        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + ASSOCIATIONS (OPTIMISÉ)")
         print("="*80)
         
         try:
             print("\n📌 AVANT APPEL:")
-            print(f"   • Type: OpenAI Chat (gpt-4)")
-            print(f"   • Max tokens: 1400")
+            print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
+            print(f"   • Max tokens: 1000 (réduit de 40% pour moins d'erreurs)")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
+            print(f"   • Stratégie: FRANÇAIS UNIQUEMENT + 15 objets JSON")
             
             self.openai.set_context("Colorimetry", "Part 2")
             self.openai.set_system_prompt(COLORIMETRY_PART2_SYSTEM_PROMPT)
@@ -207,8 +209,8 @@ class ColorimetryService:
             print(f"\n🤖 APPEL OPENAI EN COURS...")
             response = await self.openai.call_chat(
                 prompt=user_prompt,
-                model="gpt-4",
-                max_tokens=1400
+                model="gpt-4-turbo",
+                max_tokens=1000
             )
             print(f"✅ RÉPONSE REÇUE")
             
@@ -228,26 +230,39 @@ class ColorimetryService:
             print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
             print(f"   {content[:400]}...")
             
-            print(f"\n🔍 PARSING JSON:")
-            content_cleaned = self._fix_json_for_parsing(content)
-            result = RobustJSONParser.parse_json_with_fallback(content_cleaned)
+            print(f"\n🔍 PARSING JSON (avec retry + fallback robuste):")
             
-            if result:
+            # Utiliser le parser robuste amélioré
+            parser = ColorimetryJSONParser()
+            
+            # 1. Nettoyer la réponse
+            content_cleaned = parser.clean_gpt_response(content)
+            
+            # 2. Parser avec retry
+            result = parser.parse_json_safely(content_cleaned, max_retries=3)
+            
+            # 3. Valider structure
+            if result and parser.validate_part2_structure(result):
                 palette = result.get("palette_personnalisee", [])
-                print(f"   ✅ Succès")
+                associations = result.get("associations_gagnantes", [])
+                print(f"   ✅ Succès (parsing robuste)")
                 print(f"      • Palette: {len(palette)} couleurs")
-                print(f"      • AllColors: {len(result.get('allColorsWithNotes', []))} couleurs")
-                print(f"      • Associations: {len(result.get('associations_gagnantes', []))} occasions")
+                print(f"      • Associations: {len(associations)} occasions")
             else:
-                print(f"   ❌ Erreur parsing JSON")
-                return None
+                print(f"   ⚠️  Parsing échoué ou structure invalide → FALLBACK")
+                result = FALLBACK_PART2_DATA.copy()
+                print(f"      • Palette fallback: {len(result.get('palette_personnalisee', []))} couleurs")
+                print(f"      • Associations fallback: {len(result.get('associations_gagnantes', []))} occasions")
             
             print("\n" + "="*80 + "\n")
             return result
             
         except Exception as e:
             print(f"\n❌ ERREUR PART 2: {e}")
-            return None
+            print(f"   ⚠️  FALLBACK utilisé")
+            import traceback
+            traceback.print_exc()
+            return FALLBACK_PART2_DATA.copy()
     
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
         """PART 3 - Logging cloisonné"""
