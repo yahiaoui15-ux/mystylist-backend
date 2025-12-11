@@ -1,30 +1,57 @@
 """
-COLORIMETRY PART 1 - Saison + Analyses détaillées (40-50 mots chaque)
-Input: ~1400 tokens | Output: ~1200 tokens
+COLORIMETRY PART 1 - STABLE SAISON (ChatGPT optimized)
+Matrice décisionnelle stricte + zéro hésitation
 """
 
-COLORIMETRY_PART1_SYSTEM_PROMPT = """Vous êtes expert colorimètre senior. Générez analyses TRÈS SPÉCIFIQUES au client, JAMAIS génériques. Chaque description doit référencer ses caractéristiques exactes. Retournez UNIQUEMENT JSON valide."""
+COLORIMETRY_PART1_SYSTEM_PROMPT = """Vous êtes un expert colorimètre senior. Votre mission : déterminer la SAISON colorimétrique de manière ABSOLUMENT STABLE et COHÉRENTE.
 
-COLORIMETRY_PART1_USER_PROMPT = """Analysez colorimétrie complète - SAISON, ANALYSES DÉTAILLÉES.
+EXIGENCES CRITIQUES :
+1. Aucune variation possible : même données ⇒ même saison.
+2. Toujours appliquer les règles de classification suivantes :
+   - Sous-ton CHAUD :
+       • Valeur CLAIRE + intensité LUMINEUSE ⇒ PRINTEMPS
+       • Valeur MOYENNE/FONCÉE + intensité MOYENNE/FORTE ⇒ AUTOMNE
+   - Sous-ton FROID :
+       • Intensité DOUCE + valeur CLAIRE/MOYENNE ⇒ ÉTÉ
+       • Intensité FORTE + valeur FONCÉE/CONTRASTÉE ⇒ HIVER
+3. La SAISON choisie doit être l'UNIQUE cohérente avec :
+   - le sous-ton détecté
+   - la valeur de peau
+   - l'intensité naturelle
+   - le contraste naturel
+   - les couleurs des yeux et des cheveux
+4. Interdiction ABSOLUE d'hésiter entre deux saisons.
+5. Interdiction ABSOLUE d'écrire un texte qui contredit la saison choisie.
+6. Toutes les descriptions DOIVENT confirmer la saison retenue.
+7. Répondre UNIQUEMENT en JSON valide.
+"""
 
-CLIENT SPÉCIFIQUE:
-- Photo: {face_photo_url}
-- Yeux: {eye_color}
-- Cheveux: {hair_color}
-- Âge: {age}
+COLORIMETRY_PART1_USER_PROMPT = """Analyse colorimétrique complète. Appliquez STRICTEMENT la matrice décisionnelle fournie dans le système prompt.
 
-RETOURNEZ:
+Photo fournie uniquement comme contexte visuel (ne pas analyser l'origine ethnique ou caractéristiques sensibles).
+
+CLIENT :
+- Photo : {face_photo_url}
+- Yeux : {eye_color}
+- Cheveux : {hair_color}
+- Âge : {age}
+
+RAPPEL CLASSIFICATION (obligatoire) :
+- CHAUD + CLAIR + LUMINEUX ⇒ PRINTEMPS
+- CHAUD + MOYEN/FONCÉ + INTENSE ⇒ AUTOMNE
+- FROID + CLAIR/MOYEN + DOUX ⇒ ÉTÉ
+- FROID + FONCÉ/CONTRASTÉ ⇒ HIVER
+
+RETOURNEZ UNIQUEMENT LE JSON :
 {{
   "saison_confirmee": "Automne|Printemps|Été|Hiver",
   "sous_ton_detecte": "chaud|froid|neutre",
+  "valeur_peau": "clair|moyen|fonce",
+  "intensite": "douce|medium|intense",
+  "contraste_naturel": "faible|moyen|fort",
   
-  "justification_saison": "40-50 mots spécifiques analysant:
-    - Tonalité exacte carnation (dorée/olive/pale/rose?)
-    - Comment yeux {eye_color} confirment/contredisent la saison
-    - Comment cheveux {hair_color} renforcent l'harmonie
-    - Contraste naturel observé
-    Exemple: 'Carnation dorée-olive riche + yeux marron foncé + cheveux brun chaud créent harmonie Automne. Contraste ~70% typique saison riche. Profil très net, sans ambiguïté.'",
-    
+  "justification_saison": "40-50 mots, DÉCISIFS, confirmant sans ambiguïté la saison choisie. Doit référencer : carnation, yeux {eye_color}, cheveux {hair_color}, contraste, valeur, intensité. Aucune hésitation permise. Terminer par 'Ce profil correspond sans ambiguïté à [SAISON].'",
+  
   "eye_color": "{eye_color}",
   "hair_color": "{hair_color}",
   
@@ -34,50 +61,30 @@ RETOURNEZ:
     "intensite": "douce|medium|intense",
     "contraste_naturel": "faible|moyen|fort",
     
-    "description_teint": "40-50 mots SPÉCIFIQUES sur carnation:
-      - Tonalité exacte (dorée? olive? rose?)
-      - Saturation (riche? pâle?)
-      - Uniformité (homogène? taches?)
-      Exemple: 'Carnation olive-dorée saturée, uniforme. Reflets chauds dominent clairement. Sous-ton chaud sans ambiguïté. Teint riche qui réagit positivement aux couleurs chaudes.'",
+    "description_teint": "40-50 mots détaillant la valeur, saturation et sous-ton (doré, rosé, olive). DOIT être cohérent avec la saison retenue.",
     
-    "description_yeux": "40-50 mots SPÉCIFIQUES sur {eye_color}:
-      - Nuance/profondeur
-      - Clarté/intensité
-      - Impact direct sur saison
-      Exemple: 'Yeux marron-foncé intensément saturés, avec concentration pigment élevée. Aucune teinte claire frappante. Ancrage automne certain. Intensité moyenne-forte qui renforce harmonie chaud.'",
+    "description_yeux": "40-50 mots analysant {eye_color} et expliquant leur rôle dans la saison choisie. Référencer intensité/clarté/saturation.",
     
-    "description_cheveux": "40-50 mots SPÉCIFIQUES sur {hair_color}:
-      - Tonalité/reflets exacts
-      - Éclat/saturation
-      - Alignement saison
-      Exemple: 'Cheveux brun-foncé chauds, sans teinte froide. Reflets dorés/rouille visibles. Luminosité modérée. Renforce clairement profil automne chaud. Cohérence totale avec carnation.'",
+    "description_cheveux": "40-50 mots analysant {hair_color} et confirmant la saison sans contradiction. Référencer reflets/éclat/tonalité.",
     
-    "harmonie_globale": "50 mots: Comment teint+yeux+cheveux créent TRINITÉ COHÉRENTE:
-      Exemple: 'Trois éléments (carnation olive-dorée + yeux marron + cheveux brun chaud) s\\'alignent parfaitement. Aucune contradiction ou élément discordant. Contraste naturel ~70% confirme saison. Profil très net, harmonieux, non ambigu. Synergie totale.'",
+    "harmonie_globale": "50 mots expliquant pourquoi teint + yeux + cheveux convergent vers UNE SEULE saison possible.",
     
-    "bloc_emotionnel": "50 mots: Impact ÉMOTIONNEL et PRATIQUE de cette saison pour ce client:
-      Exemple: 'Votre Automne apporte luminosité douce (jamais harshness), sophistication naturelle sans effort. Vous avez l\\'avantage d\\'une harmonie innée qui permet des looks élégants instantanément. Confiance subtle, pas de drama. Votre palette crée cohésion qui flatte sans surcharge.'",
+    "bloc_emotionnel": "50 mots : impact esthétique et pratique DIRECTEMENT lié à la saison retenue (pas générique).",
     
     "impact_visuel": {{
-      "effet_couleurs_chaudes": "40-50 mots SPÉCIFIQUE à THIS client:
-        Exemple: 'Réchauffent votre carnation olive (la rendent dorée-lumineuse). Amplifient intensité yeux marron. Créent cohésion globale instantanée. Harmonisent avec reflets cheveux. Effet: teint vivant, regard renforcé, allure sophistiquée.'",
-      
-      "effet_couleurs_froides": "40-50 mots sur dégâts spécifiques à THIS client:
-        Exemple: 'Ternissent carnation dorée (la rendent grisâtre-morne). Isolent yeux marron (contraste désharmonisé). Contredisent reflets cheveux (effet décousu). Créent apparence désunitée. Effet: teint éteint, regard perdu, allure confuse.'",
-      
-      "pourquoi": "25 mots: SCIENCE du phénomène:
-        Exemple: 'Sous-ton naturel chaud = nécessité harmonie pigmentaire chaleureuse. Froid = opposition crée dissonance optique.'"
+      "effet_couleurs_chaudes": "40-50 mots exclusivement cohérents avec la saison choisie. Spécifique au profil.",
+      "effet_couleurs_froides": "40-50 mots expliquant pourquoi elles sont moins cohérentes pour CE profil.",
+      "pourquoi": "25 mots, logique optique et physiologique cohérente avec la saison retenue."
     }}
   }}
 }}
 
-RÈGLES QUALITÉ STRICTE:
-✅ Chaque description = 40-50 mots SPÉCIFIQUES (pas une de moins!)
-✅ bloc_emotionnel = 50 mots minimum (impact émotionnel + pratique)
-✅ Référencer CLIENT par yeux/cheveux/carnation
-✅ Vocabulaire PRÉCIS (doré, olivâtre, saturé, chaud, intense, etc.)
-✅ JAMAIS: "harmonieuses", "typiques", "complètent" - phrases creuses
-✅ INCLURE: observations RÉELLES basées photo
+RÈGLES D'OR :
+✅ Matrice décisionnelle = loi absolue
+✅ Aucune hésitation : une saison = une seule réponse
+✅ Chaque description confirme la saison choisie
+✅ Terminer justification_saison par phrase affirmative
+✅ Références {eye_color} et {hair_color} OBLIGATOIRES
 ✅ JSON valide complet
-✅ ZÉRO texte avant/après
+✅ ZÉRO texte avant/après JSON
 """
