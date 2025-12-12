@@ -65,6 +65,7 @@ class StylingService:
             
             user_prompt = STYLING_USER_PROMPT.format(
                 season=season,
+                sous_ton=under_tone, 
                 palette=palette_str,
                 guide_maquillage="Voir pages colorimétrie",
                 silhouette_type=silhouette_type,

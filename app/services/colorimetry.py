@@ -192,7 +192,7 @@ class ColorimetryService:
         try:
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
-            print(f"   • Max tokens: 1000 (réduit de 40% pour moins d'erreurs)")
+            print(f"   • Max tokens: 1200 (réduit de 40% pour moins d'erreurs)")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
             print(f"   • Stratégie: FRANÇAIS UNIQUEMENT + 15 objets JSON")
             
@@ -210,7 +210,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1000
+                max_tokens=1200
             )
             print(f"✅ RÉPONSE REÇUE")
             
