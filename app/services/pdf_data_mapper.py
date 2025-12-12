@@ -315,8 +315,12 @@ class PDFDataMapper:
         guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
         shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
         
-        # Transform nailColors
+        # ✅ FIX: Transform nailColors
+        # Chercher d'abord dans guide_maquillage.vernis_a_ongles, sinon à la racine colorimetry.nailColors
         raw_nail_colors = PDFDataMapper._safe_list(guide_maquillage_raw.get("vernis_a_ongles", []))
+        if not raw_nail_colors:
+            # Fallback: chercher à la racine de colorimetry
+            raw_nail_colors = PDFDataMapper._safe_list(colorimetry_raw.get("nailColors", []))
         nail_colors_transformed = PDFDataMapper._transform_nail_colors(raw_nail_colors, palette)
         
         # Map keys exactes attendues par template
