@@ -1,7 +1,7 @@
 """
 Morphology Service v4.2 - LOGS DÉTAILLÉS + call_chat() FIX
 ✅ Part 1 (Vision): 800 tokens max
-✅ Part 2 (Text): 800 tokens max - appel call_chat() CORRECT
+✅ Part 2 (Text): 1500 tokens max - ✅ AUGMENTÉ pour JSON complet
 ✅ Logs complets par appel (like colorimetry)
 """
 
@@ -142,7 +142,7 @@ class MorphologyService:
             
             print("\n📍 AVANT APPEL:")
             print("   • Type: OpenAI Text API (gpt-4-turbo)")
-            print("   • Max tokens: 800")
+            print("   • Max tokens: 1500 (✅ AUGMENTÉ pour JSON complet)")
             print("   • Silhouette reçue: {}".format(silhouette))
             print("   • Objectifs reçus: {}".format(objectives_str))
             
@@ -158,7 +158,7 @@ class MorphologyService:
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=800
+                max_tokens=1500
             )
             print("✅ RÉPONSE REÇUE")
             
