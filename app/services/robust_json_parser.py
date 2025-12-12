@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-JSON Parser Robuste v2.2 - Avec FIX apostrophes françaises
-✅ Compte les accolades correctement
-✅ Gère les objets imbriqués complexes
-✅ Extrait TOUT le JSON valide (pas juste une partie)
-✅ FIXÉ: Regex character set cassée
-✅ FIXÉ v2.1: Ne plus créer de \\' invalides - remplacer par guillemets ou supprimer
-✅ FIXÉ v2.2: Stratégie 0 pour échapper apostrophes dans strings JSON
+JSON Parser Robuste v2.3 - FIXÉ apostrophes + extraction JSON blocks
+✅ Extraction du JSON même avec texte avant/après
+✅ Support des blocs ```json
+✅ Pas d'escaping d'apostrophe (elle n'en a pas besoin!)
+✅ Compte accolades correctement
 """
 
 import json
@@ -14,14 +12,14 @@ import re
 
 
 class RobustJSONParser:
-    """Parser JSON robuste avec comptage d'accolades et nettoyage apostrophes"""
+    """Parser JSON robuste avec extraction markdown + apostrophes"""
     
     @staticmethod
     def parse_json_with_fallback(response_text: str) -> dict:
         """
         Parse JSON avec 6 stratégies de fallback
         
-        ✅ Stratégie 0: Escape apostrophes dans strings JSON (FIX v2.2)
+        ✅ Stratégie 0: Extraire JSON des blocs ```json (NOUVEAU v2.3)
         ✅ Stratégie 1: Parser direct (JSON valide)
         ✅ Stratégie 2: Fix escapes invalides + retry
         ✅ Stratégie 3: Extraction complète (compte accolades)
@@ -32,15 +30,17 @@ class RobustJSONParser:
         """
         print("\n📋 Parsing JSON robuste:")
         
-        # STRATÉGIE 0: Échappe apostrophes dans strings JSON (FIX v2.2)
-        print("   Tentative 0: Escape apostrophes françaises...")
-        try:
-            cleaned_apos = RobustJSONParser._escape_apostrophes_in_json_strings(response_text)
-            data = json.loads(cleaned_apos)
-            print("      ✅ JSON valide après fix apostrophes!")
-            return data
-        except json.JSONDecodeError as e:
-            print(f"      ❌ Erreur: {str(e)[:60]}...")
+        # ✅ STRATÉGIE 0 (NEW): Extraire du bloc ```json (NOUVEAU v2.3)
+        print("   Tentative 0: Extraction depuis bloc ```json...")
+        json_from_markdown = RobustJSONParser._extract_json_from_markdown(response_text)
+        if json_from_markdown:
+            try:
+                cleaned = RobustJSONParser._fix_invalid_escapes(json_from_markdown)
+                data = json.loads(cleaned)
+                print("      ✅ JSON extrait du bloc markdown!")
+                return data
+            except json.JSONDecodeError as e:
+                print(f"      ❌ Erreur parsing bloc markdown: {str(e)[:60]}...")
         
         # STRATÉGIE 1: Parser direct
         print("   Tentative 1: Parsing direct...")
@@ -52,7 +52,7 @@ class RobustJSONParser:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
         # STRATÉGIE 2: Fix escapes invalides + retry
-        print("   Tentative 2: Fix escapes invalides (\\' etc.)...")
+        print("   Tentative 2: Fix escapes invalides...")
         try:
             cleaned_escapes = RobustJSONParser._fix_invalid_escapes(response_text)
             data = json.loads(cleaned_escapes)
@@ -61,12 +61,11 @@ class RobustJSONParser:
         except json.JSONDecodeError as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
-        # STRATÉGIE 3: Extraction complète (compte accolades) + nettoyage
+        # STRATÉGIE 3: Extraction complète (compte accolades)
         print("   Tentative 3: Extraction complète (compte accolades)...")
         try:
             extracted = RobustJSONParser._extract_complete_json(response_text)
             if extracted:
-                # Nettoyer puis parser
                 extracted_clean = RobustJSONParser._fix_invalid_escapes(extracted)
                 extracted_clean = RobustJSONParser._clean_json(extracted_clean)
                 data = json.loads(extracted_clean)
@@ -75,7 +74,7 @@ class RobustJSONParser:
             else:
                 print("      ❌ Pas pu extraire le JSON complet")
         except Exception as e:
-            print(f"      ❌ Erreur parsing extrait: {str(e)[:60]}...")
+            print(f"      ❌ Erreur: {str(e)[:60]}...")
         
         # STRATÉGIE 4: Nettoyage agressif final
         print("   Tentative 4: Nettoyage agressif...")
@@ -94,47 +93,49 @@ class RobustJSONParser:
         return RobustJSONParser._minimal_fallback()
     
     @staticmethod
-    def _escape_apostrophes_in_json_strings(text: str) -> str:
+    def _extract_json_from_markdown(text: str) -> str:
         """
-        ✅ NOUVEAU v2.2: Échappe les apostrophes dans les strings JSON
+        ✅ NOUVEAU v2.3: Extrait JSON depuis bloc ```json
         
-        Problème: OpenAI retourne "Feuille d'automne" au lieu de "Feuille d\\'automne"
-        Solution: Scanner les strings JSON et échapper les apostrophes internes
+        Cherche les blocs:
+        ```json
+        {
+          ...
+        }
+        ```
+        
+        Retourne le JSON ou None si pas trouvé
         """
         if not text:
-            return text
+            return None
         
-        result = []
-        in_string = False
-        i = 0
+        # Chercher le bloc ```json...```
+        pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(pattern, text, re.DOTALL)
         
-        while i < len(text):
-            char = text[i]
-            
-            # Détecter début/fin de string JSON
-            if char == '"' and (i == 0 or text[i-1] != '\\'):
-                in_string = not in_string
-                result.append(char)
-                i += 1
-                continue
-            
-            # Si dans une string et apostrophe → échapper
-            if in_string and char == "'":
-                result.append("\\'")  # ✅ Ajouter backslash
-                i += 1
-                continue
-            
-            result.append(char)
-            i += 1
+        if match:
+            json_content = match.group(1).strip()
+            if json_content:
+                return json_content
         
-        return ''.join(result)
+        # Alternative: chercher juste ```...```
+        pattern2 = r'```\s*(.*?)\s*```'
+        match2 = re.search(pattern2, text, re.DOTALL)
+        
+        if match2:
+            json_content = match2.group(1).strip()
+            # Vérifier que c'est du JSON (commence par {)
+            if json_content.startswith('{'):
+                return json_content
+        
+        return None
     
     @staticmethod
     def _fix_invalid_escapes(text: str) -> str:
         """
-        ✅ CORRIGÉ v2.1: Corrige les séquences d'échappement JSON INVALIDES
+        ✅ CORRIGÉ v2.3: Corrige SEULEMENT les escapes VRAIMENT invalides
         
-        IMPORTANT - En JSON, les SEULES séquences valides sont:
+        IMPORTANT - En JSON, les SEULES escapes valides sont:
         - \\"  (guillemet)
         - \\\\  (backslash)
         - \\/  (slash)
@@ -145,78 +146,41 @@ class RobustJSONParser:
         - \\t  (tab)
         - \\uXXXX (unicode)
         
-        TOUT AUTRE \\X est INVALIDE !
-        Notamment: \\' (apostrophe échappée) N'EXISTE PAS en JSON !
+        ❌ L'apostrophe ' NE DOIT PAS être échappée! C'est une chaîne dans "..."
+        ❌ \\' n'existe pas en JSON valide!
         
         Cette méthode:
-        1. Remplace \\' par ' (apostrophe simple)
-        2. Corrige les autres escapes invalides
+        1. Supprimer les caractères de contrôle
+        2. Remplacer \\' par ' (l'apostrophe n'a pas besoin d'escape)
+        3. Corriger les autres escapes invalides
         """
         if not text:
             return text
         
-        # 1. Supprimer caractères de contrôle (sauf les utiles)
+        # 1. Supprimer caractères de contrôle
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', text)
         
-        # 2. ✅ CRUCIAL: \\' → ' (l'apostrophe échappée n'existe pas en JSON!)
+        # 2. ✅ CRUCIAL: \\' → ' (l'apostrophe N'A PAS besoin d'escape en JSON!)
         text = text.replace("\\'", "'")
         
         # 3. Corriger les autres escapes invalides
-        # Pattern: backslash suivi d'un caractère qui n'est pas une séquence valide
         def fix_escape(match):
             char_after = match.group(1)
             
-            # Séquences valides à préserver
+            # Escapes valides à préserver
             if char_after in '"\\bfnrt/':
                 return match.group(0)
             
-            # \\u suivi de 4 hex est valide (on garde)
+            # \\u suivi de 4 hex est valide
             if char_after == 'u':
                 return match.group(0)
             
-            # Tout le reste: supprimer le backslash, garder le caractère
+            # Tout le reste: supprimer le backslash
             return char_after
         
-        # Appliquer la correction pour \\X où X n'est pas valide
         text = re.sub(r'\\([^"\\bfnrtu/])', fix_escape, text)
         
         return text
-    
-    @staticmethod
-    def _remove_apostrophes_in_json_strings(text: str) -> str:
-        """
-        ✅ ALTERNATIVE: Supprime les apostrophes problématiques dans les strings JSON
-        au lieu d'essayer de les échapper (car \\' n'est pas valide)
-        
-        Approche: remplacer ' par ` ou supprimer
-        """
-        result = []
-        in_string = False
-        i = 0
-        
-        while i < len(text):
-            char = text[i]
-            
-            # Détecter début/fin de string JSON
-            if char == '"' and (i == 0 or text[i-1] != '\\'):
-                in_string = not in_string
-                result.append(char)
-                i += 1
-                continue
-            
-            # Si dans une string et on trouve une apostrophe
-            if in_string and char == "'":
-                # Option 1: Remplacer par guillemet typographique ou rien
-                # On supprime simplement pour éviter tout problème
-                # (ou on pourrait utiliser ` ou ʼ)
-                result.append("")  # Supprimer l'apostrophe
-                i += 1
-                continue
-            
-            result.append(char)
-            i += 1
-        
-        return ''.join(result)
     
     @staticmethod
     def _extract_complete_json(response_text: str) -> str:
@@ -269,7 +233,6 @@ class RobustJSONParser:
                         return extracted
         
         # Si on arrive ici, il manque des accolades fermantes
-        # Retourner quand même ce qu'on a
         if bracket_count > 0:
             return response_text[start_idx:] + '}' * bracket_count
         
@@ -279,16 +242,8 @@ class RobustJSONParser:
     def _clean_json(json_str: str) -> str:
         """
         ✅ Nettoie le JSON pour le rendre parsable
-        
-        Corrige les erreurs courantes d'OpenAI:
-        - Caractères de contrôle
-        - Multi-lignes 
-        - Quotes mal échappées
-        - Virgules traînantes
-        - Strings non terminées
         """
         
-        # Extraire le JSON (du premier { au dernier })
         start_idx = json_str.find('{')
         end_idx = json_str.rfind('}')
         
@@ -297,20 +252,20 @@ class RobustJSONParser:
         
         result = json_str[start_idx:end_idx+1]
         
-        # ✅ CORRECTION 1: Nettoyer les caractères de contrôle
+        # Nettoyer les caractères de contrôle
         result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', result)
         
-        # ✅ CORRECTION 2: Consolider les multi-lignes
+        # Consolider les multi-lignes
         result = result.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
         
-        # ✅ CORRECTION 3: Réduire les espaces multiples
+        # Réduire les espaces multiples
         result = re.sub(r' +', ' ', result)
         
-        # ✅ CORRECTION 4: Supprimer les virgules traînantes
+        # Supprimer les virgules traînantes
         result = re.sub(r',(\s*})', r'\1', result)
         result = re.sub(r',(\s*])', r'\1', result)
         
-        # ✅ CORRECTION 5: Fix escapes invalides
+        # Fix escapes invalides
         result = RobustJSONParser._fix_invalid_escapes(result)
         
         return result
@@ -318,94 +273,35 @@ class RobustJSONParser:
     @staticmethod
     def _aggressive_clean(json_str: str) -> str:
         """
-        ✅ Nettoyage AGRESSIF pour cas désespérés
-        
-        Supprime tout ce qui n'est pas JSON valide
+        ✅ Nettoyage agressif final
         """
-        # Extraire entre premier { et dernier }
-        start_idx = json_str.find('{')
-        end_idx = json_str.rfind('}')
         
-        if start_idx == -1 or end_idx == -1:
+        # Étape 1: Extraire JSON
+        start = json_str.find('{')
+        end = json_str.rfind('}')
+        
+        if start == -1 or end == -1:
             return "{}"
         
-        result = json_str[start_idx:end_idx+1]
+        result = json_str[start:end+1]
         
-        # Nettoyage basique
+        # Étape 2: Nettoyer
         result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', result)
         result = result.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
-        
-        # ✅ Fix escapes invalides (dont \\')
-        result = RobustJSONParser._fix_invalid_escapes(result)
-        
-        # Supprimer virgules traînantes
-        result = re.sub(r',(\s*[}\]])', r'\1', result)
-        
-        # Réduire espaces
         result = re.sub(r' +', ' ', result)
-        
-        # Essayer de réparer les strings non terminées
-        # Compter les guillemets (en excluant les échappés)
-        quote_count = len(re.findall(r'(?<!\\)"', result))
-        if quote_count % 2 != 0:
-            # Nombre impair de guillemets = problème
-            # Ajouter un guillemet avant la dernière }
-            last_brace = result.rfind('}')
-            if last_brace > 0:
-                result = result[:last_brace] + '"' + result[last_brace:]
+        result = re.sub(r',(\s*[}\]])', r'\1', result)
+        result = RobustJSONParser._fix_invalid_escapes(result)
         
         return result
     
     @staticmethod
     def _minimal_fallback() -> dict:
-        """Retourne une structure minimale valide avec TOUS les champs"""
+        """
+        ✅ Fallback minimal quand tout échoue
+        """
         return {
-            "saison_confirmee": "Indéterminée",
-            "sous_ton_detecte": "",
-            "justification_saison": "Analyse en cours...",
-            "palette_personnalisee": [],
-            "allColorsWithNotes": [],
             "notes_compatibilite": {},
-            "associations_gagnantes": [],
-            "guide_maquillage": {
-                "teint": "",
-                "blush": "",
-                "bronzer": "",
-                "highlighter": "",
-                "eyeshadows": "",
-                "eyeliner": "",
-                "mascara": "",
-                "brows": "",
-                "lipsNatural": "",
-                "lipsDay": "",
-                "lipsEvening": "",
-                "lipsAvoid": "",
-                "vernis_a_ongles": []
-            },
-            "shopping_couleurs": {
-                "priorite_1": [],
-                "priorite_2": [],
-                "eviter_absolument": []
-            },
-            "alternatives_couleurs_refusees": {},
-            "analyse_colorimetrique_detaillee": {
-                "temperature": "neutre",
-                "valeur": "medium",
-                "intensite": "medium",
-                "contraste_naturel": "moyen",
-                "description_teint": "",
-                "description_yeux": "",
-                "description_cheveux": "",
-                "harmonie_globale": "",
-                "bloc_emotionnel": "",
-                "impact_visuel": {
-                    "effet_couleurs_chaudes": "",
-                    "effet_couleurs_froides": "",
-                    "pourquoi": ""
-                }
-            },
             "unwanted_colors": [],
-            "nailColors": [],
-            "eye_color": "",
-            "hair_color": ""
+            "guide_maquillage": {},
+            "nailColors": []
         }
