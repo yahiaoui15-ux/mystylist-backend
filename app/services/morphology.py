@@ -87,11 +87,8 @@ class MorphologyService:
             print("\n📋 PARSING JSON PART 1:")
             response_text = content_part1.strip() if content_part1 else ""
             
-            
             # ✅ FIX: Strip markdown code blocks
             response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
-            if not response_text:
-            response_text = content_part1.strip() if content_part1 else ""
             
             if not response_text:
                 print("   ❌ Réponse vide")
@@ -195,6 +192,9 @@ class MorphologyService:
             # PARSING PART 2
             print("\n📋 PARSING JSON PART 2:")
             response_text = content_part2.strip() if content_part2 else ""
+            
+            # ✅ FIX: Strip markdown code blocks
+            response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
             
             if not response_text:
                 print("   ❌ Réponse vide")
