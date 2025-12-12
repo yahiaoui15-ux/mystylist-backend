@@ -51,12 +51,11 @@ class ReportGenerator:
             print("█ PHASE 3: STYLING (1 appel)")
             print("█"*80)
             
-            # FIX: Paramètres nommés extraits de colorimetry + morphology
+            # ✅ FIX: Passer les dictionnaires complets (signature correcte)
             styling_result = await styling_service.generate(
-                season=colorimetry_result.get("season"),
-                sous_ton=colorimetry_result.get("sous_ton_detecte"),
-                silhouette_type=morphology_result.get("bodyType"),
-                palette=colorimetry_result.get("palette_personnalisee")
+                colorimetry_result=colorimetry_result,
+                morphology_result=morphology_result,
+                user_data=user_data
             )
             
             if not styling_result:

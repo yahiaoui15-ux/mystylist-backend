@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-JSON Parser Robuste v2.1 - Version corrigée
+JSON Parser Robuste v2.2 - Avec FIX apostrophes françaises
 ✅ Compte les accolades correctement
 ✅ Gère les objets imbriqués complexes
 ✅ Extrait TOUT le JSON valide (pas juste une partie)
 ✅ FIXÉ: Regex character set cassée
 ✅ FIXÉ v2.1: Ne plus créer de \\' invalides - remplacer par guillemets ou supprimer
+✅ FIXÉ v2.2: Stratégie 0 pour échapper apostrophes dans strings JSON
 """
 
 import json
@@ -18,8 +19,9 @@ class RobustJSONParser:
     @staticmethod
     def parse_json_with_fallback(response_text: str) -> dict:
         """
-        Parse JSON avec 5 stratégies de fallback
+        Parse JSON avec 6 stratégies de fallback
         
+        ✅ Stratégie 0: Escape apostrophes dans strings JSON (FIX v2.2)
         ✅ Stratégie 1: Parser direct (JSON valide)
         ✅ Stratégie 2: Fix escapes invalides + retry
         ✅ Stratégie 3: Extraction complète (compte accolades)
@@ -29,6 +31,16 @@ class RobustJSONParser:
         Retourne TOUJOURS un dict (jamais d'exception)
         """
         print("\n📋 Parsing JSON robuste:")
+        
+        # STRATÉGIE 0: Échappe apostrophes dans strings JSON (FIX v2.2)
+        print("   Tentative 0: Escape apostrophes françaises...")
+        try:
+            cleaned_apos = RobustJSONParser._escape_apostrophes_in_json_strings(response_text)
+            data = json.loads(cleaned_apos)
+            print("      ✅ JSON valide après fix apostrophes!")
+            return data
+        except json.JSONDecodeError as e:
+            print(f"      ❌ Erreur: {str(e)[:60]}...")
         
         # STRATÉGIE 1: Parser direct
         print("   Tentative 1: Parsing direct...")
@@ -80,6 +92,42 @@ class RobustJSONParser:
         print("   Tentative 5: Fallback minimal")
         print("      ⚠️ Retour données minimales")
         return RobustJSONParser._minimal_fallback()
+    
+    @staticmethod
+    def _escape_apostrophes_in_json_strings(text: str) -> str:
+        """
+        ✅ NOUVEAU v2.2: Échappe les apostrophes dans les strings JSON
+        
+        Problème: OpenAI retourne "Feuille d'automne" au lieu de "Feuille d\\'automne"
+        Solution: Scanner les strings JSON et échapper les apostrophes internes
+        """
+        if not text:
+            return text
+        
+        result = []
+        in_string = False
+        i = 0
+        
+        while i < len(text):
+            char = text[i]
+            
+            # Détecter début/fin de string JSON
+            if char == '"' and (i == 0 or text[i-1] != '\\'):
+                in_string = not in_string
+                result.append(char)
+                i += 1
+                continue
+            
+            # Si dans une string et apostrophe → échapper
+            if in_string and char == "'":
+                result.append("\\'")  # ✅ Ajouter backslash
+                i += 1
+                continue
+            
+            result.append(char)
+            i += 1
+        
+        return ''.join(result)
     
     @staticmethod
     def _fix_invalid_escapes(text: str) -> str:
