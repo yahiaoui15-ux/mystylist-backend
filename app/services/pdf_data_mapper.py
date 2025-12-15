@@ -306,11 +306,9 @@ class PDFDataMapper:
         
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
         
-        # âœ… IMPORTANT: Récupérer allColorsWithNotes depuis colorimetry_raw SI présent (FALLBACK)
-        all_colors_with_notes = PDFDataMapper._safe_list(colorimetry_raw.get("allColorsWithNotes", []))
-        if not all_colors_with_notes:
-            # Sinon construire depuis notes_compatibilite
-            all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        # IMPORTANT: Construire TOUJOURS allColorsWithNotes depuis notes_compatibilite (19 couleurs générales)
+        # Ceci assure que pages 4-5 affichent les couleurs générales, pas la palette personnalisée
+        all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         # Enrichir avec displayName
         all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
