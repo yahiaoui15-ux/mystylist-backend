@@ -1,9 +1,10 @@
 """
-COLORIMETRY PART 3 - ULTRA-STRICT v8.1
+COLORIMETRY PART 3 - ULTRA-STRICT v8.1 - FIXED
 ✅ nailColors EN PREMIER (section prioritaire)
 ✅ System prompt FORÇANT réponse JSON SEULE
 ✅ Format strict: ABSOLUMENT ZÉRO texte avant/après
 ✅ Blocs ```json si nécessaire (pour robustesse)
+✅ ACCOLADES ÉCHAPPÉES pour .format()
 """
 
 COLORIMETRY_PART3_SYSTEM_PROMPT = """RÈGLE ABSOLUE - RÉPONDEZ UNIQUEMENT AVEC LE JSON:
@@ -18,6 +19,8 @@ COLORIMETRY_PART3_SYSTEM_PROMPT = """RÈGLE ABSOLUE - RÉPONDEZ UNIQUEMENT AVEC 
 Si vous ne pouvez pas générer du JSON valide, retournez un JSON minimal: {}
 Ne générez JAMAIS d'explications, de phrases, ou de texte quelconque."""
 
+# 🔧 FIX: Les accolades { et } sont échappées en {{ }} pour éviter le KeyError
+# lors de l'appel .format(SAISON=..., SOUS_TON=..., UNWANTED_COLORS=...)
 COLORIMETRY_PART3_USER_PROMPT_TEMPLATE = """PART 3: MAQUILLAGE PERSONNALISÉ + NOTES COMPATIBILITÉ
 
 DONNÉES CLIENT:
@@ -150,6 +153,6 @@ RÈGLES STRICTES ET OBLIGATOIRES:
 ✅ ZÉRO EXPLICATIONS
 
 IMPÉRATIF ULTIME: 
-Votre PREMIÈRE réponse doit être { et votre DERNIÈRE doit être }
+Votre PREMIÈRE réponse doit être {{ et votre DERNIÈRE doit être }}
 Aucun mot, aucune explication, rien d'autre.
 """
