@@ -1,8 +1,9 @@
 """
-Colorimetry Service v9.1 - Logging STRUCTURÉ + FIX allColorsWithNotes + makeup
+Colorimetry Service v9.2 - CORRIGÉ avec _build_makeup_structure
 ✅ Chaque appel OpenAI = bloc isolé avec Before/During/After clair
 ✅ allColorsWithNotes: construit depuis palette + alternatives
-✅ makeup structure: inclut nailColors pour PDFMonkey
+✅ makeup structure: inclut teint, yeux, lèvres, ongles pour PDFMonkey
+✅ _build_makeup_structure() IMPLÉMENTÉE correctement
 ✅ Aucun mélange de réponses brutes entre les sections
 """
 
@@ -31,7 +32,7 @@ class ColorimetryService:
         Analyse colorimétrie en 3 appels OpenAI - LOGS STRUCTURÉS
         Part 1: Saison + Analyses détaillées
         Part 2: Palette + Couleurs génériques + Associations
-        Part 3: Notes compatibilité + Maquillage
+        Part 3: Notes compatibilité + Maquillage + Couleurs refusées
         """
         try:
             print("\n" + "="*80)
@@ -54,7 +55,7 @@ class ColorimetryService:
             sous_ton = result_part1.get("sous_ton_detecte", "neutre")
             
             # ═══════════════════════════════════════════════════════════
-            # PART 2: PALETTE + ASSOCIATIONS
+            # PART 2: PALETTE + ASSOCIATIONS + COULEURS GÉNÉRIQUES
             # ═══════════════════════════════════════════════════════════
             result_part2 = await self._call_part2(
                 saison, 
@@ -67,10 +68,11 @@ class ColorimetryService:
             
             palette = result_part2.get("palette_personnalisee", [])
             associations = result_part2.get("associations_gagnantes", [])
+            generiques = result_part2.get("couleurs_generiques", [])
             all_colors_raw = result_part2.get("allColorsWithNotes", [])
             
             # ═══════════════════════════════════════════════════════════
-            # PART 3: MAQUILLAGE + VERNIS
+            # PART 3: MAQUILLAGE + VERNIS + COULEURS REFUSÉES
             # ═══════════════════════════════════════════════════════════
             unwanted_colors = user_data.get("unwanted_colors", [])
             result_part3 = await self._call_part3(saison, sous_ton, unwanted_colors)
@@ -78,7 +80,7 @@ class ColorimetryService:
                 result_part3 = {}
             
             # ═══════════════════════════════════════════════════════════
-            # ✅ FIX: Construire allColorsWithNotes complète
+            # ✅ FIX: Construire allColorsWithNotes complète (palette + alternatives + refusées)
             # ═══════════════════════════════════════════════════════════
             all_colors_with_notes = self._build_all_colors_with_notes(
                 palette,
@@ -87,9 +89,19 @@ class ColorimetryService:
             )
             
             # ═══════════════════════════════════════════════════════════
-            # ✅ FIX: Créer structure "makeup" pour PDFMonkey
+            # ✅ FIX: Créer structure "makeup" pour PDFMonkey (Page 7)
             # ═══════════════════════════════════════════════════════════
             makeup_structure = self._build_makeup_structure(result_part3)
+            
+            # ═══════════════════════════════════════════════════════════
+            # ✅ FIX: Extraire couleurs à manier avec prudence (Page 5 - prudence)
+            # ═══════════════════════════════════════════════════════════
+            couleurs_prudence = self._extract_colors_by_note_range(all_colors_with_notes, 4, 6)
+            
+            # ═══════════════════════════════════════════════════════════
+            # ✅ FIX: Extraire couleurs à éviter (Page 5 - éviter)
+            # ═══════════════════════════════════════════════════════════
+            couleurs_eviter = self._extract_colors_by_note_range(all_colors_with_notes, 0, 3)
             
             # ═══════════════════════════════════════════════════════════
             # FUSION FINALE
@@ -105,19 +117,46 @@ class ColorimetryService:
                 "eye_color": result_part1.get("eye_color", user_data.get("eye_color")),
                 "hair_color": result_part1.get("hair_color", user_data.get("hair_color")),
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
+                
+                # ✅ PAGE 3: Palette personnalisée (10 couleurs, 8-10/10)
                 "palette_personnalisee": palette,
-                "allColorsWithNotes": all_colors_with_notes,  # ✅ FIX: Rempli correctement
+                
+                # ✅ PAGE 4: Couleurs génériques (Bleu, Rouge, Jaune, etc. 7-10/10)
+                "couleurs_generiques": generiques,
+                
+                # ✅ PAGE 5: Couleurs à manier avec prudence (4-6/10)
+                "couleurs_prudence": couleurs_prudence,
+                
+                # ✅ PAGE 5: Couleurs à éviter (<4/10)
+                "couleurs_eviter": couleurs_eviter,
+                
+                # Toutes les couleurs avec notes (pour debug/reference)
+                "allColorsWithNotes": all_colors_with_notes,
+                
+                # Associations de couleurs
                 "associations_gagnantes": associations,
+                
+                # Notes de compatibilité complètes
                 "notes_compatibilite": result_part3.get("notes_compatibilite", {}),
+                
+                # Couleurs refusées brutes
                 "unwanted_colors": result_part3.get("unwanted_colors", []),
+                
+                # ✅ PAGE 7: Guide maquillage structuré
                 "guide_maquillage": result_part3.get("guide_maquillage", {}),
-                "nailColors": result_part3.get("nailColors", []),
-                "makeup": makeup_structure  # ✅ FIX: Structure pour PDFMonkey
+                
+                # ✅ PAGE 7: Structure makeup mappée pour PDFMonkey
+                "makeup": makeup_structure,
+                
+                # Couleurs vernis ongles
+                "nailColors": result_part3.get("nailColors", [])
             }
             
             print(f"   • Saison: {result.get('saison_confirmee')}")
-            print(f"   • Palette: {len(result.get('palette_personnalisee', []))} couleurs")
-            print(f"   • AllColors: {len(result.get('allColorsWithNotes', []))} couleurs")
+            print(f"   • Palette personnalisée: {len(result.get('palette_personnalisee', []))} couleurs (8-10/10)")
+            print(f"   • Couleurs génériques: {len(result.get('couleurs_generiques', []))} couleurs (7-10/10)")
+            print(f"   • Couleurs prudence: {len(result.get('couleurs_prudence', []))} couleurs (4-6/10)")
+            print(f"   • Couleurs à éviter: {len(result.get('couleurs_eviter', []))} couleurs (<4/10)")
             print(f"   • Associations: {len(result.get('associations_gagnantes', []))} occasions")
             print(f"   • Vernis ongles: {len(result.get('nailColors', []))} couleurs")
             print(f"   • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs")
@@ -172,31 +211,49 @@ class ColorimetryService:
         print(f"\n   ✅ allColorsWithNotes construite: {len(all_colors)} couleurs uniques")
         return all_colors
     
-    def _build_makeup_structure(self, part3_result: dict) -> dict:
+    def _extract_colors_by_note_range(self, all_colors: list, min_note: int, max_note: int) -> list:
         """
-        ✅ Construit structure "makeup" pour PDFMonkey avec nailColors
-        Format attendu par template:
+        ✅ Extrait les couleurs dans une plage de notes donnée
+        Utilisé pour Page 5 (prudence: 4-6/10 et éviter: <4/10)
+        """
+        filtered = [
+            color for color in all_colors
+            if min_note <= color.get("note", 5) <= max_note
+        ]
+        filtered.sort(key=lambda x: x.get("note", 5), reverse=True)
+        return filtered
+    
+    def _build_makeup_structure(self, result_part3: dict) -> dict:
+        """
+        ✅ CORRIGÉ v2: Construit structure makeup pour PDFMonkey (Page 7)
+        Depuis les données Part 3 générées par OpenAI
+        
+        Structure attendue depuis Part 3:
         {
-            "foundation": "...",
-            "blush": "...",
-            "nailColors": [{displayName, hex}, ...]
+            "guide_maquillage": {
+                "teint": {...},
+                "yeux": {...},
+                "levres": {...},
+                "ongles": {...}
+            }
         }
         """
+        guide = result_part3.get("guide_maquillage", {})
+        
+        # ✅ Extraire et structurer chaque section
         makeup = {
-            "foundation": part3_result.get("guide_maquillage", {}).get("foundation", ""),
-            "blush": part3_result.get("guide_maquillage", {}).get("blush", ""),
-            "bronzer": part3_result.get("guide_maquillage", {}).get("bronzer", ""),
-            "highlighter": part3_result.get("guide_maquillage", {}).get("highlighter", ""),
-            "eyeshadows": part3_result.get("guide_maquillage", {}).get("eyeshadows", ""),
-            "eyeliner": part3_result.get("guide_maquillage", {}).get("eyeliner", ""),
-            "mascara": part3_result.get("guide_maquillage", {}).get("mascara", ""),
-            "brows": part3_result.get("guide_maquillage", {}).get("brows", ""),
-            "lipsNatural": part3_result.get("guide_maquillage", {}).get("lipsNatural", ""),
-            "lipsDay": part3_result.get("guide_maquillage", {}).get("lipsDay", ""),
-            "lipsEvening": part3_result.get("guide_maquillage", {}).get("lipsEvening", ""),
-            "lipsAvoid": part3_result.get("guide_maquillage", {}).get("lipsAvoid", ""),
-            "nailColors": part3_result.get("nailColors", [])  # ✅ FIX: Ongles mappés
+            "foundation": guide.get("teint", {}),
+            "eyes": guide.get("yeux", {}),
+            "lips": guide.get("levres", {}),
+            "nails": guide.get("ongles", {})
         }
+        
+        print(f"\n   ✅ Makeup structure créée:")
+        print(f"      • Foundation: {len(makeup['foundation'])} champs" if makeup['foundation'] else "      • Foundation: vide")
+        print(f"      • Eyes: {len(makeup['eyes'])} champs" if makeup['eyes'] else "      • Eyes: vide")
+        print(f"      • Lips: {len(makeup['lips'])} champs" if makeup['lips'] else "      • Lips: vide")
+        print(f"      • Nails: {len(makeup['nails'])} champs" if makeup['nails'] else "      • Nails: vide")
+        
         return makeup
     
     async def _call_part1(self, user_data: dict, face_photo_url: str) -> dict:
@@ -207,27 +264,25 @@ class ColorimetryService:
         
         try:
             print("\n📌 AVANT APPEL:")
-            print(f"   • Type: OpenAI Vision API (gpt-4-turbo)")
-            print(f"   • Max tokens: 1200")
-            print(f"   • Image: {face_photo_url[:50]}...")
-            print(f"   • Input data: eye={user_data.get('eye_color')}, hair={user_data.get('hair_color')}, age={user_data.get('age')}")
+            print(f"   • Type: OpenAI Vision (gpt-4-turbo)")
+            print(f"   • Max tokens: 1000")
+            print(f"   • Image: {face_photo_url[:60]}...")
             
             self.openai.set_context("Colorimetry", "Part 1")
             self.openai.set_system_prompt(COLORIMETRY_PART1_SYSTEM_PROMPT)
             
             user_prompt = COLORIMETRY_PART1_USER_PROMPT.format(
-                face_photo_url=face_photo_url,
-                eye_color=user_data.get("eye_color", "Non spécifié"),
-                hair_color=user_data.get("hair_color", "Non spécifié"),
-                age=str(user_data.get("age", 0))
+                FACE_PHOTO=face_photo_url,
+                EYE_COLOR=user_data.get("eye_color", "indéterminé"),
+                HAIR_COLOR=user_data.get("hair_color", "indéterminé")
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
-            response = await self.openai.analyze_image(
-                image_urls=[face_photo_url],
+            response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1200
+                max_tokens=1000,
+                has_image=True
             )
             print(f"✅ RÉPONSE REÇUE")
             
@@ -248,17 +303,19 @@ class ColorimetryService:
             print(f"   {content[:400]}...")
             
             print(f"\n🔍 PARSING JSON:")
-            result = RobustJSONParser.parse_json_with_fallback(content)
+            content_cleaned = self._fix_json_for_parsing(content)
+            result = RobustJSONParser.parse_json_with_fallback(content_cleaned)
             
             if result:
                 print(f"   ✅ Succès")
-                print(f"      • Saison: {result.get('saison_confirmee', '?')}")
-                print(f"      • Sous-ton: {result.get('sous_ton_detecte', '?')}")
+                print(f"      • Saison: {result.get('saison_confirmee', 'N/A')}")
+                print(f"      • Sous-ton: {result.get('sous_ton_detecte', 'N/A')}")
             else:
-                print(f"   ❌ Parsing échoué")
+                print(f"   ⚠️  Erreur parsing")
+                result = {}
             
             print("\n" + "="*80 + "\n")
-            return result if result else {}
+            return result
             
         except Exception as e:
             print(f"\n❌ ERREUR PART 1: {e}")
@@ -267,7 +324,7 @@ class ColorimetryService:
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
         """PART 2 - Logging cloisonné avec parsing robuste (v10.0 OPTIMISÉ)"""
         print("\n" + "="*80)
-        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + ASSOCIATIONS (OPTIMISÉ)")
+        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS (OPTIMISÉ)")
         print("="*80)
         
         try:
@@ -275,7 +332,7 @@ class ColorimetryService:
             print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
             print(f"   • Max tokens: 1200 (réduit de 40% pour moins d'erreurs)")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
-            print(f"   • Stratégie: FRANÇAIS UNIQUEMENT + 15 objets JSON")
+            print(f"   • Stratégie: FRANÇAIS UNIQUEMENT + palette + couleurs génériques")
             
             self.openai.set_context("Colorimetry", "Part 2")
             self.openai.set_system_prompt(COLORIMETRY_PART2_SYSTEM_PROMPT)
@@ -325,14 +382,17 @@ class ColorimetryService:
             # 3. Valider structure
             if result and parser.validate_part2_structure(result):
                 palette = result.get("palette_personnalisee", [])
+                generiques = result.get("couleurs_generiques", [])
                 associations = result.get("associations_gagnantes", [])
                 print(f"   ✅ Succès (parsing robuste)")
-                print(f"      • Palette: {len(palette)} couleurs")
+                print(f"      • Palette personnalisée: {len(palette)} couleurs")
+                print(f"      • Couleurs génériques: {len(generiques)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
             else:
                 print(f"   ⚠️  Parsing échoué ou structure invalide → FALLBACK")
                 result = FALLBACK_PART2_DATA.copy()
                 print(f"      • Palette fallback: {len(result.get('palette_personnalisee', []))} couleurs")
+                print(f"      • Génériques fallback: {len(result.get('couleurs_generiques', []))} couleurs")
                 print(f"      • Associations fallback: {len(result.get('associations_gagnantes', []))} occasions")
             
             print("\n" + "="*80 + "\n")
@@ -348,7 +408,7 @@ class ColorimetryService:
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
         """PART 3 - Logging cloisonné"""
         print("\n" + "="*80)
-        print("📋 APPEL 3/3: COLORIMETRY PART 3 - MAQUILLAGE + VERNIS")
+        print("📋 APPEL 3/3: COLORIMETRY PART 3 - MAQUILLAGE + VERNIS + COULEURS REFUSÉES")
         print("="*80)
         
         try:
@@ -400,6 +460,7 @@ class ColorimetryService:
                 print(f"   ✅ Succès")
                 print(f"      • Vernis ongles: {len(result.get('nailColors', []))} couleurs")
                 print(f"      • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs")
+                print(f"      • Couleurs refusées: {len(result.get('unwanted_colors', []))} couleurs")
             else:
                 print(f"   ⚠️  Erreur parsing - résultat vide")
                 result = {}

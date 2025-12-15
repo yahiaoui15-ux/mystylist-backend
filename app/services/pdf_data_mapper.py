@@ -307,6 +307,18 @@ class PDFDataMapper:
         unwanted_colors = PDFDataMapper._safe_list(colorimetry_raw.get("unwanted_colors", []))
         unwanted_colors = PDFDataMapper.enrich_with_display_names(unwanted_colors)
         
+        # ✅ PAGE 4: Couleurs génériques (7-10/10)
+        couleurs_generiques = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_generiques", []))
+        couleurs_generiques = PDFDataMapper.enrich_with_display_names(couleurs_generiques)
+        
+        # ✅ PAGE 5: Couleurs prudence (4-6/10)
+        couleurs_prudence = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_prudence", []))
+        couleurs_prudence = PDFDataMapper.enrich_with_display_names(couleurs_prudence)
+        
+        # ✅ PAGE 5: Couleurs à éviter (<4/10)
+        couleurs_eviter = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
+        couleurs_eviter = PDFDataMapper.enrich_with_display_names(couleurs_eviter)
+        
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees", {}))
         
         # ════════════════════════════════════════════════════════════
@@ -399,6 +411,9 @@ class PDFDataMapper:
                 
                 # ✅ snake_case pour template
                 "palette_personnalisee": palette,
+                "couleurs_generiques": couleurs_generiques,
+                "couleurs_prudence": couleurs_prudence,
+                "couleurs_eviter": couleurs_eviter,
                 "notes_compatibilite": notes_compatibilite,
                 "allColorsWithNotes": all_colors_with_notes,  # Celui-ci est camelCase dans le template
                 "unwanted_colors": unwanted_colors,
