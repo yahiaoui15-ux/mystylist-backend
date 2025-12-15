@@ -1,11 +1,9 @@
 """
-Colorimetry Service v9.2 - CORRIGÉ avec _build_makeup_structure
+Colorimetry Service v9.2 - CORRIGÉ avec FIX PLACEHOLDER
+✅ Placeholders en MAJUSCULES: {FACE_PHOTO}, {EYE_COLOR}, {HAIR_COLOR}, {AGE}
 ✅ Chaque appel OpenAI = bloc isolé avec Before/During/After clair
 ✅ allColorsWithNotes: construit depuis palette + alternatives
 ✅ makeup structure: inclut teint, yeux, lèvres, ongles pour PDFMonkey
-✅ _build_makeup_structure() IMPLÉMENTÉE correctement
-✅ Aucun mélange de réponses brutes entre les sections
-✅ FIX: Gère snake_case ET camelCase pour photos
 """
 
 import json
@@ -89,7 +87,7 @@ class ColorimetryService:
                 result_part3 = {}
             
             # ═══════════════════════════════════════════════════════════
-            # ✅ FIX: Construire allColorsWithNotes complète (palette + alternatives + refusées)
+            # ✅ FIX: Construire allColorsWithNotes complète
             # ═══════════════════════════════════════════════════════════
             all_colors_with_notes = self._build_all_colors_with_notes(
                 palette,
@@ -103,12 +101,12 @@ class ColorimetryService:
             makeup_structure = self._build_makeup_structure(result_part3)
             
             # ═══════════════════════════════════════════════════════════
-            # ✅ FIX: Extraire couleurs à manier avec prudence (Page 5 - prudence)
+            # ✅ FIX: Extraire couleurs à manier avec prudence (Page 5)
             # ═══════════════════════════════════════════════════════════
             couleurs_prudence = self._extract_colors_by_note_range(all_colors_with_notes, 4, 6)
             
             # ═══════════════════════════════════════════════════════════
-            # ✅ FIX: Extraire couleurs à éviter (Page 5 - éviter)
+            # ✅ FIX: Extraire couleurs à éviter (Page 5)
             # ═══════════════════════════════════════════════════════════
             couleurs_eviter = self._extract_colors_by_note_range(all_colors_with_notes, 0, 3)
             
@@ -181,15 +179,7 @@ class ColorimetryService:
             raise
     
     def _build_all_colors_with_notes(self, palette: list, all_colors_raw: list, unwanted: list) -> list:
-        """
-        ✅ Construit allColorsWithNotes depuis:
-        - palette_personnalisee (10 couleurs prioritaires)
-        - allColorsWithNotes brutes (couleurs alternatives)
-        - unwanted_colors (couleurs refusées avec notes basses)
-        
-        Retourne liste unique sans doublons, triée par note décroissante
-        """
-        # Dictionnaire pour dédupliquer par displayName
+        """✅ Construit allColorsWithNotes depuis palette + alternatives + refusées"""
         colors_dict = {}
         
         # Ajouter palette (priorité haute)
@@ -204,7 +194,7 @@ class ColorimetryService:
             if display_name and display_name not in colors_dict:
                 colors_dict[display_name] = color
         
-        # Ajouter couleurs refusées (priorité basse, si pas déjà présentes)
+        # Ajouter couleurs refusées (priorité basse)
         for color in unwanted:
             display_name = color.get("displayName", color.get("name", ""))
             if display_name and display_name not in colors_dict:
@@ -212,19 +202,13 @@ class ColorimetryService:
         
         # Convertir en liste et trier par note décroissante
         all_colors = list(colors_dict.values())
-        all_colors.sort(
-            key=lambda x: x.get("note", 5),
-            reverse=True
-        )
+        all_colors.sort(key=lambda x: x.get("note", 5), reverse=True)
         
         print(f"\n   ✅ allColorsWithNotes construite: {len(all_colors)} couleurs uniques")
         return all_colors
     
     def _extract_colors_by_note_range(self, all_colors: list, min_note: int, max_note: int) -> list:
-        """
-        ✅ Extrait les couleurs dans une plage de notes donnée
-        Utilisé pour Page 5 (prudence: 4-6/10 et éviter: <4/10)
-        """
+        """✅ Extrait les couleurs dans une plage de notes donnée"""
         filtered = [
             color for color in all_colors
             if min_note <= color.get("note", 5) <= max_note
@@ -233,23 +217,9 @@ class ColorimetryService:
         return filtered
     
     def _build_makeup_structure(self, result_part3: dict) -> dict:
-        """
-        ✅ CORRIGÉ v2: Construit structure makeup pour PDFMonkey (Page 7)
-        Depuis les données Part 3 générées par OpenAI
-        
-        Structure attendue depuis Part 3:
-        {
-            "guide_maquillage": {
-                "teint": {...},
-                "yeux": {...},
-                "levres": {...},
-                "ongles": {...}
-            }
-        }
-        """
+        """✅ Construit structure makeup pour PDFMonkey (Page 7)"""
         guide = result_part3.get("guide_maquillage", {})
         
-        # ✅ Extraire et structurer chaque section
         makeup = {
             "foundation": guide.get("teint", {}),
             "eyes": guide.get("yeux", {}),
@@ -280,10 +250,12 @@ class ColorimetryService:
             self.openai.set_context("Colorimetry", "Part 1")
             self.openai.set_system_prompt(COLORIMETRY_PART1_SYSTEM_PROMPT)
             
+            # ✅ FIX: Placeholders en MAJUSCULES + AGE ajouté
             user_prompt = COLORIMETRY_PART1_USER_PROMPT.format(
                 FACE_PHOTO=face_photo_url,
                 EYE_COLOR=eye_color or user_data.get("eye_color", "indéterminé"),
-                HAIR_COLOR=hair_color or user_data.get("hair_color", "indéterminé")
+                HAIR_COLOR=hair_color or user_data.get("hair_color", "indéterminé"),
+                AGE=user_data.get("age", "indéterminé")
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
@@ -328,20 +300,21 @@ class ColorimetryService:
             
         except Exception as e:
             print(f"\n❌ ERREUR PART 1: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
-        """PART 2 - Logging cloisonné avec parsing robuste (v10.0 OPTIMISÉ)"""
+        """PART 2 - Logging cloisonné avec parsing robuste"""
         print("\n" + "="*80)
-        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS (OPTIMISÉ)")
+        print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS")
         print("="*80)
         
         try:
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
-            print(f"   • Max tokens: 1200 (réduit de 40% pour moins d'erreurs)")
+            print(f"   • Max tokens: 1200")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
-            print(f"   • Stratégie: FRANÇAIS UNIQUEMENT + palette + couleurs génériques")
             
             self.openai.set_context("Colorimetry", "Part 2")
             self.openai.set_system_prompt(COLORIMETRY_PART2_SYSTEM_PROMPT)
@@ -371,7 +344,6 @@ class ColorimetryService:
             print(f"   • Completion: {completion_tokens}")
             print(f"   • Total: {total_tokens}")
             print(f"   • Budget: {budget_percent:.1f}% (vs 4000 max)")
-            print(f"   • Status: {'⚠️ DÉPASSEMENT!' if budget_percent > 100 else '⚠️ Approche limite' if budget_percent > 90 else '✅ OK'}")
             
             content = response.get("content", "")
             print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
@@ -379,16 +351,10 @@ class ColorimetryService:
             
             print(f"\n🔍 PARSING JSON (avec retry + fallback robuste):")
             
-            # Utiliser le parser robuste amélioré
             parser = ColorimetryJSONParser()
-            
-            # 1. Nettoyer la réponse
             content_cleaned = parser.clean_gpt_response(content)
-            
-            # 2. Parser avec retry
             result = parser.parse_json_safely(content_cleaned, max_retries=3)
             
-            # 3. Valider structure
             if result and parser.validate_part2_structure(result):
                 palette = result.get("palette_personnalisee", [])
                 generiques = result.get("couleurs_generiques", [])
@@ -398,18 +364,14 @@ class ColorimetryService:
                 print(f"      • Couleurs génériques: {len(generiques)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
             else:
-                print(f"   ⚠️  Parsing échoué ou structure invalide → FALLBACK")
+                print(f"   ⚠️  Parsing échoué → FALLBACK")
                 result = FALLBACK_PART2_DATA.copy()
-                print(f"      • Palette fallback: {len(result.get('palette_personnalisee', []))} couleurs")
-                print(f"      • Génériques fallback: {len(result.get('couleurs_generiques', []))} couleurs")
-                print(f"      • Associations fallback: {len(result.get('associations_gagnantes', []))} occasions")
             
             print("\n" + "="*80 + "\n")
             return result
             
         except Exception as e:
             print(f"\n❌ ERREUR PART 2: {e}")
-            print(f"   ⚠️  FALLBACK utilisé")
             import traceback
             traceback.print_exc()
             return FALLBACK_PART2_DATA.copy()
@@ -455,7 +417,6 @@ class ColorimetryService:
             print(f"   • Completion: {completion_tokens}")
             print(f"   • Total: {total_tokens}")
             print(f"   • Budget: {budget_percent:.1f}% (vs 4000 max)")
-            print(f"   • Status: {'⚠️ DÉPASSEMENT!' if budget_percent > 100 else '⚠️ Approche limite' if budget_percent > 90 else '✅ OK'}")
             
             content = response.get("content", "")
             print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
@@ -471,7 +432,7 @@ class ColorimetryService:
                 print(f"      • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs")
                 print(f"      • Couleurs refusées: {len(result.get('unwanted_colors', []))} couleurs")
             else:
-                print(f"   ⚠️  Erreur parsing - résultat vide")
+                print(f"   ⚠️  Erreur parsing")
                 result = {}
             
             print("\n" + "="*80 + "\n")
@@ -479,6 +440,8 @@ class ColorimetryService:
             
         except Exception as e:
             print(f"\n❌ ERREUR PART 3: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
     def _fix_json_for_parsing(self, text: str) -> str:
