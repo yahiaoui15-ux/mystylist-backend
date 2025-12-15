@@ -1,9 +1,10 @@
 """
-Colorimetry Service v9.2 - CORRIGÉ avec FIX PLACEHOLDER
+Colorimetry Service v9.2 - FIXE avec analyze_image()
+✅ Utilise analyze_image() pour les appels Vision avec images
 ✅ Placeholders en MAJUSCULES: {FACE_PHOTO}, {EYE_COLOR}, {HAIR_COLOR}, {AGE}
 ✅ Chaque appel OpenAI = bloc isolé avec Before/During/After clair
-✅ allColorsWithNotes: construit depuis palette + alternatives
-✅ makeup structure: inclut teint, yeux, lèvres, ongles pour PDFMonkey
+✅ Part 1: Vision avec image
+✅ Part 2 & 3: Chat texte pur
 """
 
 import json
@@ -29,9 +30,9 @@ class ColorimetryService:
     async def analyze(self, user_data: dict) -> dict:
         """
         Analyse colorimétrie en 3 appels OpenAI - LOGS STRUCTURÉS
-        Part 1: Saison + Analyses détaillées
-        Part 2: Palette + Couleurs génériques + Associations
-        Part 3: Notes compatibilité + Maquillage + Couleurs refusées
+        Part 1: Saison + Analyses détaillées (avec image)
+        Part 2: Palette + Couleurs génériques + Associations (texte)
+        Part 3: Notes compatibilité + Maquillage + Couleurs refusées (texte)
         """
         try:
             print("\n" + "="*80)
@@ -236,7 +237,7 @@ class ColorimetryService:
         return makeup
     
     async def _call_part1(self, user_data: dict, face_photo_url: str, eye_color: str = None, hair_color: str = None) -> dict:
-        """PART 1 - Logging cloisonné"""
+        """PART 1 - Vision avec image"""
         print("\n" + "="*80)
         print("📋 APPEL 1/3: COLORIMETRY PART 1 - SAISON + ANALYSES")
         print("="*80)
@@ -259,11 +260,12 @@ class ColorimetryService:
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
-            response = await self.openai.call_chat(
+            # ✅ FIX: Utiliser analyze_image() au lieu de call_chat() avec has_image
+            response = await self.openai.analyze_image(
+                image_urls=[face_photo_url],
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1000,
-                has_image=True
+                max_tokens=1000
             )
             print(f"✅ RÉPONSE REÇUE")
             
@@ -305,7 +307,7 @@ class ColorimetryService:
             return {}
     
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
-        """PART 2 - Logging cloisonné avec parsing robuste"""
+        """PART 2 - Texte pur"""
         print("\n" + "="*80)
         print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS")
         print("="*80)
@@ -377,7 +379,7 @@ class ColorimetryService:
             return FALLBACK_PART2_DATA.copy()
     
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
-        """PART 3 - Logging cloisonné"""
+        """PART 3 - Texte pur"""
         print("\n" + "="*80)
         print("📋 APPEL 3/3: COLORIMETRY PART 3 - MAQUILLAGE + VERNIS + COULEURS REFUSÉES")
         print("="*80)
