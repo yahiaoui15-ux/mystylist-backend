@@ -5,6 +5,7 @@ Colorimetry Service v9.2 - CORRIGÉ avec _build_makeup_structure
 ✅ makeup structure: inclut teint, yeux, lèvres, ongles pour PDFMonkey
 ✅ _build_makeup_structure() IMPLÉMENTÉE correctement
 ✅ Aucun mélange de réponses brutes entre les sections
+✅ FIX: Gère snake_case ET camelCase pour photos
 """
 
 import json
@@ -39,15 +40,23 @@ class ColorimetryService:
             print("🎨 ANALYSE COLORIMETRIE - 3 APPELS SEQUENTIELS")
             print("="*80)
             
+            # ✅ FIX: Chercher photo en snake_case OU camelCase
             face_photo_url = user_data.get("face_photo_url")
+            if not face_photo_url:
+                face_photo_url = user_data.get("facePhotoUrl")  # camelCase fallback
+            
             if not face_photo_url:
                 print("❌ Pas de photo de visage fournie")
                 return {}
             
+            # ✅ FIX: Chercher eye_color et hair_color aussi en camelCase
+            eye_color = user_data.get("eye_color") or user_data.get("eyeColor")
+            hair_color = user_data.get("hair_color") or user_data.get("hairColor")
+            
             # ═══════════════════════════════════════════════════════════
             # PART 1: SAISON + ANALYSES
             # ═══════════════════════════════════════════════════════════
-            result_part1 = await self._call_part1(user_data, face_photo_url)
+            result_part1 = await self._call_part1(user_data, face_photo_url, eye_color, hair_color)
             if not result_part1:
                 return {}
             
@@ -60,8 +69,8 @@ class ColorimetryService:
             result_part2 = await self._call_part2(
                 saison, 
                 sous_ton,
-                result_part1.get("eye_color", user_data.get("eye_color")),
-                result_part1.get("hair_color", user_data.get("hair_color"))
+                result_part1.get("eye_color", eye_color),
+                result_part1.get("hair_color", hair_color)
             )
             if not result_part2:
                 result_part2 = FALLBACK_PART2_DATA.copy()
@@ -114,8 +123,8 @@ class ColorimetryService:
                 "saison_confirmee": result_part1.get("saison_confirmee", "Indéterminée"),
                 "sous_ton_detecte": result_part1.get("sous_ton_detecte", "neutre"),
                 "justification_saison": result_part1.get("justification_saison", ""),
-                "eye_color": result_part1.get("eye_color", user_data.get("eye_color")),
-                "hair_color": result_part1.get("hair_color", user_data.get("hair_color")),
+                "eye_color": result_part1.get("eye_color", eye_color),
+                "hair_color": result_part1.get("hair_color", hair_color),
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
                 
                 # ✅ PAGE 3: Palette personnalisée (10 couleurs, 8-10/10)
@@ -256,7 +265,7 @@ class ColorimetryService:
         
         return makeup
     
-    async def _call_part1(self, user_data: dict, face_photo_url: str) -> dict:
+    async def _call_part1(self, user_data: dict, face_photo_url: str, eye_color: str = None, hair_color: str = None) -> dict:
         """PART 1 - Logging cloisonné"""
         print("\n" + "="*80)
         print("📋 APPEL 1/3: COLORIMETRY PART 1 - SAISON + ANALYSES")
@@ -273,8 +282,8 @@ class ColorimetryService:
             
             user_prompt = COLORIMETRY_PART1_USER_PROMPT.format(
                 FACE_PHOTO=face_photo_url,
-                EYE_COLOR=user_data.get("eye_color", "indéterminé"),
-                HAIR_COLOR=user_data.get("hair_color", "indéterminé")
+                EYE_COLOR=eye_color or user_data.get("eye_color", "indéterminé"),
+                HAIR_COLOR=hair_color or user_data.get("hair_color", "indéterminé")
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
@@ -340,8 +349,8 @@ class ColorimetryService:
             user_prompt = COLORIMETRY_PART2_USER_PROMPT_TEMPLATE.format(
                 SAISON=saison,
                 SOUS_TON=sous_ton,
-                EYE_COLOR=eye_color,
-                HAIR_COLOR=hair_color
+                EYE_COLOR=eye_color or "indéterminé",
+                HAIR_COLOR=hair_color or "indéterminé"
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
