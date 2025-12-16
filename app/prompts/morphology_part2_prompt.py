@@ -1,9 +1,9 @@
 """
-MORPHOLOGY PART 2 - Recommandations Vêtements (Text) - v4 ULTRA-SIMPLIFIE
+MORPHOLOGY PART 2 - Recommandations Vêtements (Text) - v4 FIXED
+✅ JSON escaping correct (apostrophes échappées)
 ✅ 7 catégories: hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires
 ✅ Chaque catégorie: introduction COURTE + recommandes (6) + a_eviter (5)
-✅ PAS de matieres, motifs, pieges (Part 3)
-✅ Tout en FRANÇAIS
+✅ Tout en FRANÇAIS sans caractères mal échappés
 ✅ ~2000 tokens
 """
 
@@ -22,9 +22,9 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES):
 {{
   "recommendations": {{
     "hauts": {{
-      "introduction": "Pour votre silhouette {silhouette_type}, privilégiez [conseil principal].",
+      "introduction": "Pour votre silhouette {silhouette_type}, privilegiez [conseil principal].",
       "recommandes": [
-        {{"cut_display": "Nom du vêtement", "why": "Pourquoi (10-15 mots MAX)"}},
+        {{"cut_display": "Nom du vetement", "why": "Pourquoi (10-15 mots MAX)"}},
         {{"cut_display": "...", "why": "..."}},
         {{"cut_display": "...", "why": "..."}},
         {{"cut_display": "...", "why": "..."}},
@@ -32,7 +32,7 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES):
         {{"cut_display": "...", "why": "..."}}
       ],
       "a_eviter": [
-        {{"cut_display": "Nom du vêtement", "why": "Pourquoi l'éviter (10-15 mots MAX)"}},
+        {{"cut_display": "Nom du vetement", "why": "Pourquoi l eviter (10-15 mots MAX)"}},
         {{"cut_display": "...", "why": "..."}},
         {{"cut_display": "...", "why": "..."}},
         {{"cut_display": "...", "why": "..."}},
@@ -41,7 +41,7 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES):
     }},
 
     "bas": {{
-      "introduction": "Pour votre silhouette {silhouette_type}, privilégiez [conseil principal].",
+      "introduction": "Pour votre silhouette {silhouette_type}, privilegiez [conseil principal].",
       "recommandes": [6 items],
       "a_eviter": [5 items]
     }},
@@ -84,11 +84,11 @@ RÈGLES STRICTES (OBLIGATOIRES):
 ✅ 7 categories EXACTEMENT: hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires
 ✅ introduction = 1 PHRASE COURTE SEULEMENT (15-20 mots MAX)
 ✅ Chaque item = {{"cut_display": "...", "why": "..."}}
-✅ "why" = MAX 15 mots (court et spécifique!)
-✅ TOUT EN FRANÇAIS (pas d'anglais!)
-✅ JSON VALIDE uniquement - PAS de caractères spéciaux mal échappés
+✅ "why" = MAX 15 mots (court et specifique!)
+✅ TOUT EN FRANÇAIS (utiliser caracteresaccentus DIRECTEMENT, pas d echappement JSON)
+✅ JSON VALIDE uniquement
 ✅ Zéro texte avant/après JSON
-✅ Pas d'apostrophes non échappées dans les strings
+✅ IMPORTANT: Pas d apostrophes dans les strings! Utiliser des espaces ou tirets si besoin
 
 PERSONNALISATION REQUISE:
 - Silhouette: {silhouette_type}
@@ -97,10 +97,12 @@ PERSONNALISATION REQUISE:
 - À minimiser: {body_parts_to_minimize}
 
 EXEMPLES DE FORMAT CORRECT:
-✅ introduction: "Pour votre silhouette A, accentuez vos épaules avec des coupes structurées."
-✅ "why": "Allonge les jambes et crée une verticalité"
+✅ introduction: "Pour votre silhouette A, accentuez vos epaules avec des coupes structurees."
+✅ "why": "Allonge les jambes et cree une verticalite"
 ✅ "why": "Valorise le buste sans ajouter de volume"
-❌ "Votre silhouette A nécessite des vêtements qui..." (trop long!)
+❌ "Votre silhouette A necessite des vetements qui..." (trop long!)
+❌ "L'apostrophe dans inopportunement" (apostrophe = BAD!)
+✅ "Peut couper la silhouette de maniere inopportune" (pas d apostrophe = GOOD!)
 
 Répondez UNIQUEMENT le JSON, pas une seule lettre avant/après.
 """
