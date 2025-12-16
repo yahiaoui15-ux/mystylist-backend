@@ -1,7 +1,8 @@
 """
-Morphology Service v4.2 - LOGS DÉTAILLÉS + call_chat() FIX
+Morphology Service v5.0 - COMPLET AVEC DEMANDES CLIENT
 ✅ Part 1 (Vision): 800 tokens max
-✅ Part 2 (Text): 3000 tokens max - ✅ AUGMENTÉ pour JSON complet
+✅ Part 2 (Text): 3000 tokens max - AUGMENTÉ pour JSON complet
+✅ NOUVEAU: Intègre body_parts_to_highlight et body_parts_to_minimize du client
 ✅ Logs complets par appel (like colorimetry)
 """
 
@@ -140,18 +141,32 @@ class MorphologyService:
             styling_objectives = part1_result.get("styling_objectives", [])
             objectives_str = ", ".join(styling_objectives)
             
+            # ✅ NOUVEAU: Récupérer les demandes spécifiques du client
+            morphology_goals = user_data.get("morphology_goals", {})
+            body_parts_to_highlight = morphology_goals.get("body_parts_to_highlight", [])
+            body_parts_to_minimize = morphology_goals.get("body_parts_to_minimize", [])
+            
+            # Convertir en strings
+            highlight_str = ", ".join(body_parts_to_highlight) if body_parts_to_highlight else "aucune spécifiée"
+            minimize_str = ", ".join(body_parts_to_minimize) if body_parts_to_minimize else "aucune spécifiée"
+            
             print("\n📍 AVANT APPEL:")
             print("   • Type: OpenAI Text API (gpt-4-turbo)")
             print("   • Max tokens: 3000 (✅ AUGMENTÉ pour JSON complet)")
             print("   • Silhouette reçue: {}".format(silhouette))
             print("   • Objectifs reçus: {}".format(objectives_str))
+            print("   • À valoriser (cliente): {}".format(highlight_str))
+            print("   • À minimiser (cliente): {}".format(minimize_str))
             
             self.openai.set_context("Morphology Part 2", "PART 2: Recommandations")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
             
+            # ✅ NOUVEAU: Passer les demandes du client au prompt
             user_prompt_part2 = MORPHOLOGY_PART2_USER_PROMPT.format(
                 silhouette_type=silhouette,
-                styling_objectives=objectives_str
+                styling_objectives=objectives_str,
+                body_parts_to_highlight=highlight_str,
+                body_parts_to_minimize=minimize_str
             )
             
             print("\n🤖 APPEL OPENAI EN COURS...")
@@ -250,12 +265,17 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives"),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": part2_result.get("recommendations", {})
+                "recommendations": part2_result.get("recommendations", {}),
+                # ✅ NOUVEAU: Inclure les demandes du client pour traçabilité
+                "client_requested_highlights": highlight_str,
+                "client_requested_minimizes": minimize_str,
             }
             
             print("✅ Morphologie complète générée")
             print("   • Silhouette: {}".format(final_result['silhouette_type']))
             print("   • Catégories recommandations: {}".format(len(final_result['recommendations'])))
+            print("   • Demandes client (valoriser): {}".format(highlight_str))
+            print("   • Demandes client (minimiser): {}".format(minimize_str))
             print("   • Champs total: {}".format(len(final_result)))
             
             print("\n" + "="*80 + "\n")
