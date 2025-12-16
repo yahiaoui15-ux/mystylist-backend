@@ -1,14 +1,14 @@
 """
-Morphology Service v8.0 - 3 APPELS ÉQUILIBRÉS
-✅ Part 1 (Vision): Silhouette + body_parts enrichis = ~2800 tokens
-✅ Part 2 (Text): Recommendations (recommandes + a_eviter) = ~2000 tokens
-✅ Part 3 (Text): Details (matieres + motifs + pieges) = ~2000 tokens
-✅ TOTAL: ~6800 tokens (vs 7336 avec overflow)
+Morphology Service v9.0 - FINAL FIXED
+✅ Logs restructurés et clairement séparés (Part 1, Part 2, Part 3)
+✅ Part 3 correctement importé et intégré
+✅ JSON escaping amélioré pour éviter les erreurs
+✅ Meilleur contrôle d'erreur et fallbacks
 ✅ ZÉRO token overflow!
-✅ Pages 8-15: Complètes et parfaites!
 """
 
 import json
+import re
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
@@ -20,10 +20,43 @@ class MorphologyService:
     def __init__(self):
         self.openai = openai_client
     
+    def _clean_json_string(self, text):
+        """Nettoie les strings JSON pour éviter les caractères mal échappés"""
+        # Remplacer les apostrophes courbes par des apostrophes simples
+        text = text.replace(''', "'").replace(''', "'")
+        # Remplacer les guillemets courbes
+        text = text.replace('"', '"').replace('"', '"')
+        # Supprimer les retours à la ligne dans les strings JSON
+        text = re.sub(r':\s*"[^"]*\n[^"]*"', lambda m: m.group(0).replace('\n', ' '), text)
+        return text
+    
+    def _parse_json_safe(self, text):
+        """Parse JSON avec nettoyage préalable"""
+        # Extraire le JSON
+        json_start = text.find('{')
+        if json_start == -1:
+            return None
+        
+        json_end = text.rfind('}')
+        if json_end == -1:
+            return None
+        
+        json_text = text[json_start:json_end+1]
+        
+        # Nettoyer
+        json_text = self._clean_json_string(json_text)
+        
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            print("   ❌ JSON Error: {}".format(str(e)))
+            print("   JSON excerpt: {}".format(json_text[max(0, e.pos-50):min(len(json_text), e.pos+50)]))
+            return None
+    
     async def analyze(self, user_data: dict) -> dict:
-        """Analyse morphologie EN 3 APPELS ÉQUILIBRÉS"""
+        """Analyse morphologie EN 3 APPELS SÉQUENTIELS"""
         print("\n" + "="*80)
-        print("💪 PHASE MORPHOLOGIE (3 appels équilibrés)")
+        print("💪 PHASE MORPHOLOGIE - 3 APPELS ÉQUILIBRÉS")
         print("="*80)
         
         try:
@@ -33,23 +66,23 @@ class MorphologyService:
                 return {}
             
             # ========================================================================
-            # APPEL 1/3: MORPHOLOGY PART 1 - SILHOUETTE ENRICHIE (VISION)
+            # APPEL 1/3: PART 1 - SILHOUETTE (VISION)
             # ========================================================================
             print("\n" + "█"*80)
-            print("█ APPEL 1/3: MORPHOLOGY PART 1 - SILHOUETTE + BODY PARTS ENRICHIS (VISION)")
+            print("█ APPEL 1/3 - PART 1: SILHOUETTE + BODY PARTS ENRICHIS (VISION)")
             print("█"*80)
             
-            print("\n📍 AVANT APPEL:")
-            print("   • Type: OpenAI Vision API (gpt-4-turbo)")
+            print("\n📍 Configuration:")
+            print("   • Model: gpt-4-turbo (Vision API)")
             print("   • Max tokens: 1000")
-            print("   • Image: " + body_photo_url[:60] + "...")
-            print("   • Mensurations:")
-            print("      - Épaules: {} cm".format(user_data.get('shoulder_circumference')))
-            print("      - Taille: {} cm".format(user_data.get('waist_circumference')))
-            print("      - Hanches: {} cm".format(user_data.get('hip_circumference')))
-            print("      - Buste: {} cm".format(user_data.get('bust_circumference')))
+            print("   • Mensurations reçues: E{}cm T{}cm H{}cm B{}cm".format(
+                user_data.get('shoulder_circumference'),
+                user_data.get('waist_circumference'),
+                user_data.get('hip_circumference'),
+                user_data.get('bust_circumference')
+            ))
             
-            self.openai.set_context("Morphology Part 1", "PART 1: Silhouette Enrichie")
+            self.openai.set_context("Morphology", "Part 1: Vision")
             self.openai.set_system_prompt(MORPHOLOGY_PART1_SYSTEM_PROMPT)
             
             user_prompt_part1 = MORPHOLOGY_PART1_USER_PROMPT.format(
@@ -60,61 +93,42 @@ class MorphologyService:
                 bust_circumference=user_data.get("bust_circumference", 0)
             )
             
-            print("\n🤖 APPEL OPENAI EN COURS...")
+            print("\n🤖 Appel OpenAI en cours...")
             response_part1 = await self.openai.analyze_image(
                 image_urls=[body_photo_url],
                 prompt=user_prompt_part1,
                 model="gpt-4-turbo",
                 max_tokens=1000
             )
-            print("✅ RÉPONSE REÇUE")
             
-            content_part1 = response_part1.get("content", "")
             total_tokens_p1 = response_part1.get("total_tokens", 0)
+            print("✅ Réponse reçue")
             
-            print("\n📊 TOKENS CONSOMMÉS PART 1:")
+            print("\n📊 TOKENS PART 1:")
+            print("   • Prompt: {}".format(response_part1.get("prompt_tokens", 0)))
+            print("   • Completion: {}".format(response_part1.get("completion_tokens", 0)))
             print("   • Total: {} tokens".format(total_tokens_p1))
-            print("   • Budget: {:.1f}%".format((total_tokens_p1 / 4000) * 100))
+            print("   • Budget: {:.1f}% (vs 4000 max)".format((total_tokens_p1 / 4000) * 100))
             print("   • Status: ✅ OK")
             
-            # PARSING PART 1
-            print("\n📋 PARSING JSON PART 1:")
-            response_text = content_part1.strip() if content_part1 else ""
-            response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
-            
-            if not response_text:
-                print("   ❌ Réponse vide")
+            # Parse Part 1
+            print("\n📋 Parsing JSON Part 1...")
+            part1_result = self._parse_json_safe(response_part1.get("content", ""))
+            if not part1_result:
+                print("❌ Parsing échoué - retour vide")
                 return {}
             
-            json_start = response_text.find('{')
-            if json_start == -1:
-                print("   ❌ Pas de JSON trouvé")
-                return {}
-            
-            response_text = response_text[json_start:]
-            json_end = response_text.rfind('}')
-            if json_end == -1:
-                print("   ❌ JSON incomplet")
-                return {}
-            
-            response_text = response_text[:json_end+1]
-            
-            try:
-                part1_result = json.loads(response_text)
-                print("   ✅ Succès")
-                
-                silhouette = part1_result.get('silhouette_type', 'Unknown')
-                print("      • Silhouette: {}".format(silhouette))
-                
-            except json.JSONDecodeError as e:
-                print("   ❌ Erreur parsing JSON: {}".format(str(e)))
-                return {}
+            print("✅ Succès")
+            silhouette = part1_result.get('silhouette_type', 'Unknown')
+            print("   • Silhouette: {}".format(silhouette))
+            print("   • Body parts highlights présents: {}".format("Oui" if "body_parts_highlights" in part1_result else "Non"))
+            print("   • Body parts minimizes présents: {}".format("Oui" if "body_parts_minimizes" in part1_result else "Non"))
             
             # ========================================================================
-            # APPEL 2/3: MORPHOLOGY PART 2 - RECOMMANDATIONS (TEXT)
+            # APPEL 2/3: PART 2 - RECOMMANDATIONS (TEXT)
             # ========================================================================
             print("\n" + "█"*80)
-            print("█ APPEL 2/3: MORPHOLOGY PART 2 - RECOMMANDATIONS (INTRO + RECOMMANDES + A_EVITER)")
+            print("█ APPEL 2/3 - PART 2: RECOMMANDATIONS (INTRO + RECOMMANDES + A_EVITER)")
             print("█"*80)
             
             styling_objectives = part1_result.get("styling_objectives", [])
@@ -124,15 +138,17 @@ class MorphologyService:
             body_parts_to_highlight = morphology_goals.get("body_parts_to_highlight", [])
             body_parts_to_minimize = morphology_goals.get("body_parts_to_minimize", [])
             
-            highlight_str = ", ".join(body_parts_to_highlight) if body_parts_to_highlight else "aucune spécifiée"
-            minimize_str = ", ".join(body_parts_to_minimize) if body_parts_to_minimize else "aucune spécifiée"
+            highlight_str = ", ".join(body_parts_to_highlight) if body_parts_to_highlight else "aucune"
+            minimize_str = ", ".join(body_parts_to_minimize) if body_parts_to_minimize else "aucune"
             
-            print("\n📍 AVANT APPEL:")
-            print("   • Type: OpenAI Text API (gpt-4-turbo)")
-            print("   • Max tokens: 2000 (recommandes + a_eviter seulement)")
+            print("\n📍 Configuration:")
+            print("   • Model: gpt-4-turbo (Text API)")
+            print("   • Max tokens: 2000")
             print("   • Silhouette: {}".format(silhouette))
+            print("   • À valoriser: {}".format(highlight_str))
+            print("   • À minimiser: {}".format(minimize_str))
             
-            self.openai.set_context("Morphology Part 2", "PART 2: Recommandations")
+            self.openai.set_context("Morphology", "Part 2: Recommendations")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
             
             user_prompt_part2 = MORPHOLOGY_PART2_USER_PROMPT.format(
@@ -142,68 +158,47 @@ class MorphologyService:
                 body_parts_to_minimize=minimize_str
             )
             
-            print("\n🤖 APPEL OPENAI EN COURS...")
+            print("\n🤖 Appel OpenAI en cours...")
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
                 max_tokens=2000
             )
-            print("✅ RÉPONSE REÇUE")
             
-            content_part2 = response_part2.get("content", "")
             total_tokens_p2 = response_part2.get("total_tokens", 0)
+            print("✅ Réponse reçue")
             
-            print("\n📊 TOKENS CONSOMMÉS PART 2:")
+            print("\n📊 TOKENS PART 2:")
+            print("   • Prompt: {}".format(response_part2.get("prompt_tokens", 0)))
+            print("   • Completion: {}".format(response_part2.get("completion_tokens", 0)))
             print("   • Total: {} tokens".format(total_tokens_p2))
-            print("   • Budget: {:.1f}%".format((total_tokens_p2 / 4000) * 100))
+            print("   • Budget: {:.1f}% (vs 4000 max)".format((total_tokens_p2 / 4000) * 100))
             print("   • Status: {}".format("✅ OK" if total_tokens_p2 < 2000 else "⚠️ Proche limite"))
             
-            # PARSING PART 2
-            print("\n📋 PARSING JSON PART 2:")
-            response_text = content_part2.strip() if content_part2 else ""
-            response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
-            
-            if not response_text:
-                print("   ❌ Réponse vide")
+            # Parse Part 2
+            print("\n📋 Parsing JSON Part 2...")
+            part2_result = self._parse_json_safe(response_part2.get("content", ""))
+            if not part2_result:
+                print("❌ Parsing échoué - retour vide")
                 return {}
             
-            json_start = response_text.find('{')
-            if json_start == -1:
-                print("   ❌ Pas de JSON trouvé")
-                return {}
-            
-            response_text = response_text[json_start:]
-            json_end = response_text.rfind('}')
-            if json_end == -1:
-                print("   ❌ JSON incomplet")
-                return {}
-            
-            response_text = response_text[:json_end+1]
-            
-            try:
-                part2_result = json.loads(response_text)
-                print("   ✅ Succès")
-                
-                recommendations = part2_result.get('recommendations', {})
-                print("      • Catégories: {}".format(len(recommendations)))
-                
-            except json.JSONDecodeError as e:
-                print("   ❌ Erreur parsing JSON: {}".format(str(e)))
-                return {}
+            print("✅ Succès")
+            recommendations = part2_result.get('recommendations', {})
+            print("   • Catégories trouvées: {}".format(len(recommendations)))
             
             # ========================================================================
-            # APPEL 3/3: MORPHOLOGY PART 3 - DÉTAILS (TEXT)
+            # APPEL 3/3: PART 3 - DÉTAILS (TEXT)
             # ========================================================================
             print("\n" + "█"*80)
-            print("█ APPEL 3/3: MORPHOLOGY PART 3 - DÉTAILS (MATIERES + MOTIFS + PIEGES)")
+            print("█ APPEL 3/3 - PART 3: DÉTAILS (MATIERES + MOTIFS + PIEGES)")
             print("█"*80)
             
-            print("\n📍 AVANT APPEL:")
-            print("   • Type: OpenAI Text API (gpt-4-turbo)")
-            print("   • Max tokens: 2000 (matieres + motifs + pieges)")
+            print("\n📍 Configuration:")
+            print("   • Model: gpt-4-turbo (Text API)")
+            print("   • Max tokens: 2000")
             print("   • Silhouette: {}".format(silhouette))
             
-            self.openai.set_context("Morphology Part 3", "PART 3: Details")
+            self.openai.set_context("Morphology", "Part 3: Details")
             self.openai.set_system_prompt(MORPHOLOGY_PART3_SYSTEM_PROMPT)
             
             user_prompt_part3 = MORPHOLOGY_PART3_USER_PROMPT.format(
@@ -213,76 +208,67 @@ class MorphologyService:
                 body_parts_to_minimize=minimize_str
             )
             
-            print("\n🤖 APPEL OPENAI EN COURS...")
+            print("\n🤖 Appel OpenAI en cours...")
             response_part3 = await self.openai.call_chat(
                 prompt=user_prompt_part3,
                 model="gpt-4-turbo",
                 max_tokens=2000
             )
-            print("✅ RÉPONSE REÇUE")
             
-            content_part3 = response_part3.get("content", "")
             total_tokens_p3 = response_part3.get("total_tokens", 0)
+            print("✅ Réponse reçue")
             
-            print("\n📊 TOKENS CONSOMMÉS PART 3:")
+            print("\n📊 TOKENS PART 3:")
+            print("   • Prompt: {}".format(response_part3.get("prompt_tokens", 0)))
+            print("   • Completion: {}".format(response_part3.get("completion_tokens", 0)))
             print("   • Total: {} tokens".format(total_tokens_p3))
-            print("   • Budget: {:.1f}%".format((total_tokens_p3 / 4000) * 100))
+            print("   • Budget: {:.1f}% (vs 4000 max)".format((total_tokens_p3 / 4000) * 100))
             print("   • Status: {}".format("✅ OK" if total_tokens_p3 < 2000 else "⚠️ Proche limite"))
             
-            total_morpho_tokens = total_tokens_p1 + total_tokens_p2 + total_tokens_p3
-            print("\n📊 TOTAL MORPHOLOGIE (Part 1 + Part 2 + Part 3):")
-            print("   • Part 1: {} tokens".format(total_tokens_p1))
-            print("   • Part 2: {} tokens".format(total_tokens_p2))
-            print("   • Part 3: {} tokens".format(total_tokens_p3))
-            print("   • TOTAL: {} tokens ✅".format(total_morpho_tokens))
-            print("   • Budget: {:.1f}%".format((total_morpho_tokens / 12000) * 100))
-            print("   • Status: {}".format("✅ OK" if total_morpho_tokens < 8000 else "⚠️ À surveiller"))
-            
-            # PARSING PART 3
-            print("\n📋 PARSING JSON PART 3:")
-            response_text = content_part3.strip() if content_part3 else ""
-            response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
-            
-            if not response_text:
-                print("   ❌ Réponse vide")
+            # Parse Part 3
+            print("\n📋 Parsing JSON Part 3...")
+            part3_result = self._parse_json_safe(response_part3.get("content", ""))
+            if not part3_result:
+                print("❌ Parsing échoué - retour vide")
                 return {}
             
-            json_start = response_text.find('{')
-            if json_start == -1:
-                print("   ❌ Pas de JSON trouvé")
-                return {}
-            
-            response_text = response_text[json_start:]
-            json_end = response_text.rfind('}')
-            if json_end == -1:
-                print("   ❌ JSON incomplet")
-                return {}
-            
-            response_text = response_text[:json_end+1]
-            
-            try:
-                part3_result = json.loads(response_text)
-                print("   ✅ Succès")
-                
-                details = part3_result.get('details', {})
-                print("      • Catégories détails: {}".format(len(details)))
-                
-            except json.JSONDecodeError as e:
-                print("   ❌ Erreur parsing JSON: {}".format(str(e)))
-                return {}
+            print("✅ Succès")
+            details = part3_result.get('details', {})
+            print("   • Catégories détails trouvées: {}".format(len(details)))
             
             # ========================================================================
-            # FUSION PART 1 + PART 2 + PART 3
+            # RÉSUMÉ GLOBAL
             # ========================================================================
             print("\n" + "="*80)
-            print("📦 FUSION PART 1 + PART 2 + PART 3")
+            print("📊 RÉSUMÉ GLOBAL - 3 APPELS ÉQUILIBRÉS")
             print("="*80)
             
-            # ✅ RESTRUCTURER en morpho.categories pour template PDFMonkey (pages 9+)
-            morpho_categories = {}
-            recommendations = part2_result.get('recommendations', {})
-            details = part3_result.get('details', {})
+            total_morpho_tokens = total_tokens_p1 + total_tokens_p2 + total_tokens_p3
+            budget_percent = (total_morpho_tokens / 8000) * 100
             
+            print("\nTokens consommés:")
+            print("   • Part 1 (Vision): {} tokens ({:.1f}%)".format(
+                total_tokens_p1, (total_tokens_p1 / 4000) * 100))
+            print("   • Part 2 (Text): {} tokens ({:.1f}%)".format(
+                total_tokens_p2, (total_tokens_p2 / 4000) * 100))
+            print("   • Part 3 (Text): {} tokens ({:.1f}%)".format(
+                total_tokens_p3, (total_tokens_p3 / 4000) * 100))
+            print("\n   • TOTAL: {} tokens".format(total_morpho_tokens))
+            print("   • Budget global: {:.1f}% (vs 8000 max)".format(budget_percent))
+            print("   • Status: {}".format(
+                "✅ PARFAIT" if total_morpho_tokens < 6800 else 
+                "⚠️ Acceptable" if total_morpho_tokens < 7500 else 
+                "❌ Trop élevé"))
+            
+            # ========================================================================
+            # FUSION FINALE
+            # ========================================================================
+            print("\n" + "="*80)
+            print("📦 FUSION FINALE - CRÉATION STRUCTURE MORPHO")
+            print("="*80)
+            
+            # Créer morpho.categories
+            morpho_categories = {}
             for category_name in recommendations.keys():
                 morpho_categories[category_name] = {
                     "introduction": recommendations[category_name].get("introduction", ""),
@@ -293,12 +279,10 @@ class MorphologyService:
                     "pieges": details.get(category_name, {}).get("pieges", [])
                 }
             
-            # ✅ Enrichir page 8 avec contenu de Part 1
             body_parts_highlights = part1_result.get('body_parts_highlights', {})
             body_parts_minimizes = part1_result.get('body_parts_minimizes', {})
             
             final_result = {
-                # ✅ STRUCTURE PAGE 8
                 "silhouette_type": part1_result.get("silhouette_type"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight"),
@@ -306,8 +290,6 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives"),
                 "bodyType": part1_result.get("silhouette_type"),
-                
-                # ✅ CONTENU ENRICHI PAGE 8
                 "highlights": {
                     "announcement": body_parts_highlights.get("announcement", ""),
                     "explanation": body_parts_highlights.get("explanation", "")
@@ -316,23 +298,17 @@ class MorphologyService:
                     "announcement": body_parts_minimizes.get("announcement", ""),
                     "explanation": body_parts_minimizes.get("explanation", "")
                 },
-                
-                # ✅ STRUCTURE PAGES 9+ - COMPLÈTE
                 "morpho": {
                     "categories": morpho_categories
                 },
-                
-                # ✅ TRACE DES DEMANDES CLIENT
                 "client_requested_highlights": highlight_str,
                 "client_requested_minimizes": minimize_str,
             }
             
-            print("✅ Morphologie COMPLÈTE générée")
-            print("   • 3 appels équilibrés: {} + {} + {} tokens".format(total_tokens_p1, total_tokens_p2, total_tokens_p3))
-            print("   • Page 8: Enrichie ✅")
-            print("   • Pages 9-15: Complètes avec tous les détails ✅")
-            print("   • TOTAL: {} tokens (budget OK!) ✅".format(total_morpho_tokens))
-            
+            print("\n✅ MORPHOLOGIE COMPLÈTE GÉNÉRÉE")
+            print("   • Silhouette: {}".format(final_result['silhouette_type']))
+            print("   • Catégories: {}".format(len(final_result['morpho']['categories'])))
+            print("   • Pages 8-15: Prêtes pour affichage")
             print("\n" + "="*80 + "\n")
             
             return final_result
