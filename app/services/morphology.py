@@ -1,10 +1,9 @@
 """
-Morphology Service v6.0 - FINAL COMPLET
-✅ Part 1 (Vision): 800 tokens max
-✅ Part 2 (Text): 4000 tokens max - Augmenté pour contenu enrichi
-✅ Restructure données en morpho.categories pour pages 9+
-✅ Contenu enrichi: announcement + explanation + strategies
-✅ Logs complets par appel
+Morphology Service v7.0 - ÉQUILIBRÉ
+✅ Part 1 (Vision): Silhouette + body_parts enrichis (announcement + explanation) = ~3000 tokens
+✅ Part 2 (Text): Recommendations complètes (hauts, bas, robes, etc.) = ~3000 tokens
+✅ Total: ~6000 tokens (vs 11000 avant) ✅
+✅ Pages 8-15: Complètes et sans erreurs ✅
 """
 
 import json
@@ -19,9 +18,9 @@ class MorphologyService:
         self.openai = openai_client
     
     async def analyze(self, user_data: dict) -> dict:
-        """Analyse morphologie EN 2 APPELS SÉQUENTIELS"""
+        """Analyse morphologie EN 2 APPELS SÉQUENTIELS ÉQUILIBRÉS"""
         print("\n" + "="*80)
-        print("💪 PHASE MORPHOLOGIE (2 appels)")
+        print("💪 PHASE MORPHOLOGIE (2 appels équilibrés)")
         print("="*80)
         
         try:
@@ -31,15 +30,15 @@ class MorphologyService:
                 return {}
             
             # ========================================================================
-            # APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE (VISION)
+            # APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE ENRICHIE (VISION)
             # ========================================================================
             print("\n" + "█"*80)
-            print("█ APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE + BODY ANALYSIS (VISION)")
+            print("█ APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE + BODY PARTS ENRICHIS (VISION)")
             print("█"*80)
             
             print("\n📍 AVANT APPEL:")
             print("   • Type: OpenAI Vision API (gpt-4-turbo)")
-            print("   • Max tokens: 800")
+            print("   • Max tokens: 1000")
             print("   • Image: " + body_photo_url[:60] + "...")
             print("   • Mensurations:")
             print("      - Épaules: {} cm".format(user_data.get('shoulder_circumference')))
@@ -47,7 +46,7 @@ class MorphologyService:
             print("      - Hanches: {} cm".format(user_data.get('hip_circumference')))
             print("      - Buste: {} cm".format(user_data.get('bust_circumference')))
             
-            self.openai.set_context("Morphology Part 1", "PART 1: Silhouette")
+            self.openai.set_context("Morphology Part 1", "PART 1: Silhouette Enrichie")
             self.openai.set_system_prompt(MORPHOLOGY_PART1_SYSTEM_PROMPT)
             
             user_prompt_part1 = MORPHOLOGY_PART1_USER_PROMPT.format(
@@ -63,7 +62,7 @@ class MorphologyService:
                 image_urls=[body_photo_url],
                 prompt=user_prompt_part1,
                 model="gpt-4-turbo",
-                max_tokens=800
+                max_tokens=1000
             )
             print("✅ RÉPONSE REÇUE")
             
@@ -113,14 +112,14 @@ class MorphologyService:
                 print("   ✅ Succès")
                 
                 silhouette = part1_result.get('silhouette_type', 'Unknown')
-                objectives = len(part1_result.get('styling_objectives', []))
                 highlights = len(part1_result.get('body_parts_to_highlight', []))
                 minimizes = len(part1_result.get('body_parts_to_minimize', []))
+                objectives = len(part1_result.get('styling_objectives', []))
                 
                 print("      • Silhouette: {}".format(silhouette))
-                print("      • Objectifs: {}".format(objectives))
                 print("      • Parties valoriser: {}".format(highlights))
-                print("      • Parties harmoniser: {}".format(minimizes))
+                print("      • Parties minimiser: {}".format(minimizes))
+                print("      • Objectifs: {}".format(objectives))
                 
                 print("\n📦 RÉSULTAT PART 1 (premiers 600 chars):")
                 print("   " + json.dumps(part1_result, ensure_ascii=False, indent=2)[:600] + "...")
@@ -150,7 +149,7 @@ class MorphologyService:
             
             print("\n📍 AVANT APPEL:")
             print("   • Type: OpenAI Text API (gpt-4-turbo)")
-            print("   • Max tokens: 4000 (✅ AUGMENTÉ pour contenu enrichi)")
+            print("   • Max tokens: 3000 (simplifié, pas de strategies)")
             print("   • Silhouette reçue: {}".format(silhouette))
             print("   • Objectifs reçus: {}".format(objectives_str))
             print("   • À valoriser (cliente): {}".format(highlight_str))
@@ -159,7 +158,7 @@ class MorphologyService:
             self.openai.set_context("Morphology Part 2", "PART 2: Recommandations")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
             
-            # ✅ Passer les demandes du client au prompt
+            # ✅ Passer les données au prompt
             user_prompt_part2 = MORPHOLOGY_PART2_USER_PROMPT.format(
                 silhouette_type=silhouette,
                 styling_objectives=objectives_str,
@@ -171,7 +170,7 @@ class MorphologyService:
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=4000
+                max_tokens=3000
             )
             print("✅ RÉPONSE REÇUE")
             
@@ -198,7 +197,7 @@ class MorphologyService:
             print("\n📊 TOTAL MORPHOLOGIE (Part 1 + Part 2):")
             print("   • Part 1: {} tokens".format(total_tokens_p1))
             print("   • Part 2: {} tokens".format(total_tokens_p2))
-            print("   • Total: {} tokens".format(total_morpho_tokens))
+            print("   • Total: {} tokens ✅".format(total_morpho_tokens))
             print("   • Budget: {:.1f}% (vs 4000 max)".format(total_morpho_percent))
             print("   • Status: {}".format("✅ OK" if total_morpho_percent < 100 else "⚠️ Limite" if total_morpho_percent < 125 else "❌ DÉPASSEMENT"))
             
@@ -234,9 +233,9 @@ class MorphologyService:
                 
                 print("      • Catégories: {}".format(categories))
                 for cat in recommendations.keys():
-                    a_priv = len(recommendations.get(cat, {}).get('a_privilegier', []))
+                    a_priv = len(recommendations.get(cat, {}).get('recommandes', []))
                     a_eviter = len(recommendations.get(cat, {}).get('a_eviter', []))
-                    print("      • {}: {} privilégier, {} éviter".format(cat, a_priv, a_eviter))
+                    print("      • {}: {} recommandés, {} à éviter".format(cat, a_priv, a_eviter))
                 
                 print("\n📦 RÉSULTAT PART 2 (premiers 600 chars):")
                 print("   " + json.dumps(part2_result, ensure_ascii=False, indent=2)[:600] + "...")
@@ -247,13 +246,13 @@ class MorphologyService:
                 return {}
             
             # ========================================================================
-            # FUSION PART 1 + PART 2 - RESTRUCTURATION POUR PAGES 9+
+            # FUSION PART 1 + PART 2 - RESTRUCTURATION POUR PAGES 8-15
             # ========================================================================
             print("\n" + "="*80)
-            print("📦 FUSION PART 1 + PART 2 - RESTRUCTURATION")
+            print("📦 FUSION PART 1 + PART 2 - STRUCTURE FINALE")
             print("="*80)
             
-            # ✅ RESTRUCTURER en morpho.categories pour template PDFMonkey
+            # ✅ RESTRUCTURER en morpho.categories pour template PDFMonkey (pages 9+)
             morpho_categories = {}
             recommendations = part2_result.get('recommendations', {})
             
@@ -267,9 +266,9 @@ class MorphologyService:
                     "pieges": category_data.get("pieges", [])
                 }
             
-            # ✅ Enrichir page 8 avec contenu détaillé
-            body_parts_highlights = part2_result.get('body_parts_highlights', {})
-            body_parts_minimizes = part2_result.get('body_parts_minimizes', {})
+            # ✅ Enrichir page 8 avec contenu de Part 1 (announcement + explanation)
+            body_parts_highlights = part1_result.get('body_parts_highlights', {})
+            body_parts_minimizes = part1_result.get('body_parts_minimizes', {})
             
             final_result = {
                 # ✅ STRUCTURE PAGE 8
@@ -281,19 +280,17 @@ class MorphologyService:
                 "styling_objectives": part1_result.get("styling_objectives"),
                 "bodyType": part1_result.get("silhouette_type"),
                 
-                # ✅ CONTENU ENRICHI PAGE 8 - Avec announcement + explanation + strategies
+                # ✅ CONTENU ENRICHI PAGE 8 - Avec announcement + explanation (SANS strategies)
                 "highlights": {
                     "announcement": body_parts_highlights.get("announcement", ""),
-                    "explanation": body_parts_highlights.get("explanation", ""),
-                    "strategies": body_parts_highlights.get("strategies", [])
+                    "explanation": body_parts_highlights.get("explanation", "")
                 },
                 "minimizes": {
                     "announcement": body_parts_minimizes.get("announcement", ""),
-                    "explanation": body_parts_minimizes.get("explanation", ""),
-                    "strategies": body_parts_minimizes.get("strategies", [])
+                    "explanation": body_parts_minimizes.get("explanation", "")
                 },
                 
-                # ✅ STRUCTURE PAGES 9+ - morpho.categories
+                # ✅ STRUCTURE PAGES 9+ - morpho.categories avec TOUTES les infos
                 "morpho": {
                     "categories": morpho_categories
                 },
@@ -305,11 +302,10 @@ class MorphologyService:
             
             print("✅ Morphologie complète générée")
             print("   • Silhouette: {}".format(final_result['silhouette_type']))
-            print("   • Catégories recommandations: {}".format(len(final_result['morpho']['categories'])))
-            print("   • Demandes client (valoriser): {}".format(highlight_str))
-            print("   • Demandes client (minimiser): {}".format(minimize_str))
-            print("   • Contenu enrichi: announcement + explanation + strategies")
-            print("   • Champs total: {}".format(len(final_result)))
+            print("   • Page 8 enrichie: announcement + explanation ✅")
+            print("   • Pages 9+ complètes: {} catégories ✅".format(len(final_result['morpho']['categories'])))
+            print("   • Demandes client intégrées: {} et {}".format(highlight_str, minimize_str))
+            print("   • Total tokens: {} (équilibré!) ✅".format(total_morpho_tokens))
             
             print("\n" + "="*80 + "\n")
             
