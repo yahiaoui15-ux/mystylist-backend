@@ -1,9 +1,10 @@
 """
-Morphology Service v5.0 - COMPLET AVEC DEMANDES CLIENT
+Morphology Service v6.0 - FINAL COMPLET
 ✅ Part 1 (Vision): 800 tokens max
-✅ Part 2 (Text): 3000 tokens max - AUGMENTÉ pour JSON complet
-✅ NOUVEAU: Intègre body_parts_to_highlight et body_parts_to_minimize du client
-✅ Logs complets par appel (like colorimetry)
+✅ Part 2 (Text): 4000 tokens max - Augmenté pour contenu enrichi
+✅ Restructure données en morpho.categories pour pages 9+
+✅ Contenu enrichi: announcement + explanation + strategies
+✅ Logs complets par appel
 """
 
 import json
@@ -87,8 +88,6 @@ class MorphologyService:
             # PARSING PART 1
             print("\n📋 PARSING JSON PART 1:")
             response_text = content_part1.strip() if content_part1 else ""
-            
-            # ✅ FIX: Strip markdown code blocks
             response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
             
             if not response_text:
@@ -141,18 +140,17 @@ class MorphologyService:
             styling_objectives = part1_result.get("styling_objectives", [])
             objectives_str = ", ".join(styling_objectives)
             
-            # ✅ NOUVEAU: Récupérer les demandes spécifiques du client
+            # ✅ Récupérer les demandes spécifiques du client
             morphology_goals = user_data.get("morphology_goals", {})
             body_parts_to_highlight = morphology_goals.get("body_parts_to_highlight", [])
             body_parts_to_minimize = morphology_goals.get("body_parts_to_minimize", [])
             
-            # Convertir en strings
             highlight_str = ", ".join(body_parts_to_highlight) if body_parts_to_highlight else "aucune spécifiée"
             minimize_str = ", ".join(body_parts_to_minimize) if body_parts_to_minimize else "aucune spécifiée"
             
             print("\n📍 AVANT APPEL:")
             print("   • Type: OpenAI Text API (gpt-4-turbo)")
-            print("   • Max tokens: 3000 (✅ AUGMENTÉ pour JSON complet)")
+            print("   • Max tokens: 4000 (✅ AUGMENTÉ pour contenu enrichi)")
             print("   • Silhouette reçue: {}".format(silhouette))
             print("   • Objectifs reçus: {}".format(objectives_str))
             print("   • À valoriser (cliente): {}".format(highlight_str))
@@ -161,7 +159,7 @@ class MorphologyService:
             self.openai.set_context("Morphology Part 2", "PART 2: Recommandations")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
             
-            # ✅ NOUVEAU: Passer les demandes du client au prompt
+            # ✅ Passer les demandes du client au prompt
             user_prompt_part2 = MORPHOLOGY_PART2_USER_PROMPT.format(
                 silhouette_type=silhouette,
                 styling_objectives=objectives_str,
@@ -173,7 +171,7 @@ class MorphologyService:
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=3000
+                max_tokens=4000
             )
             print("✅ RÉPONSE REÇUE")
             
@@ -207,8 +205,6 @@ class MorphologyService:
             # PARSING PART 2
             print("\n📋 PARSING JSON PART 2:")
             response_text = content_part2.strip() if content_part2 else ""
-            
-            # ✅ FIX: Strip markdown code blocks
             response_text = response_text.replace("```json\n", "").replace("```\n", "").replace("```", "")
             
             if not response_text:
@@ -251,13 +247,32 @@ class MorphologyService:
                 return {}
             
             # ========================================================================
-            # FUSION PART 1 + PART 2
+            # FUSION PART 1 + PART 2 - RESTRUCTURATION POUR PAGES 9+
             # ========================================================================
             print("\n" + "="*80)
-            print("📦 FUSION PART 1 + PART 2")
+            print("📦 FUSION PART 1 + PART 2 - RESTRUCTURATION")
             print("="*80)
             
+            # ✅ RESTRUCTURER en morpho.categories pour template PDFMonkey
+            morpho_categories = {}
+            recommendations = part2_result.get('recommendations', {})
+            
+            for category_name, category_data in recommendations.items():
+                morpho_categories[category_name] = {
+                    "introduction": category_data.get("introduction", ""),
+                    "recommandes": category_data.get("recommandes", []),
+                    "a_eviter": category_data.get("a_eviter", []),
+                    "matieres": category_data.get("matieres", ""),
+                    "motifs": category_data.get("motifs", {}),
+                    "pieges": category_data.get("pieges", [])
+                }
+            
+            # ✅ Enrichir page 8 avec contenu détaillé
+            body_parts_highlights = part2_result.get('body_parts_highlights', {})
+            body_parts_minimizes = part2_result.get('body_parts_minimizes', {})
+            
             final_result = {
+                # ✅ STRUCTURE PAGE 8
                 "silhouette_type": part1_result.get("silhouette_type"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight"),
@@ -265,17 +280,35 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives"),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": part2_result.get("recommendations", {}),
-                # ✅ NOUVEAU: Inclure les demandes du client pour traçabilité
+                
+                # ✅ CONTENU ENRICHI PAGE 8 - Avec announcement + explanation + strategies
+                "highlights": {
+                    "announcement": body_parts_highlights.get("announcement", ""),
+                    "explanation": body_parts_highlights.get("explanation", ""),
+                    "strategies": body_parts_highlights.get("strategies", [])
+                },
+                "minimizes": {
+                    "announcement": body_parts_minimizes.get("announcement", ""),
+                    "explanation": body_parts_minimizes.get("explanation", ""),
+                    "strategies": body_parts_minimizes.get("strategies", [])
+                },
+                
+                # ✅ STRUCTURE PAGES 9+ - morpho.categories
+                "morpho": {
+                    "categories": morpho_categories
+                },
+                
+                # ✅ TRACE DES DEMANDES CLIENT
                 "client_requested_highlights": highlight_str,
                 "client_requested_minimizes": minimize_str,
             }
             
             print("✅ Morphologie complète générée")
             print("   • Silhouette: {}".format(final_result['silhouette_type']))
-            print("   • Catégories recommandations: {}".format(len(final_result['recommendations'])))
+            print("   • Catégories recommandations: {}".format(len(final_result['morpho']['categories'])))
             print("   • Demandes client (valoriser): {}".format(highlight_str))
             print("   • Demandes client (minimiser): {}".format(minimize_str))
+            print("   • Contenu enrichi: announcement + explanation + strategies")
             print("   • Champs total: {}".format(len(final_result)))
             
             print("\n" + "="*80 + "\n")
