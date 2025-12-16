@@ -395,6 +395,7 @@ class PDFDataMapper:
                 "weight": user_data.get("weight", ""),
                 "facePhotoUrl": user_data.get("face_photo_url", ""),
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
+                "clothingSize": user_data.get("clothing_size", ""),
             },
             
             # âœ… CORRIGÉ: Utiliser snake_case pour correspondre au template PDFMonkey
@@ -438,6 +439,15 @@ class PDFDataMapper:
             "morpho": {
                 "categories": morpho_categories,
             },
+                 # ✅ NOUVEAU - Highlights/Minimizes pour page 8
+            "morphology_highlights": morphology_raw.get("highlights", {
+                "announcement": "",
+                "explanation": ""
+            }),
+            "morphology_minimizes": morphology_raw.get("minimizes", {
+                "announcement": "",
+                "explanation": ""
+            }),
             
             "style": {
                 "archetypes": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", [])),

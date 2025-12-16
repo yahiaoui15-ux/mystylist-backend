@@ -217,11 +217,16 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         log(f">>> face_photo_url: {face_photo_url[:50] if face_photo_url else 'NONE'}...")
         log(f">>> body_photo_url: {body_photo_url[:50] if body_photo_url else 'NONE'}...")
 
-        # Extraire les donnees du JSONB
+        # ✅ EXTRAIRE LES DONNEES DU JSONB
         onboarding_data = user_profile.get("onboarding_data", {})
         personal_info = onboarding_data.get("personal_info", {})
         measurements = onboarding_data.get("measurements", {})
         color_prefs = onboarding_data.get("color_preferences", {})
+        morphology_goals = onboarding_data.get("morphology_goals", {})  # ✅ NOUVEAU
+
+        # ✅ EXTRAIRE clothing_size
+        clothing_size = measurements.get("clothing_size", "")
+        log(f">>> Clothing size extrait: {clothing_size}")
 
         user_data = {
             "user_id": user_id,
@@ -242,14 +247,18 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
             "waist_circumference": measurements.get("waist_circumference", 0),
             "hip_circumference": measurements.get("hip_circumference", 0),
             "bust_circumference": measurements.get("shoulder_circumference", 0),
+            "clothing_size": clothing_size,  # ✅ NOUVEAU
+            "morphology_goals": morphology_goals,  # ✅ NOUVEAU
             "unwanted_colors": color_prefs.get("disliked_colors", [])
         }
 
         log(f">>> User data extrait:")
         log(f">>>    age: {user_data['age']}")
         log(f">>>    height: {user_data['height']}")
+        log(f">>>    clothing_size: {user_data['clothing_size']}")  # ✅ NOUVEAU
         log(f">>>    eye_color: {user_data['eye_color']}")
         log(f">>>    hair_color: {user_data['hair_color']}")
+        log(f">>>    morphology_goals: {user_data['morphology_goals']}")  # ✅ NOUVEAU
 
         # Garde-fou email
         existing = supabase.query("reports", select_fields="email_sent", filters={"payment_id": payment_id})
