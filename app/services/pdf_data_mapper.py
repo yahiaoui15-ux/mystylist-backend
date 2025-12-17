@@ -1,7 +1,7 @@
 """
-PDF Data Mapper v5.1 - CORRIGÉ SNAKE_CASE
+PDF Data Mapper v5.1 - CORRIGÃ‰ SNAKE_CASE
 âœ… Garde logique complète ancien (466 lignes)
-âœ… CORRIGÉ: Utilise snake_case pour correspondre au template PDFMonkey
+âœ… CORRIGÃ‰: Utilise snake_case pour correspondre au template PDFMonkey
 âœ… Ajoute displayName generation (backend, 0 tokens OpenAI)
 âœ… Ajoute unwanted_colors mapping + traitement
 âœ… COLOR_HEX_MAP global: 40+ couleurs
@@ -23,7 +23,7 @@ class PDFDataMapper:
         "rose_pale": "Rose Pâle",
         "rose_fuchsia": "Rose Fuchsia",
         "rose_corail": "Rose Corail",
-        "peche": "Pêche",
+        "peche": "PÃªche",
         "terre_sienne": "Terre de Sienne",
         "ocre_jaune": "Ocre Jaune",
         "olive_drab": "Olive Drab",
@@ -301,14 +301,16 @@ class PDFDataMapper:
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee", []))
         palette = PDFDataMapper.enrich_with_display_names(palette)
-        # Trier la palette par note (meilleure à pire: 10 -> 8)
+        # 🎨 TRIER LA PALETTE PAR NOTE (meilleure à pire)
         palette = sorted(palette, key=lambda x: x.get("note", 0), reverse=True)
         
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
         
-        # IMPORTANT: Construire TOUJOURS allColorsWithNotes depuis notes_compatibilite (19 couleurs générales)
-        # Ceci assure que pages 4-5 affichent les couleurs générales, pas la palette personnalisée
-        all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        # âœ… IMPORTANT: Récupérer allColorsWithNotes depuis colorimetry_raw SI présent (FALLBACK)
+        all_colors_with_notes = PDFDataMapper._safe_list(colorimetry_raw.get("allColorsWithNotes", []))
+        if not all_colors_with_notes:
+            # Sinon construire depuis notes_compatibilite
+            all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         # Enrichir avec displayName
         all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
@@ -395,10 +397,10 @@ class PDFDataMapper:
                 "weight": user_data.get("weight", ""),
                 "facePhotoUrl": user_data.get("face_photo_url", ""),
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
-                "clothingSize": user_data.get("clothing_size", ""),
+                "clothingSize": user_data.get("clothing_size", ""),  # ✅ AJOUTÉ
             },
             
-            # âœ… CORRIGÉ: Utiliser snake_case pour correspondre au template PDFMonkey
+            # âœ… CORRIGÃ‰: Utiliser snake_case pour correspondre au template PDFMonkey
             "colorimetry": {
                 # âœ… snake_case pour template
                 "saison_confirmee": colorimetry_raw.get("saison_confirmee", ""),
@@ -439,7 +441,8 @@ class PDFDataMapper:
             "morpho": {
                 "categories": morpho_categories,
             },
-                 # ✅ NOUVEAU - Highlights/Minimizes pour page 8
+            
+            # ✅ NOUVEAU - Highlights/Minimizes pour page 8
             "morphology_highlights": morphology_raw.get("highlights", {
                 "announcement": "",
                 "explanation": ""
@@ -574,7 +577,7 @@ class PDFDataMapper:
                     "a_eviter": [
                         {"name": "Col roulé très serré", "why": "Ã‰crase le cou et raccourcit le buste"},
                         {"name": "Polos stretch très ajustés", "why": "Accentuent le volume au centre"},
-                        {"name": "Volumes excessifs au buste", "why": "Ajoutent de la masse lÃ  où il faut minimiser"},
+                        {"name": "Volumes excessifs au buste", "why": "Ajoutent de la masse lÃ  oÃ¹ il faut minimiser"},
                         {"name": "Matières rigides (denim épais)", "why": "Figent la silhouette et manquent de fluidité"},
                         {"name": "Rayures horizontales larges", "why": "Ã‰largissent visuellement la silhouette"},
                     ],
@@ -606,7 +609,7 @@ class PDFDataMapper:
                     ],
                     "a_eviter": [
                         {"name": "Tailles basses", "why": "Raccourcissent les jambes et élargissent visuellement"},
-                        {"name": "Baggy ou sursize au niveau des hanches", "why": "Ajoutent du volume lÃ  où il faut harmoniser"},
+                        {"name": "Baggy ou sursize au niveau des hanches", "why": "Ajoutent du volume lÃ  oÃ¹ il faut harmoniser"},
                         {"name": "Coupes moulantes excessives", "why": "Accentuent chaque détail du corps"},
                         {"name": "Ceintures très larges", "why": "Ã‰crasent et figent la taille"},
                         {"name": "Rayures horizontales", "why": "Ã‰largissent visuellement les jambes"},
