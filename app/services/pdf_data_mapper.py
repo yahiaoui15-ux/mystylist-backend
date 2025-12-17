@@ -23,7 +23,7 @@ class PDFDataMapper:
         "rose_pale": "Rose Pâle",
         "rose_fuchsia": "Rose Fuchsia",
         "rose_corail": "Rose Corail",
-        "peche": "PÃªche",
+        "peche": "Pêche",
         "terre_sienne": "Terre de Sienne",
         "ocre_jaune": "Ocre Jaune",
         "olive_drab": "Olive Drab",
@@ -306,11 +306,9 @@ class PDFDataMapper:
         
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
         
-        # âœ… IMPORTANT: Récupérer allColorsWithNotes depuis colorimetry_raw SI présent (FALLBACK)
-        all_colors_with_notes = PDFDataMapper._safe_list(colorimetry_raw.get("allColorsWithNotes", []))
-        if not all_colors_with_notes:
-            # Sinon construire depuis notes_compatibilite
-            all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
+        # ✅ FORCE: Toujours construire allColorsWithNotes depuis notes_compatibilite
+        # (pas depuis OpenAI qui retourne la mauvaise liste)
+        all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         # Enrichir avec displayName
         all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
