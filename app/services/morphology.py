@@ -20,30 +20,18 @@ class MorphologyService:
     
     @staticmethod
     def safe_format(template: str, **kwargs) -> str:
-        """Format un template en ignorant les clés manquantes"""
+        """Format un template en ignorant les clés manquantes - ULTRA ROBUSTE"""
+        # Utiliser une classe defaultdict pour retourner vide string pour ANY missing key
+        class SafeDict(dict):
+            def __missing__(self, key):
+                return ""  # Retourner "" pour toute clé manquante au lieu de lever KeyError
+        
+        safe_dict = SafeDict(kwargs)
         try:
-            return template.format(**kwargs)
-        except KeyError as e:
-            missing_key = str(e).strip("'")
-            print(f"⚠️ KeyError lors du .format(): {missing_key}")
-            
-            format_dict = {
-                "body_photo_url": kwargs.get("body_photo_url", ""),
-                "shoulder_circumference": kwargs.get("shoulder_circumference", ""),
-                "waist_circumference": kwargs.get("waist_circumference", ""),
-                "hip_circumference": kwargs.get("hip_circumference", ""),
-                "bust_circumference": kwargs.get("bust_circumference", ""),
-                "silhouette_type": kwargs.get("silhouette_type", ""),
-                "styling_objectives": kwargs.get("styling_objectives", ""),
-            }
-            
-            try:
-                result = template.format_map(format_dict)
-                print(f"   ✅ format_map() réussi")
-                return result
-            except Exception as e2:
-                print(f"   ❌ format_map() aussi échoué: {str(e2)}")
-                return template
+            return template.format_map(safe_dict)
+        except Exception as e:
+            print(f"⚠️ Erreur format_map: {str(e)}")
+            return template
     
     @staticmethod
     def clean_json_string(content: str) -> str:
