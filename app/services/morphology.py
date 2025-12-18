@@ -1,16 +1,16 @@
 """
-Morphology Service v5.1 - FINAL
+Morphology Service v5.1 - FINAL FIXED
 ✅ Récupère morphology_goals du onboarding (user_profiles)
 ✅ Fusionne avec recommandations OpenAI (déduplication)
 ✅ Génère explication personnalisée basée sur les 2 sources
-✅ Format: "Noms des parties" + "Explication riche" 
+✅ Format: "Noms des parties" + "Explication riche"
+✅ SANS dépendance RobustJSONParser - json.loads() pur
 """
 
 import json
 import re
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
-from app.utils.robust_json_parser import RobustJSONParser
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
 
@@ -18,7 +18,6 @@ from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, 
 class MorphologyService:
     def __init__(self):
         self.openai = openai_client
-        self.json_parser = RobustJSONParser()
     
     @staticmethod
     def safe_format(template: str, **kwargs) -> str:
@@ -50,21 +49,22 @@ class MorphologyService:
     @staticmethod
     def clean_json_string(content: str) -> str:
         """Nettoie une réponse JSON pour éviter les erreurs de parsing"""
+        # Supprimer les backticks markdown
         content = re.sub(r'^```json\s*', '', content)
         content = re.sub(r'\s*```$', '', content)
+        
+        # Supprimer les caractères de contrôle invalides
         content = content.replace('\x00', '')
+        
+        # Corriger les guillemets mal échappés avec accents
         content = re.sub(r'\\([éèêëàâäùûüôöîïœæ])', r'\1', content)
+        
         return content
     
     @staticmethod
     def merge_body_parts(onboarding_parts: list, openai_parts: list) -> list:
         """
         Fusionne les parties du corps en déduplicant
-        Paramètres:
-        - onboarding_parts: ["bras", "jambes"] (du onboarding)
-        - openai_parts: ["bras", "buste", "visage"] (d'OpenAI)
-        
-        Retourne: ["bras", "jambes", "buste", "visage"] (union unique)
         """
         if not openai_parts:
             openai_parts = []
@@ -156,17 +156,23 @@ class MorphologyService:
             content_part1_clean = self.clean_json_string(content_part1)
             
             try:
-                part1_result = self.json_parser.parse(content_part1_clean)
+                part1_result = json.loads(content_part1_clean)
                 print("   ✅ Parsing réussi!")
                 print("      • Silhouette: {}".format(part1_result.get('silhouette_type', 'N/A')))
                 
-            except Exception as e:
-                print(f"   ❌ Erreur parsing: {str(e)}")
-                try:
-                    part1_result = json.loads(content_part1_clean)
-                    print("   ✅ Parsing brut réussi!")
-                except:
-                    print("   ❌ Parsing complètement échoué")
+            except json.JSONDecodeError as e:
+                print(f"   ❌ Erreur parsing JSON: {str(e)}")
+                print("   Tentative extraction JSON brut...")
+                # Essayer d'extraire le JSON entre les premieres et dernieres accolades
+                json_match = re.search(r'\{.*\}', content_part1_clean, re.DOTALL)
+                if json_match:
+                    try:
+                        part1_result = json.loads(json_match.group())
+                        print("   ✅ Extraction JSON réussie!")
+                    except:
+                        print("   ❌ Extraction aussi échouée")
+                        part1_result = {}
+                else:
                     part1_result = {}
             
             # ========================================================================
@@ -217,16 +223,21 @@ class MorphologyService:
             content_part2_clean = self.clean_json_string(content_part2)
             
             try:
-                part2_result = self.json_parser.parse(content_part2_clean)
+                part2_result = json.loads(content_part2_clean)
                 print("   ✅ Parsing réussi!")
                 
-            except Exception as e:
-                print(f"   ❌ Erreur parsing: {str(e)}")
-                try:
-                    part2_result = json.loads(content_part2_clean)
-                    print("   ✅ Parsing brut réussi!")
-                except:
-                    print("   ❌ Parsing complètement échoué")
+            except json.JSONDecodeError as e:
+                print(f"   ❌ Erreur parsing JSON: {str(e)}")
+                print("   Tentative extraction JSON brut...")
+                json_match = re.search(r'\{.*\}', content_part2_clean, re.DOTALL)
+                if json_match:
+                    try:
+                        part2_result = json.loads(json_match.group())
+                        print("   ✅ Extraction JSON réussie!")
+                    except:
+                        print("   ❌ Extraction aussi échouée")
+                        part2_result = {}
+                else:
                     part2_result = {}
             
             # ========================================================================
@@ -337,21 +348,8 @@ class MorphologyService:
     
     def _format_highlights_for_page8(self, parties: list, explanation: str, tips: list, 
                                      onboarding_parties: list, openai_parties: list) -> dict:
-        """
-        Formate les highlights pour Page 8
-        
-        Retourne:
-        {
-            "announcement": "bras, buste, visage",
-            "explanation": "La valorisation...",
-            "tips_display": "- Tip 1\n- Tip 2\n...",
-            "full_text": "ANNONCE: ...\n\nEXPLICATION: ...\n\nASTUCES: ..."
-        }
-        """
-        # Créer l'announcement avec juste les noms des parties
+        """Formate les highlights pour Page 8"""
         announcement = ", ".join(parties) if parties else "Votre silhouette"
-        
-        # Enrichir l'explanation avec les sources
         enriched_explanation = explanation
         
         if onboarding_parties and openai_parties:
@@ -379,12 +377,8 @@ ASTUCES (générées par OpenAI):
     
     def _format_minimizes_for_page8(self, parties: list, explanation: str, tips: list,
                                    onboarding_parties: list, openai_parties: list) -> dict:
-        """
-        Formate les minimizes pour Page 8
-        Même structure que highlights
-        """
+        """Formate les minimizes pour Page 8"""
         announcement = ", ".join(parties) if parties else "Votre silhouette"
-        
         enriched_explanation = explanation
         
         if onboarding_parties and openai_parties:
