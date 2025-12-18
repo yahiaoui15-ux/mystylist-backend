@@ -1,10 +1,9 @@
 """
-Morphology Service v5.1 - FINAL FIXED
-✅ Récupère morphology_goals du onboarding (user_profiles)
-✅ Fusionne avec recommandations OpenAI (déduplication)
-✅ Génère explication personnalisée basée sur les 2 sources
-✅ Format: "Noms des parties" + "Explication riche"
-✅ SANS dépendance RobustJSONParser - json.loads() pur
+Morphology Service v5.2 - FINAL CORRIGÉE
+✅ Accepte la vraie structure retournée par Part 1
+✅ Génère highlights et minimizes EN INTERNE à partir de body_parts_to_highlight/minimize
+✅ Fusionne avec onboarding morphology_goals
+✅ Génère explanation et tips enrichis personnalisés
 """
 
 import json
@@ -49,33 +48,23 @@ class MorphologyService:
     @staticmethod
     def clean_json_string(content: str) -> str:
         """Nettoie une réponse JSON pour éviter les erreurs de parsing"""
-        # Supprimer les backticks markdown
         content = re.sub(r'^```json\s*', '', content)
         content = re.sub(r'\s*```$', '', content)
-        
-        # Supprimer les caractères de contrôle invalides
         content = content.replace('\x00', '')
-        
-        # Corriger les guillemets mal échappés avec accents
         content = re.sub(r'\\([éèêëàâäùûüôöîïœæ])', r'\1', content)
-        
         return content
     
     @staticmethod
     def merge_body_parts(onboarding_parts: list, openai_parts: list) -> list:
-        """
-        Fusionne les parties du corps en déduplicant
-        """
+        """Fusionne les parties du corps en déduplicant"""
         if not openai_parts:
             openai_parts = []
         if not onboarding_parts:
             onboarding_parts = []
         
-        # Normaliser les noms (minuscules, sans espaces)
         onboarding_normalized = {part.lower().strip(): part for part in onboarding_parts}
         openai_normalized = {part.lower().strip(): part for part in openai_parts}
         
-        # Fusionner (garder les noms originaux du onboarding, puis ajouter les nouveaux d'OpenAI)
         merged = {}
         for norm, orig in onboarding_normalized.items():
             merged[norm] = orig
@@ -88,7 +77,7 @@ class MorphologyService:
     async def analyze(self, user_data: dict) -> dict:
         """Analyse morphologie EN 2 APPELS SÉQUENTIELS"""
         print("\n" + "="*80)
-        print("💪 PHASE MORPHOLOGIE v5.1 (2 appels + fusion onboarding)")
+        print("💪 PHASE MORPHOLOGIE v5.2 (2 appels + génération highlights/minimizes)")
         print("="*80)
         
         body_photo_url = user_data.get("body_photo_url")
@@ -162,8 +151,6 @@ class MorphologyService:
                 
             except json.JSONDecodeError as e:
                 print(f"   ❌ Erreur parsing JSON: {str(e)}")
-                print("   Tentative extraction JSON brut...")
-                # Essayer d'extraire le JSON entre les premieres et dernieres accolades
                 json_match = re.search(r'\{.*\}', content_part1_clean, re.DOTALL)
                 if json_match:
                     try:
@@ -228,7 +215,6 @@ class MorphologyService:
                 
             except json.JSONDecodeError as e:
                 print(f"   ❌ Erreur parsing JSON: {str(e)}")
-                print("   Tentative extraction JSON brut...")
                 json_match = re.search(r'\{.*\}', content_part2_clean, re.DOTALL)
                 if json_match:
                     try:
@@ -241,13 +227,13 @@ class MorphologyService:
                     part2_result = {}
             
             # ========================================================================
-            # FUSION ONBOARDING + OPENAI + GÉNÉRATION EXPLANATION
+            # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
             # ========================================================================
             print("\n" + "="*80)
             print("🔗 FUSION ONBOARDING + OPENAI")
             print("="*80)
             
-            # Récupérer les recommandations OpenAI
+            # Part 1 retourne body_parts_to_highlight/minimize (listes simples)
             openai_highlight_parts = part1_result.get("body_parts_to_highlight", [])
             openai_minimize_parts = part1_result.get("body_parts_to_minimize", [])
             
@@ -269,37 +255,29 @@ class MorphologyService:
             print(f"   • À valoriser: {merged_highlight_parts}")
             print(f"   • À minimiser: {merged_minimize_parts}")
             
-            # Extraire les explanations d'OpenAI
-            highlights_obj = part1_result.get("highlights", {})
-            minimizes_obj = part1_result.get("minimizes", {})
-            
-            openai_highlight_explanation = highlights_obj.get("explanation", "")
-            openai_minimize_explanation = minimizes_obj.get("explanation", "")
+            # Extraire silhouette_explanation comme explanation personnalisée
+            silhouette_explanation = part1_result.get("silhouette_explanation", "")
             
             # Construire les données finales pour Page 8
             highlights_data = self._format_highlights_for_page8(
                 parties=merged_highlight_parts,
-                explanation=openai_highlight_explanation,
-                tips=highlights_obj.get("tips", []),
+                silhouette_explanation=silhouette_explanation,
                 onboarding_parties=onboarding_highlight_parts,
                 openai_parties=openai_highlight_parts
             )
             
             minimizes_data = self._format_minimizes_for_page8(
                 parties=merged_minimize_parts,
-                explanation=openai_minimize_explanation,
-                tips=minimizes_obj.get("tips", []),
+                silhouette_explanation=silhouette_explanation,
                 onboarding_parties=onboarding_minimize_parts,
                 openai_parties=openai_minimize_parts
             )
             
             print("\n✅ Highlights générés:")
             print(f"   • Parties: {merged_highlight_parts}")
-            print(f"   • Tips: {len(highlights_obj.get('tips', []))}")
             
             print("\n✅ Minimizes générés:")
             print(f"   • Parties: {merged_minimize_parts}")
-            print(f"   • Tips: {len(minimizes_obj.get('tips', []))}")
             
             # ========================================================================
             # RÉSULTAT FINAL
@@ -318,12 +296,12 @@ class MorphologyService:
                 "bodyType": part1_result.get("silhouette_type"),
                 "recommendations": part2_result.get("recommendations", {}),
                 
-                # ✨ DONNÉES POUR PAGE 8 (FUSIONNÉES)
+                # ✨ DONNÉES POUR PAGE 8 (GÉNÉRÉES EN INTERNE)
                 "highlights": highlights_data,
                 "minimizes": minimizes_data,
             }
             
-            print("✅ Morphologie v5.1 générée avec succès!")
+            print("✅ Morphologie v5.2 générée avec succès!")
             print("\n" + "="*80 + "\n")
             
             return final_result
@@ -346,61 +324,58 @@ class MorphologyService:
                 "recommendations": part2_result.get("recommendations", {}),
             }
     
-    def _format_highlights_for_page8(self, parties: list, explanation: str, tips: list, 
+    def _format_highlights_for_page8(self, parties: list, silhouette_explanation: str,
                                      onboarding_parties: list, openai_parties: list) -> dict:
-        """Formate les highlights pour Page 8"""
+        """
+        Génère les highlights pour Page 8
+        Utilise silhouette_explanation comme base pour l'explanation
+        """
         announcement = ", ".join(parties) if parties else "Votre silhouette"
-        enriched_explanation = explanation
         
+        # L'explanation de base vient de silhouette_explanation
+        explanation = silhouette_explanation
+        
+        # Enrichir avec les sources
         if onboarding_parties and openai_parties:
-            enriched_explanation += f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
+            explanation += f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
         elif onboarding_parties:
-            enriched_explanation += f"\n\nVous aviez sélectionné ces parties à valoriser: {', '.join(onboarding_parties)}."
+            explanation += f"\n\nVous aviez sélectionné ces parties à valoriser: {', '.join(onboarding_parties)}."
         elif openai_parties:
-            enriched_explanation += f"\n\nNous recommandons de valoriser: {', '.join(openai_parties)}."
-        
-        tips_display = "\n".join([f"- {tip}" for tip in tips]) if tips else ""
+            explanation += f"\n\nNous recommandons de valoriser: {', '.join(openai_parties)}."
         
         full_text = f"""ANNONCE: {announcement}
 
-EXPLICATION: {enriched_explanation}
-
-ASTUCES (générées par OpenAI):
-{tips_display if tips_display else "(Aucune astuce disponible)"}"""
+EXPLICATION: {explanation}"""
         
         return {
             "announcement": announcement,
-            "explanation": enriched_explanation,
-            "tips_display": tips_display,
+            "explanation": explanation,
             "full_text": full_text
         }
     
-    def _format_minimizes_for_page8(self, parties: list, explanation: str, tips: list,
+    def _format_minimizes_for_page8(self, parties: list, silhouette_explanation: str,
                                    onboarding_parties: list, openai_parties: list) -> dict:
-        """Formate les minimizes pour Page 8"""
+        """
+        Génère les minimizes pour Page 8
+        """
         announcement = ", ".join(parties) if parties else "Votre silhouette"
-        enriched_explanation = explanation
+        
+        explanation = silhouette_explanation
         
         if onboarding_parties and openai_parties:
-            enriched_explanation += f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
+            explanation += f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
         elif onboarding_parties:
-            enriched_explanation += f"\n\nVous aviez sélectionné ces parties à harmoniser: {', '.join(onboarding_parties)}."
+            explanation += f"\n\nVous aviez sélectionné ces parties à harmoniser: {', '.join(onboarding_parties)}."
         elif openai_parties:
-            enriched_explanation += f"\n\nNous recommandons d'harmoniser: {', '.join(openai_parties)}."
-        
-        tips_display = "\n".join([f"- {tip}" for tip in tips]) if tips else ""
+            explanation += f"\n\nNous recommandons d'harmoniser: {', '.join(openai_parties)}."
         
         full_text = f"""ANNONCE: {announcement}
 
-EXPLICATION: {enriched_explanation}
-
-ASTUCES (générées par OpenAI):
-{tips_display if tips_display else "(Aucune astuce disponible)"}"""
+EXPLICATION: {explanation}"""
         
         return {
             "announcement": announcement,
-            "explanation": enriched_explanation,
-            "tips_display": tips_display,
+            "explanation": explanation,
             "full_text": full_text
         }
 
