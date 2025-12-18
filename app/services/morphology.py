@@ -246,20 +246,53 @@ class MorphologyService:
             # Extraire silhouette_explanation comme explanation personnalisée
             silhouette_explanation = part1_result.get("silhouette_explanation", "")
             
-            # Construire les données finales pour Page 8
-            highlights_data = self._format_highlights_for_page8(
-                parties=merged_highlight_parts,
-                silhouette_explanation=silhouette_explanation,
-                onboarding_parties=onboarding_highlight_parts,
-                openai_parties=openai_highlight_parts
-            )
+            # VÉRIFIER SI OPENAI A DÉJÀ RETOURNÉ highlights et minimizes
+            print("\n✅ VÉRIFICATION: OpenAI a-t-il fourni highlights/minimizes ?")
+            openai_highlights = part1_result.get("highlights", {})
+            openai_minimizes = part1_result.get("minimizes", {})
             
-            minimizes_data = self._format_minimizes_for_page8(
-                parties=merged_minimize_parts,
-                silhouette_explanation=silhouette_explanation,
-                onboarding_parties=onboarding_minimize_parts,
-                openai_parties=openai_minimize_parts
-            )
+            has_openai_highlights = bool(openai_highlights and openai_highlights.get("announcement"))
+            has_openai_minimizes = bool(openai_minimizes and openai_minimizes.get("announcement"))
+            
+            print(f"   • OpenAI highlights fournis: {has_openai_highlights}")
+            print(f"   • OpenAI minimizes fournis: {has_openai_minimizes}")
+            
+            # Construire les données finales pour Page 8
+            if has_openai_highlights:
+                # Utiliser les données d'OpenAI directement
+                print("   → Utilisation des données OpenAI pour highlights")
+                highlights_data = {
+                    "announcement": openai_highlights.get("announcement", ""),
+                    "explanation": openai_highlights.get("explanation", ""),
+                    "full_text": f"ANNONCE: {openai_highlights.get('announcement', '')}\n\nEXPLICATION: {openai_highlights.get('explanation', '')}"
+                }
+            else:
+                # Générer en interne (fallback)
+                print("   → Génération interne des données pour highlights")
+                highlights_data = self._format_highlights_for_page8(
+                    parties=merged_highlight_parts,
+                    silhouette_explanation=silhouette_explanation,
+                    onboarding_parties=onboarding_highlight_parts,
+                    openai_parties=openai_highlight_parts
+                )
+            
+            if has_openai_minimizes:
+                # Utiliser les données d'OpenAI directement
+                print("   → Utilisation des données OpenAI pour minimizes")
+                minimizes_data = {
+                    "announcement": openai_minimizes.get("announcement", ""),
+                    "explanation": openai_minimizes.get("explanation", ""),
+                    "full_text": f"ANNONCE: {openai_minimizes.get('announcement', '')}\n\nEXPLICATION: {openai_minimizes.get('explanation', '')}"
+                }
+            else:
+                # Générer en interne (fallback)
+                print("   → Génération interne des données pour minimizes")
+                minimizes_data = self._format_minimizes_for_page8(
+                    parties=merged_minimize_parts,
+                    silhouette_explanation=silhouette_explanation,
+                    onboarding_parties=onboarding_minimize_parts,
+                    openai_parties=openai_minimize_parts
+                )
             
             print("\n✅ Highlights générés:")
             print(f"   • Parties: {merged_highlight_parts}")
