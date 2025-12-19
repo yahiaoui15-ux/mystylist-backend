@@ -458,30 +458,68 @@ EXPLICATION: {explanation}"""
         result = defaults.get(silhouette, defaults.get("A"))
         return {"recommendations": result}
     
-                                   onboarding_parties: list, openai_parties: list) -> dict:
-        """
-        Génère les minimizes pour Page 8
-        """
-        announcement = ", ".join(parties) if parties else "Votre silhouette"
-        
-        explanation = silhouette_explanation
-        
-        if onboarding_parties and openai_parties:
-            explanation += f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
-        elif onboarding_parties:
-            explanation += f"\n\nVous aviez sélectionné ces parties à harmoniser: {', '.join(onboarding_parties)}."
-        elif openai_parties:
-            explanation += f"\n\nNous recommandons d'harmoniser: {', '.join(openai_parties)}."
-        
-        full_text = f"""ANNONCE: {announcement}
 
-EXPLICATION: {explanation}"""
+    @staticmethod
+    def _repair_broken_json(json_str: str) -> str:
+        """Répare les JSON partiellement cassés"""
+        # Fermer les strings ouvertes
+        json_str = re.sub(r'"([^"]*?)$', r'""', json_str, flags=re.MULTILINE)
         
-        return {
-            "announcement": announcement,
-            "explanation": explanation,
-            "full_text": full_text
+        # Ajouter accolades fermantes manquantes
+        open_count = json_str.count('{')
+        close_count = json_str.count('}')
+        if open_count > close_count:
+            json_str += '}' * (open_count - close_count)
+        
+        return json_str
+    
+    def _generate_default_recommendations(self, silhouette: str) -> dict:
+        """Génère des recommandations par défaut si OpenAI échoue"""
+        print("   ✅ Génération recommandations par défaut")
+        
+        defaults = {
+            "A": {
+                "hauts": {
+                    "introduction": "Pour silhouette A, valorisez le haut du corps.",
+                    "a_privilegier": [
+                        {"cut_display": "Haut structuré", "why": "Crée du volume au haut"},
+                        {"cut_display": "Encolure V", "why": "Allonge le buste"},
+                        {"cut_display": "Col rond ajusté", "why": "Met en avant les épaules"},
+                        {"cut_display": "Haut échancré", "why": "Crée de la profondeur"},
+                        {"cut_display": "Manches montantes", "why": "Définit les épaules"},
+                        {"cut_display": "Peplum haut", "why": "Ajoute du volume au haut"},
+                    ],
+                    "a_eviter": [
+                        {"cut_display": "Haut moulant", "why": "Marque trop"},
+                        {"cut_display": "Tunique informe", "why": "Cache le haut"},
+                        {"cut_display": "Manches bouffantes", "why": "Peut élargir"},
+                        {"cut_display": "Col bateau", "why": "Élargit les épaules"},
+                        {"cut_display": "Haut oversize", "why": "Perd les proportions"},
+                    ]
+                },
+                "bas": {
+                    "introduction": "Pour silhouette A, affinez le bas.",
+                    "a_privilegier": [
+                        {"cut_display": "Jean taille haute", "why": "Allonge les jambes"},
+                        {"cut_display": "Pantalon droit", "why": "Équilibre les hanches"},
+                        {"cut_display": "Jupe évasée", "why": "Camoufle les hanches"},
+                        {"cut_display": "Legging taille haute", "why": "Affine le bas"},
+                        {"cut_display": "Pantalon flare", "why": "Crée la verticalité"},
+                        {"cut_display": "Jupe plissée", "why": "Structure le bas"},
+                    ],
+                    "a_eviter": [
+                        {"cut_display": "Pantalon moulant", "why": "Souligne les hanches"},
+                        {"cut_display": "Short court", "why": "Raccourcit les jambes"},
+                        {"cut_display": "Pantalon large", "why": "Élargit"},
+                        {"cut_display": "Jupe portefeuille", "why": "Accentue les hanches"},
+                        {"cut_display": "Motifs larges", "why": "Grossit visuellement"},
+                    ]
+                }
+            }
         }
+        
+        result = defaults.get(silhouette, defaults.get("A"))
+        return {"recommendations": result}
 
 
 morphology_service = MorphologyService()
