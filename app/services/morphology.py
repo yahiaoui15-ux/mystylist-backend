@@ -259,12 +259,17 @@ class MorphologyService:
             
             # Construire les données finales pour Page 8
             if has_openai_highlights:
-                # Utiliser les données d'OpenAI directement
+                # Utiliser les données d'OpenAI directement (AVEC TIPS !)
                 print("   → Utilisation des données OpenAI pour highlights")
+                tips_text = ""
+                if openai_highlights.get("tips"):
+                    tips_text = "\n\nASPECTS À VALORISER (conseils):\n" + "\n".join([f"• {tip}" for tip in openai_highlights.get("tips", [])])
+                
                 highlights_data = {
                     "announcement": openai_highlights.get("announcement", ""),
                     "explanation": openai_highlights.get("explanation", ""),
-                    "full_text": f"ANNONCE: {openai_highlights.get('announcement', '')}\n\nEXPLICATION: {openai_highlights.get('explanation', '')}"
+                    "tips": openai_highlights.get("tips", []),
+                    "full_text": f"ANNONCE: {openai_highlights.get('announcement', '')}\n\nEXPLICATION: {openai_highlights.get('explanation', '')}{tips_text}"
                 }
             else:
                 # Générer en interne (fallback)
@@ -277,12 +282,17 @@ class MorphologyService:
                 )
             
             if has_openai_minimizes:
-                # Utiliser les données d'OpenAI directement
+                # Utiliser les données d'OpenAI directement (AVEC TIPS !)
                 print("   → Utilisation des données OpenAI pour minimizes")
+                tips_text = ""
+                if openai_minimizes.get("tips"):
+                    tips_text = "\n\nASPECTS À MINIMISER (conseils):\n" + "\n".join([f"• {tip}" for tip in openai_minimizes.get("tips", [])])
+                
                 minimizes_data = {
                     "announcement": openai_minimizes.get("announcement", ""),
                     "explanation": openai_minimizes.get("explanation", ""),
-                    "full_text": f"ANNONCE: {openai_minimizes.get('announcement', '')}\n\nEXPLICATION: {openai_minimizes.get('explanation', '')}"
+                    "tips": openai_minimizes.get("tips", []),
+                    "full_text": f"ANNONCE: {openai_minimizes.get('announcement', '')}\n\nEXPLICATION: {openai_minimizes.get('explanation', '')}{tips_text}"
                 }
             else:
                 # Générer en interne (fallback)
