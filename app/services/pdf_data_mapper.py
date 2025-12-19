@@ -1,13 +1,8 @@
 """
-PDF Data Mapper v5.1 - CORRIGÀ‰ SNAKE_CASE
-âœ… Garde logique complète ancien (466 lignes)
-âœ… CORRIGÀ‰: Utilise snake_case pour correspondre au template PDFMonkey
-âœ… Ajoute displayName generation (backend, 0 tokens OpenAI)
-âœ… Ajoute unwanted_colors mapping + traitement
-âœ… COLOR_HEX_MAP global: 40+ couleurs
-âœ… COLOR_NAME_MAP: reverse mapping
-âœ… Associations enrichies avec color_details + displayName
-âœ… analyse_colorimetrique_detaillee INCLUSE avec impact_visuel (snake_case)
+PDF Data Mapper v5.2 - COMPLET AVEC FIX PAGES 9-15
+✅ Garde logique complète (895 lignes)
+✅ FIX SCALPEL ligne 558-795: Utilise les VRAIES recommendations OpenAI
+✅ Plus de contenu hardcodé "Pièce 1, Pièce 2"
 """
 
 from typing import Dict, Any, Optional, List
@@ -18,12 +13,12 @@ from app.services.visuals import visuals_service
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
     
-    # âœ… DISPLAY NAMES: Conversion name â†’ displayName (accent-safe, backend only)
+    # DISPLAY NAMES
     DISPLAY_NAMES = {
         "rose_pale": "Rose Pâle",
         "rose_fuchsia": "Rose Fuchsia",
         "rose_corail": "Rose Corail",
-        "peche": "PÀªche",
+        "peche": "Pêche",
         "terre_sienne": "Terre de Sienne",
         "ocre_jaune": "Ocre Jaune",
         "olive_drab": "Olive Drab",
@@ -46,9 +41,8 @@ class PDFDataMapper:
         "rouille": "Rouille",
     }
     
-    # âœ… COLOR_HEX_MAP GLOBAL - 40+ couleurs (palette + associations + fallback)
+    # COLOR_HEX_MAP GLOBAL
     COLOR_HEX_MAP = {
-        # PALETTE AUTOMNE
         "#E1AD01": {"name": "moutarde", "displayName": "Moutarde"},
         "#B87333": {"name": "cuivre", "displayName": "Cuivre"},
         "#808000": {"name": "olive", "displayName": "Olive"},
@@ -61,8 +55,6 @@ class PDFDataMapper:
         "#CD7F32": {"name": "bronze", "displayName": "Bronze"},
         "#B7410E": {"name": "rouille", "displayName": "Rouille"},
         "#CB4154": {"name": "brique", "displayName": "Brique"},
-        
-        # COULEURS GÀ‰NÀ‰RIQUES
         "#FF0000": {"name": "rouge", "displayName": "Rouge"},
         "#0000FF": {"name": "bleu", "displayName": "Bleu"},
         "#FFFF00": {"name": "jaune", "displayName": "Jaune"},
@@ -74,18 +66,12 @@ class PDFDataMapper:
         "#808080": {"name": "gris", "displayName": "Gris"},
         "#F5F5DC": {"name": "beige", "displayName": "Beige"},
         "#8B4513": {"name": "marron", "displayName": "Marron"},
-        
-        # ROSES & CORAIL
         "#FFB6C1": {"name": "rose_pale", "displayName": "Rose Pâle"},
         "#FF1493": {"name": "rose_fuchsia", "displayName": "Rose Fuchsia"},
         "#FF7F50": {"name": "rose_corail", "displayName": "Rose Corail"},
-        
-        # MARINES & AUTRES
         "#000080": {"name": "marine", "displayName": "Marine"},
         "#800020": {"name": "bordeaux", "displayName": "Bordeaux"},
         "#40E0D0": {"name": "turquoise", "displayName": "Turquoise"},
-        
-        # MOINS COURANTS
         "#D4AF76": {"name": "doré_clair", "displayName": "Doré Clair"},
         "#8B8589": {"name": "gris_taupe", "displayName": "Gris Taupe"},
         "#228B22": {"name": "vert_fonce", "displayName": "Vert Foncé"},
@@ -98,7 +84,6 @@ class PDFDataMapper:
         "#F4A460": {"name": "orange_sable", "displayName": "Orange Sablé"},
     }
     
-    # âœ… REVERSE MAPPING: name â†’ hex (pour chercher par nom)
     COLOR_NAME_MAP = {
         color_info["name"]: hex_code
         for hex_code, color_info in COLOR_HEX_MAP.items()
@@ -106,20 +91,16 @@ class PDFDataMapper:
     
     @staticmethod
     def generate_display_name(color_name: str) -> str:
-        """Génère displayName depuis name OpenAI"""
+        """Génère displayName depuis name"""
         if not color_name:
             return ""
-        
-        # Vérifier mapping custom
         if color_name.lower() in PDFDataMapper.DISPLAY_NAMES:
             return PDFDataMapper.DISPLAY_NAMES[color_name.lower()]
-        
-        # Sinon: capitaliser simple
         return color_name.replace("_", " ").title()
     
     @staticmethod
     def enrich_with_display_names(items: List[dict]) -> List[dict]:
-        """Ajoute displayName À  une liste de couleurs"""
+        """Ajoute displayName à une liste"""
         for item in items:
             if "name" in item and "displayName" not in item:
                 item["displayName"] = PDFDataMapper.generate_display_name(item["name"])
@@ -141,18 +122,14 @@ class PDFDataMapper:
     
     @staticmethod
     def _build_all_colors_with_notes(notes_compatibilite: dict) -> list:
-        """Transforme notesCompatibilite (dict) en allColorsWithNotes (list)"""
+        """Transforme notes_compatibilite en allColorsWithNotes"""
         all_colors = []
         
         for color_name, color_data in notes_compatibilite.items():
             if isinstance(color_data, dict):
                 try:
                     note = int(color_data.get("note", 0)) if isinstance(color_data.get("note"), str) else color_data.get("note", 0)
-                    
-                    # Chercher hex code
-                    hex_code = PDFDataMapper.COLOR_NAME_MAP.get(color_name)
-                    if not hex_code:
-                        hex_code = "#808080"  # Fallback gris
+                    hex_code = PDFDataMapper.COLOR_NAME_MAP.get(color_name, "#808080")
                     
                     color_obj = {
                         "name": color_name,
@@ -163,28 +140,24 @@ class PDFDataMapper:
                     }
                     all_colors.append(color_obj)
                 except Exception as e:
-                    print(f"âš ï¸ Erreur parsing couleur {color_name}: {e}")
+                    print(f"⚠️ Erreur parsing couleur {color_name}: {e}")
                     continue
         
-        # Trier par note décroissante
         all_colors.sort(key=lambda x: x["note"], reverse=True)
         return all_colors
     
     @staticmethod
     def _enrich_associations_with_colors(associations: list, palette: list) -> list:
-        """Enrichit associations avec color_details + displayName"""
+        """Enrichit associations avec color_details"""
         enriched = []
         
         for assoc in associations:
-            # Gérer les deux formats possibles: "colors" ou "color_hex"
             hex_codes = assoc.get("color_hex", assoc.get("colors", []))
             color_names = assoc.get("colors", [])
             color_details = []
             
-            # Si color_hex existe, l'utiliser
             if assoc.get("color_hex"):
                 for i, hex_code in enumerate(hex_codes):
-                    # Chercher dans palette
                     found = None
                     for color in palette:
                         if color.get("hex") == hex_code:
@@ -195,7 +168,6 @@ class PDFDataMapper:
                             }
                             break
                     
-                    # Fallback COLOR_HEX_MAP
                     if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
                         color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
                         found = {
@@ -204,7 +176,6 @@ class PDFDataMapper:
                             "hex": hex_code,
                         }
                     
-                    # Ultra-fallback: utiliser le nom de la liste colors si dispo
                     if not found:
                         name = color_names[i] if i < len(color_names) else hex_code
                         found = {
@@ -215,7 +186,6 @@ class PDFDataMapper:
                     
                     color_details.append(found)
             else:
-                # Sinon, utiliser les noms de couleurs
                 for name in color_names:
                     hex_code = PDFDataMapper.COLOR_NAME_MAP.get(name.lower(), "#808080")
                     found = {
@@ -236,23 +206,20 @@ class PDFDataMapper:
     
     @staticmethod
     def _transform_nail_colors(nail_colors_hex: list, palette: list) -> list:
-        """Transforme nail colors (objets OpenAI {displayName, hex} ou strings hex) en objets complets"""
+        """Transforme nail colors en objets complets"""
         transformed = []
         
         for item in nail_colors_hex:
-            # Extraire hex et displayName selon format (objet OpenAI ou string)
             if isinstance(item, dict):
                 hex_code = item.get("hex", "")
                 original_display_name = item.get("displayName", "")
             else:
-                # Fallback pour legacy (strings)
                 hex_code = item
                 original_display_name = ""
             
             if not hex_code:
                 continue
                 
-            # Chercher dans palette
             found = None
             for color in palette:
                 if color.get("hex") == hex_code:
@@ -263,7 +230,6 @@ class PDFDataMapper:
                     }
                     break
             
-            # Fallback COLOR_HEX_MAP
             if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
                 color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
                 found = {
@@ -272,7 +238,6 @@ class PDFDataMapper:
                     "hex": hex_code,
                 }
             
-            # Ultra-fallback
             if not found:
                 found = {
                     "name": original_display_name or hex_code,
@@ -286,52 +251,40 @@ class PDFDataMapper:
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
-        """Prépare variables Liquid pour PDFMonkey - SNAKE_CASE pour template"""
+        """Prépare variables Liquid pour PDFMonkey"""
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling", {}))
         
-        # âœ… Page 8 & Pages 9-15
+        # Page 8 & Pages 9-15
         morphology_page1 = PDFDataMapper._transform_morphology_service_data(morphology_raw, user_data)
         morpho_categories = PDFDataMapper._generate_morphology_categories(morphology_raw, user_data)
 
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # COLORIMETRY - Enrichir displayName + unwanted_colors
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        # COLORIMETRY
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee", []))
         palette = PDFDataMapper.enrich_with_display_names(palette)
-        # 🎨 TRIER LA PALETTE PAR NOTE (meilleure à pire)
         palette = sorted(palette, key=lambda x: x.get("note", 0), reverse=True)
         
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
-        
-        # ✅ FORCE: Toujours construire allColorsWithNotes depuis notes_compatibilite
-        # (pas depuis OpenAI qui retourne la mauvaise liste)
         all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
-        # Enrichir avec displayName
         all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
         associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes", []))
         associations = PDFDataMapper._enrich_associations_with_colors(associations, palette)
         
-        # âœ… NOUVEAU: Unwanted colors
         unwanted_colors = PDFDataMapper._safe_list(colorimetry_raw.get("unwanted_colors", []))
         unwanted_colors = PDFDataMapper.enrich_with_display_names(unwanted_colors)
         
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees", {}))
         
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # MAKEUP - Depuis colorimetry.guide_maquillage
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        # MAKEUP
         guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
         shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
         
-        # Transform nailColors
         raw_nail_colors = PDFDataMapper._safe_list(colorimetry_raw.get("nailColors", []))
         nail_colors_transformed = PDFDataMapper._transform_nail_colors(raw_nail_colors, palette)
         
-        # Map keys exactes attendues par template
         makeup_mapping = {
             "foundation": guide_maquillage_raw.get("teint", ""),
             "blush": guide_maquillage_raw.get("blush", ""),
@@ -348,13 +301,10 @@ class PDFDataMapper:
             "nailColors": nail_colors_transformed,
         }
         
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # ANALYSE COLORIMETRIQUE - GARDER SNAKE_CASE pour template!
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        # ANALYSE COLORIMETRIQUE
         analyse_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("analyse_colorimetrique_detaillee", {}))
         impact_visuel_raw = PDFDataMapper._safe_dict(analyse_raw.get("impact_visuel", {}))
         
-        # âœ… GARDER snake_case pour correspondre au template PDFMonkey
         analyse_snake = {
             "temperature": analyse_raw.get("temperature", ""),
             "valeur": analyse_raw.get("valeur", ""),
@@ -373,18 +323,10 @@ class PDFDataMapper:
             }
         }
         
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # MORPHOLOGY
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         hauts_visuals = PDFDataMapper._safe_list(morphology_raw.get("hauts_visuals", []))
-        
         priorite_1 = PDFDataMapper._safe_list(shopping_raw.get("priorite_1", []))
         priorite_2 = PDFDataMapper._safe_list(shopping_raw.get("priorite_2", []))
         eviter = PDFDataMapper._safe_list(shopping_raw.get("eviter_absolument", []))
-        
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # CONSTRUIRE STRUCTURE LIQUID - âœ… SNAKE_CASE pour template!
-        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         
         liquid_data = {
             "user": {
@@ -395,27 +337,21 @@ class PDFDataMapper:
                 "weight": user_data.get("weight", ""),
                 "facePhotoUrl": user_data.get("face_photo_url", ""),
                 "bodyPhotoUrl": user_data.get("body_photo_url", ""),
-                "clothingSize": user_data.get("clothing_size", ""),  # ✅ AJOUTÉ
+                "clothingSize": user_data.get("clothing_size", ""),
             },
             
-            # âœ… CORRIGÀ‰: Utiliser snake_case pour correspondre au template PDFMonkey
             "colorimetry": {
-                # âœ… snake_case pour template
                 "saison_confirmee": colorimetry_raw.get("saison_confirmee", ""),
                 "sous_ton_detecte": colorimetry_raw.get("sous_ton_detecte", ""),
                 "eye_color": colorimetry_raw.get("eye_color", user_data.get("eye_color", "")),
                 "hair_color": colorimetry_raw.get("hair_color", user_data.get("hair_color", "")),
-                
-                # âœ… snake_case pour template
                 "palette_personnalisee": palette,
                 "notes_compatibilite": notes_compatibilite,
-                "allColorsWithNotes": all_colors_with_notes,  # Celui-ci est camelCase dans le template
+                "allColorsWithNotes": all_colors_with_notes,
                 "unwanted_colors": unwanted_colors,
                 "alternatives_couleurs": alternatives,
                 "associations_gagnantes": associations,
                 "analyse_colorimetrique_detaillee": analyse_snake,
-                
-                # âœ… Aussi garder pour récap page 20
                 "season": colorimetry_raw.get("saison_confirmee", ""),
                 "topColors": ", ".join([c.get("displayName", c.get("name", "")) for c in palette[:4]]) if palette else "",
             },
@@ -428,9 +364,8 @@ class PDFDataMapper:
                 "eviterAbsolument": eviter,
             },
             
-             "morphology_page1": morphology_page1,
+            "morphology_page1": morphology_page1,
             
-            # âœ… Pour récap page 20
             "morphology": {
                 "bodyType": morphology_raw.get("silhouette_type", ""),
                 "objectiveShort": morphology_raw.get("objective_comment", "")[:50] + "..." if morphology_raw.get("objective_comment") else "",
@@ -440,7 +375,6 @@ class PDFDataMapper:
                 "categories": morpho_categories,
             },
             
-            # ✅ NOUVEAU - Highlights/Minimizes pour page 8
             "morphology_highlights": morphology_raw.get("highlights", {
                 "announcement": "",
                 "explanation": ""
@@ -480,13 +414,11 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"âœ… Mapper v5.1 (snake_case) complet:")
-        print(f"   âœ“ Palette: {len(palette)} + displayName")
-        print(f"   âœ“ AllColorsWithNotes: {len(all_colors_with_notes)} couleurs")
-        print(f"   âœ“ Associations: {len(associations)} enrichies")
-        print(f"   âœ“ Unwanted colors: {len(unwanted_colors)} traitées")
-        print(f"   âœ“ Ongles: {len(nail_colors_transformed)} détaillés")
-        print(f"   âœ“ Analyse: snake_case + impact_visuel")
+        print(f"\n✅ Mapper v5.2 (avec vraies recommendations):")
+        print(f"   ✓ Palette: {len(palette)} couleurs")
+        print(f"   ✓ AllColorsWithNotes: {len(all_colors_with_notes)} couleurs")
+        print(f"   ✓ Associations: {len(associations)} enrichies")
+        print(f"   ✓ Morpho categories: {list(morpho_categories.keys())}")
         
         return liquid_data
     
@@ -549,340 +481,62 @@ class PDFDataMapper:
     @staticmethod
     def _generate_morphology_categories(morphology_raw: dict, user_data: dict) -> dict:
         """
-        Génère données pour Pages 9-15 (7 catégories vestimentaires)
-        Contenu adapté À  la silhouette détectée
-        âœ… ENRICHI: Chaque recommandation inclut visual_url et visual_key
-        âœ… DEBUG: Affiche si les visuels sont chargés
+        ✅ v5.2 FIXED: Utilise les VRAIES recommendations d'OpenAI Part 2
+        Récupère hauts, bas, robes, vestes, etc. depuis morphology_raw.get("recommendations")
         """
         
         silhouette_type = morphology_raw.get("silhouette_type", "O")
-        styling_objectives = PDFDataMapper._safe_list(morphology_raw.get("styling_objectives", []))
-        body_parts_to_highlight = PDFDataMapper._safe_list(morphology_raw.get("body_parts_to_highlight", []))
         
-        if silhouette_type == "O":
-            # âœ… Structure de base (COMPLÀˆTE - voir fichiers précédents)
-            categories_data = {
-                "hauts": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent créer de la verticalité et époucer légèrement. Privilégiez les encolures en V et les matières fluides.",
-                    "recommandes": [
-                        {"name": "Encolure en V", "why": "Allonge le cou et crée une verticalité immédiate"},
-                        {"name": "Manches raglan ou kimono", "why": "Harmonise les épaules et allonge le buste"},
-                        {"name": "Coupes ceinturées", "why": "Marque la taille et crée de la définition"},
-                        {"name": "Matières fluides (soie, coton léger)", "why": "À‰pousent sans serrer, créent de la fluidité"},
-                        {"name": "Rayures verticales", "why": "Allongent et structurent visuellement"},
-                        {"name": "Couches et superpositions", "why": "Créent de la profondeur et du relief"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Col roulé très serré", "why": "À‰crase le cou et raccourcit le buste"},
-                        {"name": "Polos stretch très ajustés", "why": "Accentuent le volume au centre"},
-                        {"name": "Volumes excessifs au buste", "why": "Ajoutent de la masse lÀ  oÀ¹ il faut minimiser"},
-                        {"name": "Matières rigides (denim épais)", "why": "Figent la silhouette et manquent de fluidité"},
-                        {"name": "Rayures horizontales larges", "why": "À‰largissent visuellement la silhouette"},
-                    ],
-                    "matieres": "Privilégier les matières fluides (soie, coton peigné, lin mélangé, jersey fin) qui épousent sans serrer. Les mailles structurantes de bonne qualité créent une belle verticalité. À‰viter le denim rigide, la toile épaisse et les tissus qui marquent trop.",
-                    "motifs": {
-                        "recommandes": "Rayures verticales, losanges verticaux, petits motifs discrets, dégradés, détails au niveau de l'encolure ou des épaules",
-                        "a_eviter": "Rayures horizontales, gros motifs répétitifs, pois, carreaux, imprimés trop volumineux au centre"
-                    },
-                    "pieges": [
-                        "Ourlets qui coupent la silhouette À  la mauvaise hauteur (casser la verticalité)",
-                        "Encolures asymétriques qui perturbent l'équilibre",
-                        "NÅ“uds ou fronces au niveau du buste qui accentuent",
-                        "Bandes stretch trop visibles qui marquent",
-                        "Matières brillantes au mauvais endroit (À  éviter au centre)",
-                        "Coutures épaisses qui cassent les lignes",
-                        "Ceintures trop larges qui écrasent plutôt que définissent"
-                    ],
-                    "visuels": []
-                },
-                "bas": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les bas doivent allonger les jambes et créer une transition fluide. Privilégiez les tailles hautes et les coupes qui épousent légèrement.",
-                    "recommandes": [
-                        {"name": "Tailles hautes", "why": "Allongent les jambes et structurent la silhouette"},
-                        {"name": "Coupes droites ou évasées", "why": "À‰pousent légèrement sans serrer, allongent les proportions"},
-                        {"name": "Jupes crayon ou portefeuille", "why": "Marquent la taille et créent de la définition"},
-                        {"name": "Longueurs midi ou cheville", "why": "Allongent les jambes et créent une fluidité"},
-                        {"name": "Rayures verticales", "why": "Créent une illusion d'optique d'allongement"},
-                        {"name": "Matières fluides (soie, coton léger)", "why": "Bougent naturellement et flattent les formes"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Tailles basses", "why": "Raccourcissent les jambes et élargissent visuellement"},
-                        {"name": "Baggy ou sursize au niveau des hanches", "why": "Ajoutent du volume lÀ  oÀ¹ il faut harmoniser"},
-                        {"name": "Coupes moulantes excessives", "why": "Accentuent chaque détail du corps"},
-                        {"name": "Ceintures très larges", "why": "À‰crasent et figent la taille"},
-                        {"name": "Rayures horizontales", "why": "À‰largissent visuellement les jambes"},
-                    ],
-                    "matieres": "Privilégier les matières fluides et élastiques (coton stretch, lin mélangé, jersey) qui épousent légèrement. À‰viter le denim trop rigide. Les matières mats valorisent plus que les brillants.",
-                    "motifs": {
-                        "recommandes": "Rayures verticales, motifs discrets, petits imprimés, dégradés unis, placement horizontal au niveau des chevilles",
-                        "a_eviter": "Rayures horizontales, gros motifs répétitifs, pois, carreaux volumineux, imprimés trop clairs qui élargissent"
-                    },
-                    "pieges": [
-                        "Longueur qui coupe la jambe À  la mauvaise hauteur",
-                        "Ourlets trop courts qui cassent les proportions",
-                        "Poches trop voluminuses qui élargissent les hanches",
-                        "Ceintures trop serrées qui marquent",
-                        "Zip ou fermetures mal placées qui accentuent",
-                        "Matières trop épaisses au niveau des hanches",
-                        "Braguette ou surpiqÀ»res qui accentuent"
-                    ],
-                    "visuels": []
-                },
-                "robes": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les robes doivent époucer légèrement et marquer la taille. Privilégiez les coupes portefeuille et les ceintures qui définissent.",
-                    "recommandes": [
-                        {"name": "Robes portefeuille", "why": "Marquent la taille et s'adaptent À  tous les types de silhouette"},
-                        {"name": "Ceintures intégrées ou accessoires", "why": "Définissent la taille et créent des proportions équilibrées"},
-                        {"name": "Longueurs midi À  cheville", "why": "Allongent et créent une fluidité élégante"},
-                        {"name": "Encolures en V ou cache-cÅ“ur", "why": "Allongent le buste et le cou"},
-                        {"name": "Matières fluides", "why": "Bougent naturellement et flattent la silhouette"},
-                        {"name": "Robes cache-cÅ“ur", "why": "Marquent la taille et valorisent le buste"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Robes trop amples", "why": "Ajoutent du volume et épaississent"},
-                        {"name": "Ceintures trop larges non intégrées", "why": "Peuvent écraser plutôt que définir"},
-                        {"name": "Coupes droites sans définition", "why": "N'épousent pas assez et aplatissent"},
-                        {"name": "Longueurs courtes", "why": "Raccourcissent les jambes et perturbent l'équilibre"},
-                        {"name": "Col roulé très serré", "why": "À‰crase le cou et le buste"},
-                    ],
-                    "matieres": "Privilégier les matières fluides structurantes (soie, crÀªpe, coton peigné) qui épousent sans serrer. À‰viter les matières trop rigides qui ne flattent pas les courbes.",
-                    "motifs": {
-                        "recommandes": "Rayures verticales, motifs discrets, petits imprimés géométriques, dégradés, détails au niveau de la taille",
-                        "a_eviter": "Rayures horizontales, gros motifs centrés au buste, pois volumineux, carreaux qui élargissent"
-                    },
-                    "pieges": [
-                        "Ourlet qui coupe la jambe À  la mauvaise hauteur",
-                        "Trop de volume au buste",
-                        "Ceintures mal positionnées",
-                        "Matières brillantes qui soulignent les zones À  harmoniser",
-                        "Fermetures éclair ou détails qui accentuent",
-                        "Encolures trop hautes",
-                        "Longueurs qui figent plutôt que de créer de la fluidité"
-                    ],
-                    "visuels": []
-                },
-                "vestes": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les vestes doivent structurer et créer de la verticalité. Privilégiez les coupes ajustées avec une ceinture ou des détails qui définissent.",
-                    "recommandes": [
-                        {"name": "Vestes cintrées", "why": "Marquent la taille et créent une définition immédiate"},
-                        {"name": "Ceintures intégrées", "why": "Structurent sans ajouter de volume"},
-                        {"name": "Longueurs qui arrivent À  la taille ou légèrement plus bas", "why": "Allongent et définissent les proportions"},
-                        {"name": "À‰paulettes subtiles", "why": "Harmonisent les épaules sans surcharger"},
-                        {"name": "Manteaux fluides", "why": "Bougent naturellement et créent de l'élégance"},
-                        {"name": "Coutures verticales", "why": "Créent des lignes qui allongent"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Vestes trop amples", "why": "Ajoutent du volume et épaississent"},
-                        {"name": "Longueurs qui arrivent aux hanches", "why": "Accentuent le volume et raccourcissent"},
-                        {"name": "Ceintures très larges", "why": "Peuvent écraser plutôt que définir"},
-                        {"name": "À‰paulettes excessives", "why": "À‰largissent les épaules"},
-                        {"name": "Matières trop rigides", "why": "Figent la silhouette"},
-                    ],
-                    "matieres": "Privilégier les matières semi-rigides (laine, lin, coton structurant) qui tiennent bien. Les matières fluides avec doublure créent une belle ligne. À‰viter les matières trop épaisses.",
-                    "motifs": {
-                        "recommandes": "Rayures verticales subtiles, motifs discrets, uni de qualité, petits carreaux fins",
-                        "a_eviter": "Rayures horizontales, gros carreaux, motifs volumineux, imprimés qui élargissent"
-                    },
-                    "pieges": [
-                        "Longueur qui coupe mal le corps",
-                        "Fermeture ou boutonnage mal aligné",
-                        "Poches trop voluminuses qui élargissent les hanches",
-                        "Ceintures mal positionnées",
-                        "À‰paulettes trop marquées",
-                        "Doublure qui montre et ajoute du volume",
-                        "Coutures asymétriques"
-                    ],
-                    "visuels": []
-                },
-                "maillot_lingerie": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, confort et confiance sont essentiels. Choisissez des coupes et soutiens adaptés qui vous mettent en valeur.",
-                    "recommandes": [
-                        {"name": "Soutiens-gorge structurants avec maintien", "why": "Créent une belle forme et du confort"},
-                        {"name": "Maillots de bain avec motifs au niveau du buste", "why": "Valorisent et créent du relief"},
-                        {"name": "Ceintures gaines douces", "why": "Lissent légèrement sans comprimer"},
-                        {"name": "Matières stretch confortables", "why": "À‰pousent naturellement et confortablement"},
-                        {"name": "Coupes cache-cÅ“ur", "why": "Flattent et créent de la féminité"},
-                        {"name": "Lanières verticales", "why": "Créent une illusion d'allongement"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Soutiens-gorge trop serrés", "why": "Créent de l'inconfort et des marques"},
-                        {"name": "Matières rigides", "why": "Ne s'adaptent pas À  votre corps"},
-                        {"name": "Maillots de bain trop amples", "why": "Ajoutent du volume"},
-                        {"name": "Coutures mal placées", "why": "Peuvent marquer ou créer des gonflements"},
-                    ],
-                    "matieres": "Privilégier les matières stretch de qualité (coton bio, microfibre, nylon). Les doublures douces et les ceintures gaines discrètes offrent confort et confiance.",
-                    "motifs": {
-                        "recommandes": "Rayures verticales, petits motifs, dégradés, uni de qualité, motifs au niveau du buste",
-                        "a_eviter": "Rayures horizontales, gros motifs au centre, couleurs trop claires au niveau du buste"
-                    },
-                    "pieges": [
-                        "Soutiens-gorge mal calibrés",
-                        "Matières qui glissent ou se déplacent",
-                        "Coutures épaisses qui marquent",
-                        "Doublures insuffisantes",
-                        "À‰lastiques trop serrés",
-                        "Gaines qui compriment excessivement",
-                        "Motifs mal placés"
-                    ],
-                    "visuels": []
-                },
-                "chaussures": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les chaussures affinent ou élargissent. Choisissez les formes qui allongent et créent de l'élégance.",
-                    "recommandes": [
-                        {"name": "Chaussures À  talon fin", "why": "Affinent la cheville et allongent les jambes"},
-                        {"name": "Escarpins pointus", "why": "Créent une ligne allongée et élégante"},
-                        {"name": "Bottines À  talon", "why": "Allongent les jambes et structurent"},
-                        {"name": "Chaussures aux teintes proches de la peau", "why": "Allongent visuellement les jambes"},
-                        {"name": "Chaussures avec détails verticaux", "why": "Créent une ligne qui affine"},
-                        {"name": "Matières nobles (cuir, daim)", "why": "Créent une ligne nette et reflet la lumière"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Chaussures plates et larges", "why": "Raccourcissent les jambes"},
-                        {"name": "Bottines trop molles", "why": "À‰largissent les chevilles"},
-                        {"name": "Chaussures arrondies trop larges", "why": "À‰paississent les pieds"},
-                        {"name": "Sandales très échancrées", "why": "Peuvent raccourcir la jambe"},
-                        {"name": "Matières molles qui s'affaissent", "why": "Déforment et perdent leur allure"},
-                    ],
-                    "matieres": "Privilégier les matières nobles (cuir, daim, matières brillantes) qui reflètent la lumière et créent une ligne nette. À‰viter les matières molles qui s'affaissent.",
-                    "motifs": {
-                        "recommandes": "Couleurs unies, finitions brillantes, matières qui reflètent la lumière",
-                        "a_eviter": "Matières trop épaisses, couleurs très contrastées, surcharges de détails"
-                    },
-                    "pieges": [
-                        "Talons trop bas ou nuls",
-                        "Largeur mal adaptée À  vos pieds",
-                        "Hauteur de tige qui coupe mal la jambe",
-                        "Matières qui se déforment",
-                        "Couleurs qui tranchent trop",
-                        "Semelles visibles mal alignées",
-                        "Détails qui élargissent"
-                    ],
-                    "visuels": []
-                },
-                "accessoires": {
-                    "introduction": f"Pour votre silhouette {silhouette_type}, les accessoires finissent la tenue avec élégance. Privilégiez les pièces qui créent de la verticalité et de la proportion.",
-                    "recommandes": [
-                        {"name": "Ceintures fines ou moyennes", "why": "Définissent la taille sans ajouter de volume"},
-                        {"name": "Sacs de taille moyenne", "why": "Créent de l'équilibre sans ajouter du poids visuel"},
-                        {"name": "Bijoux verticaux (colliers longs, créoles)", "why": "Allongent le cou et le buste"},
-                        {"name": "Foulards (port long)", "why": "Créent de la verticalité et de la fluidité"},
-                        {"name": "Capes légères", "why": "Créent des lignes épurées et élégantes"},
-                        {"name": "Accessoires discrets de qualité", "why": "Valorisent sans surcharger"},
-                    ],
-                    "a_eviter": [
-                        {"name": "Ceintures très larges", "why": "À‰crasent plutôt que définissent"},
-                        {"name": "Sacs trop volumineux", "why": "Ajoutent du poids visuel"},
-                        {"name": "Bijoux trop lourds ou trop gros", "why": "À‰crasent le haut du corps"},
-                        {"name": "Foulards port court ou dense", "why": "À‰largissent le cou"},
-                        {"name": "Surcharge d'accessoires", "why": "Perturbent l'équilibre"},
-                    ],
-                    "matieres": "Privilégier les matières nobles (cuir, soie, matières brillantes) qui reflètent l'élégance. Les finitions douces et les textures qualitatives créent un effet raffiné.",
-                    "motifs": {
-                        "recommandes": "Motifs discrets, couleurs uni de qualité, rayures verticales subtiles, géométries fines",
-                        "a_eviter": "Motifs volumineux, couleurs trop criardes, surcharges de détails, motifs qui élargissent"
-                    },
-                    "pieges": [
-                        "Ceintures mal positionnées",
-                        "Sacs qui pèsent trop lourd d'un côté",
-                        "Bijoux mal proportionnés",
-                        "Foulards qui rétrécissent",
-                        "Accessoires de mauvaise qualité",
-                        "Surcharge d'accessoires",
-                        "Matières brillantes mal placées"
-                    ],
-                    "visuels": []
-                },
-            }
-            
-            # âœ… ENRICHIR CHAQUE CATÀ‰GORIE AVEC LES VISUELS
-            print("\nðŸŽ¨ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•")
-            print("ðŸŽ¨ ENRICHISSEMENT VISUELS - DÀ‰BUT")
-            print("ðŸŽ¨ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•")
-            
-            for category_name, category_data in categories_data.items():
-                print(f"\nðŸ“ Catégorie: {category_name}")
-                
-                # Enrichir recommandations avec visuels
-                enriched_recommandes = visuals_service.fetch_visuals_for_category(
-                    category_name,
-                    category_data.get("recommandes", [])
-                )
-                category_data["recommandes"] = enriched_recommandes
-                
-                # âœ… DEBUG: AFFICHER LES VISUELS ENRICHIS (RECOMMANDÀ‰S)
-                print(f"   âœ… Recommandées enrichies: {len(enriched_recommandes)} items")
-                for i, item in enumerate(enriched_recommandes[:2]):
-                    visual_url = item.get("visual_url", "VIDE")
-                    visual_key = item.get("visual_key", "N/A")
-                    url_status = "âœ…" if visual_url else "âŒ"
-                    print(f"      {url_status} Item {i}: '{item.get('name')}' â†’ visual_url: {visual_url[:50] if visual_url else 'VIDE'}... | key: {visual_key}")
-                
-                # Enrichir aussi les À  éviter
-                enriched_a_eviter = visuals_service.fetch_visuals_for_category(
-                    category_name,
-                    category_data.get("a_eviter", [])
-                )
-                category_data["a_eviter"] = enriched_a_eviter
-                
-                # âœ… DEBUG: AFFICHER LES VISUELS ENRICHIS (À€ À‰VITER)
-                print(f"   âš ï¸ À€ éviter enrichies: {len(enriched_a_eviter)} items")
-                for i, item in enumerate(enriched_a_eviter[:2]):
-                    visual_url = item.get("visual_url", "VIDE")
-                    visual_key = item.get("visual_key", "N/A")
-                    url_status = "âœ…" if visual_url else "âŒ"
-                    print(f"      {url_status} Item {i}: '{item.get('name')}' â†’ visual_url: {visual_url[:50] if visual_url else 'VIDE'}... | key: {visual_key}")
-            
-            print("\nðŸŽ¨ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•")
-            print("ðŸŽ¨ ENRICHISSEMENT VISUELS - FIN âœ…")
-            print("ðŸŽ¨ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n")
-            
-            return categories_data
+        # ✅ NOUVEAU: Récupérer les VRAIES recommendations d'OpenAI Part 2
+        openai_recommendations = PDFDataMapper._safe_dict(morphology_raw.get("recommendations", {}))
         
-        # Pour les autres silhouettes (reste du code identique...)
-        else:
-            generic_structure = {
-                "introduction": f"Pour votre silhouette {silhouette_type}, adaptez vos pièces À  votre morphologie unique.",
-                "recommandes": [
-                    {"name": "Pièce 1", "why": "Adapté À  votre silhouette", "visual_url": "", "visual_key": ""},
-                    {"name": "Pièce 2", "why": "Valorise vos atouts", "visual_url": "", "visual_key": ""},
-                    {"name": "Pièce 3", "why": "Crée l'harmonie", "visual_url": "", "visual_key": ""},
-                    {"name": "Pièce 4", "why": "Affine votre silhouette", "visual_url": "", "visual_key": ""},
-                    {"name": "Pièce 5", "why": "Crée de la fluidité", "visual_url": "", "visual_key": ""},
-                    {"name": "Pièce 6", "why": "Personnalise votre look", "visual_url": "", "visual_key": ""},
-                ],
-                "a_eviter": [
-                    {"name": "À€ éviter 1", "why": "Peut élargir", "visual_url": "", "visual_key": ""},
-                    {"name": "À€ éviter 2", "why": "Manque de fluidité", "visual_url": "", "visual_key": ""},
-                    {"name": "À€ éviter 3", "why": "Peut écaser", "visual_url": "", "visual_key": ""},
-                    {"name": "À€ éviter 4", "why": "Crée un déséquilibre", "visual_url": "", "visual_key": ""},
-                    {"name": "À€ éviter 5", "why": "Peut marquer", "visual_url": "", "visual_key": ""},
-                ],
-                "matieres": "Privilégiez les matières de qualité qui épousent votre silhouette sans contrainte. Choisissez des tissus nobles et fluides.",
-                "motifs": {
+        print("\n" + "="*80)
+        print("📊 UTILISATION RECOMMENDATIONS OPENAI PART 2")
+        print("="*80)
+        print(f"   • Silhouette: {silhouette_type}")
+        print(f"   • OpenAI recommendations trouvées: {list(openai_recommendations.keys())}")
+        
+        categories_data = {}
+        category_names = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
+        
+        for category_name in category_names:
+            # Récupérer depuis OpenAI s'il existe
+            openai_cat_data = openai_recommendations.get(category_name, {})
+            
+            # ✅ Créer la structure pour le template
+            categories_data[category_name] = {
+                "introduction": openai_cat_data.get("introduction", f"Pour votre silhouette {silhouette_type}, découvrez les pièces recommandées."),
+                "recommandes": PDFDataMapper._safe_list(openai_cat_data.get("recommandes", openai_cat_data.get("a_privilegier", []))),
+                "a_eviter": PDFDataMapper._safe_list(openai_cat_data.get("a_eviter", [])),
+                "matieres": openai_cat_data.get("matieres", "Privilégier les matières de qualité."),
+                "motifs": openai_cat_data.get("motifs", {
                     "recommandes": "Motifs discrets, rayures verticales, petits imprimés, dégradés",
                     "a_eviter": "Gros motifs, rayures horizontales, imprimés trop clairs"
-                },
-                "pieges": [
-                    "Mal évaluer votre taille réelle",
-                    "Choisir des longueurs qui coupent mal",
-                    "Surcharger avec des accessoires",
-                    "Négliger la qualité des matières",
-                    "Créer un déséquilibre visuel",
-                    "Forcer des coupes inadaptées",
-                    "Ignorer votre morphologie"
-                ],
+                }),
+                "pieges": PDFDataMapper._safe_list(openai_cat_data.get("pieges", [])),
                 "visuels": []
             }
             
-            return {
-                "hauts": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les hauts doivent valoriser vos atouts."},
-                "bas": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les bas doivent allonger et harmoniser."},
-                "robes": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les robes doivent créer une belle proportion."},
-                "vestes": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les vestes doivent structurer et élégancer."},
-                "maillot_lingerie": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, confort et confiance sont primordiaux."},
-                "chaussures": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les chaussures complètent votre look."},
-                "accessoires": {**generic_structure, "introduction": f"Pour votre silhouette {silhouette_type}, les accessoires finissent avec élégance."},
-            }
+            # ✅ Enrichir avec visuels si disponibles
+            recommandes = categories_data[category_name]["recommandes"]
+            a_eviter = categories_data[category_name]["a_eviter"]
+            
+            if recommandes:
+                print(f"\n   📌 {category_name}:")
+                print(f"      • {len(recommandes)} recommandés à enrichir")
+                enriched_recommandes = visuals_service.fetch_visuals_for_category(category_name, recommandes)
+                categories_data[category_name]["recommandes"] = enriched_recommandes
+            
+            if a_eviter:
+                print(f"      • {len(a_eviter)} à éviter à enrichir")
+                enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)
+                categories_data[category_name]["a_eviter"] = enriched_a_eviter
+        
+        print("\n" + "="*80)
+        print("✅ Morpho categories construites depuis OpenAI Part 2")
+        print("="*80 + "\n")
+        
+        return categories_data
 
     @staticmethod
     def map_report_to_pdfmonkey(report_data: dict, user_data: dict) -> dict:
