@@ -182,7 +182,7 @@ class MorphologyService:
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=800
+                max_tokens=2000  # ✅ Augmenté de 800 → 2000 pour éviter la troncature
             )
             print("✅ RÉPONSE REÇUE")
             
