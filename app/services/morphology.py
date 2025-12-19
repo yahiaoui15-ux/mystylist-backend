@@ -193,7 +193,7 @@ class MorphologyService:
             print(content_part2[:1000] if len(content_part2) > 1000 else content_part2)
             print("="*80)
             
-            # PARSING PART 2
+            # PARSING PART 2 - ULTRA-ROBUSTE
             print("\n🔍 PARSING JSON PART 2:")
             content_part2_clean = self.clean_json_string(content_part2)
             
@@ -203,16 +203,28 @@ class MorphologyService:
                 
             except json.JSONDecodeError as e:
                 print(f"   ❌ Erreur parsing JSON: {str(e)}")
-                json_match = re.search(r'\{.*\}', content_part2_clean, re.DOTALL)
+                print("   → Tentative extraction JSON brute avec regex...")
+                
+                # Extraction ultra-robuste : chercher {...}
+                json_match = re.search(r'\{[\s\S]*\}', content_part2_clean)
                 if json_match:
+                    json_str = json_match.group()
                     try:
-                        part2_result = json.loads(json_match.group())
-                        print("   ✅ Extraction JSON réussie!")
+                        part2_result = json.loads(json_str)
+                        print("   ✅ Extraction JSON simple réussie!")
                     except:
-                        print("   ❌ Extraction aussi échouée")
-                        part2_result = {}
+                        # Fallback ultieme: réparer les quotes non fermés
+                        print("   → Tentative réparation JSON...")
+                        json_str = self._repair_broken_json(json_str)
+                        try:
+                            part2_result = json.loads(json_str)
+                            print("   ✅ Réparation JSON réussie!")
+                        except:
+                            print("   ❌ Tous les essais échoués - génération fallback")
+                            part2_result = self._generate_default_recommendations(silhouette)
                 else:
-                    part2_result = {}
+                    print("   ❌ Pas de JSON trouvé - génération fallback")
+                    part2_result = self._generate_default_recommendations(silhouette)
             
             # ========================================================================
             # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
@@ -384,7 +396,68 @@ EXPLICATION: {explanation}"""
             "full_text": full_text
         }
     
-    def _format_minimizes_for_page8(self, parties: list, silhouette_explanation: str,
+    @staticmethod
+    def _repair_broken_json(json_str: str) -> str:
+        """Répare les JSON partiellement cassés"""
+        # Fermer les strings ouvertes
+        json_str = re.sub(r'"([^"]*?)$', r'"\1"', json_str, flags=re.MULTILINE)
+        
+        # Ajouter accolades fermantes manquantes
+        open_count = json_str.count('{')
+        close_count = json_str.count('}')
+        if open_count > close_count:
+            json_str += '}' * (open_count - close_count)
+        
+        return json_str
+    
+    def _generate_default_recommendations(self, silhouette: str) -> dict:
+        """Génère des recommandations par défaut si OpenAI échoue"""
+        print("   ✅ Génération recommandations par défaut")
+        
+        defaults = {
+            "A": {
+                "hauts": {
+                    "introduction": "Pour silhouette A, valorisez le haut du corps.",
+                    "a_privilegier": [
+                        {"cut_display": "Haut structuré", "why": "Crée du volume au haut"},
+                        {"cut_display": "Encolure V", "why": "Allonge le buste"},
+                        {"cut_display": "Col rond ajusté", "why": "Met en avant les épaules"},
+                        {"cut_display": "Haut échancré", "why": "Crée de la profondeur"},
+                        {"cut_display": "Manches montantes", "why": "Définit les épaules"},
+                        {"cut_display": "Peplum haut", "why": "Ajoute du volume au haut"},
+                    ],
+                    "a_eviter": [
+                        {"cut_display": "Haut moulant", "why": "Marque trop"},
+                        {"cut_display": "Tunique informe", "why": "Cache le haut"},
+                        {"cut_display": "Manches bouffantes", "why": "Peut élargir"},
+                        {"cut_display": "Col bateau", "why": "Élargit les épaules"},
+                        {"cut_display": "Haut oversize", "why": "Perd les proportions"},
+                    ]
+                },
+                "bas": {
+                    "introduction": "Pour silhouette A, affinez le bas.",
+                    "a_privilegier": [
+                        {"cut_display": "Jean taille haute", "why": "Allonge les jambes"},
+                        {"cut_display": "Pantalon droit", "why": "Équilibre les hanches"},
+                        {"cut_display": "Jupe évasée", "why": "Camoufle les hanches"},
+                        {"cut_display": "Legging taille haute", "why": "Affine le bas"},
+                        {"cut_display": "Pantalon flare", "why": "Crée la verticalité"},
+                        {"cut_display": "Jupe plissée", "why": "Structure le bas"},
+                    ],
+                    "a_eviter": [
+                        {"cut_display": "Pantalon moulant", "why": "Souligne les hanches"},
+                        {"cut_display": "Short court", "why": "Raccourcit les jambes"},
+                        {"cut_display": "Pantalon large", "why": "Élargit"},
+                        {"cut_display": "Jupe portefeuille", "why": "Accentue les hanches"},
+                        {"cut_display": "Motifs larges", "why": "Grossit visuellement"},
+                    ]
+                }
+            }
+        }
+        
+        result = defaults.get(silhouette, defaults.get("A"))
+        return {"recommendations": result}
+    
                                    onboarding_parties: list, openai_parties: list) -> dict:
         """
         Génère les minimizes pour Page 8
