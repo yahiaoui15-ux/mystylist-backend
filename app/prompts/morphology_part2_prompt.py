@@ -10,7 +10,7 @@ MORPHOLOGY PART 2 - RECOMMANDATIONS STYLING (OPTIMISÉ v11)
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """Vous êtes expert styling morphologique. Générez UNIQUEMENT JSON valide.
 Zéro texte avant/après le JSON. Commencez par { et terminez par }."""
 
-MORPHOLOGY_PART2_USER_PROMPT_TEMPLATE = """RECOMMANDATIONS STYLING - Silhouette {SILHOUETTE}
+MORPHOLOGY_PART2_USER_PROMPT = """RECOMMANDATIONS STYLING - Silhouette {SILHOUETTE}
 
 À valoriser: {TO_HIGHLIGHT}
 À minimiser: {TO_MINIMIZE}
