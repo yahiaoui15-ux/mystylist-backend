@@ -1,8 +1,10 @@
 """
-PDF Data Mapper v5.2 - COMPLET AVEC FIX PAGES 9-15
-✅ Garde logique complète (895 lignes)
-✅ FIX SCALPEL ligne 558-795: Utilise les VRAIES recommendations OpenAI
-✅ Plus de contenu hardcodé "Pièce 1, Pièce 2"
+PDF Data Mapper v5.3 - CORRIGÉ COMPLET
+✅ Pages 4, 5, 7 fixes
+✅ Utilise couleurs_generiques, couleurs_prudence, couleurs_eviter (déjà calculées par colorimetry)
+✅ Utilise makeup au lieu de guide_maquillage
+✅ Crée structure shopping vide
+✅ Morphologie: Pages 9-15 avec vraies recommendations
 """
 
 from typing import Dict, Any, Optional, List
@@ -163,95 +165,54 @@ class PDFDataMapper:
                         if color.get("hex") == hex_code:
                             found = {
                                 "name": color.get("name", ""),
-                                "displayName": color.get("displayName", PDFDataMapper.generate_display_name(color.get("name", ""))),
+                                "displayName": color.get("displayName", ""),
                                 "hex": hex_code,
                             }
                             break
                     
-                    if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
-                        color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
-                        found = {
-                            "name": color_info.get("name", ""),
-                            "displayName": color_info.get("displayName", ""),
-                            "hex": hex_code,
-                        }
-                    
-                    if not found:
-                        name = color_names[i] if i < len(color_names) else hex_code
-                        found = {
-                            "name": name,
-                            "displayName": PDFDataMapper.generate_display_name(name),
-                            "hex": hex_code,
-                        }
-                    
-                    color_details.append(found)
-            else:
-                for name in color_names:
-                    hex_code = PDFDataMapper.COLOR_NAME_MAP.get(name.lower(), "#808080")
-                    found = {
-                        "name": name,
-                        "displayName": PDFDataMapper.generate_display_name(name),
-                        "hex": hex_code,
-                    }
-                    color_details.append(found)
+                    if found:
+                        color_details.append(found)
             
-            enriched_assoc = {
-                **assoc,
-                "combo": hex_codes if assoc.get("color_hex") else color_names,
+            transformed = {
+                "occasion": assoc.get("occasion", ""),
+                "description": assoc.get("description", ""),
+                "colors": color_names,
+                "color_hex": hex_codes,
                 "color_details": color_details,
             }
-            enriched.append(enriched_assoc)
+            enriched.append(transformed)
         
         return enriched
     
     @staticmethod
-    def _transform_nail_colors(nail_colors_hex: list, palette: list) -> list:
-        """Transforme nail colors en objets complets"""
+    def _transform_nail_colors(nail_colors: list, palette: list) -> list:
+        """Transforme nail colors avec enrichissement"""
         transformed = []
         
-        for item in nail_colors_hex:
-            if isinstance(item, dict):
-                hex_code = item.get("hex", "")
-                original_display_name = item.get("displayName", "")
-            else:
-                hex_code = item
-                original_display_name = ""
-            
-            if not hex_code:
-                continue
+        for nail_color in nail_colors:
+            if isinstance(nail_color, dict):
+                hex_code = nail_color.get("hex", nail_color.get("color_hex", "#FF69B4"))
                 
-            found = None
-            for color in palette:
-                if color.get("hex") == hex_code:
+                found = None
+                for color in palette:
+                    if color.get("hex") == hex_code:
+                        found = color
+                        break
+                
+                if not found:
                     found = {
-                        "name": color.get("name", ""),
-                        "displayName": color.get("displayName", original_display_name),
+                        "name": nail_color.get("name", "Rose"),
+                        "displayName": PDFDataMapper.generate_display_name(nail_color.get("name", "Rose")),
                         "hex": hex_code,
                     }
-                    break
-            
-            if not found and hex_code in PDFDataMapper.COLOR_HEX_MAP:
-                color_info = PDFDataMapper.COLOR_HEX_MAP[hex_code]
-                found = {
-                    "name": color_info.get("name", ""),
-                    "displayName": color_info.get("displayName", original_display_name),
-                    "hex": hex_code,
-                }
-            
-            if not found:
-                found = {
-                    "name": original_display_name or hex_code,
-                    "displayName": original_display_name or hex_code,
-                    "hex": hex_code,
-                }
-            
-            transformed.append(found)
+                
+                transformed.append(found)
         
         return transformed
     
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
-        """Prépare variables Liquid pour PDFMonkey"""
+        """Prépare variables Liquid pour PDFMonkey - VERSION CORRIGÉE"""
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
@@ -261,44 +222,75 @@ class PDFDataMapper:
         morphology_page1 = PDFDataMapper._transform_morphology_service_data(morphology_raw, user_data)
         morpho_categories = PDFDataMapper._generate_morphology_categories(morphology_raw, user_data)
 
-        # COLORIMETRY
+        # ═══════════════════════════════════════════════════════════
+        # COLORIMETRY - CORRECTION COMPLÈTE PAGES 4, 5, 7
+        # ═══════════════════════════════════════════════════════════
+        
+        # ✅ PAGE 3: Palette personnalisée (10 couleurs top 8-10/10)
         palette = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee", []))
         palette = PDFDataMapper.enrich_with_display_names(palette)
         palette = sorted(palette, key=lambda x: x.get("note", 0), reverse=True)
         
+        # ✅ PAGE 4: Couleurs génériques (Bleu, Rouge, Jaune, etc. - 7-10/10)
+        # CORRECTION: Utiliser directement couleurs_generiques calculées par colorimetry
+        couleurs_generiques = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_generiques", []))
+        couleurs_generiques = PDFDataMapper.enrich_with_display_names(couleurs_generiques)
+        
+        # ✅ PAGE 5: Couleurs à manier avec prudence (4-6/10)
+        # CORRECTION: Utiliser directement couleurs_prudence calculées par colorimetry
+        couleurs_prudence = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_prudence", []))
+        couleurs_prudence = PDFDataMapper.enrich_with_display_names(couleurs_prudence)
+        
+        # ✅ PAGE 5: Couleurs à éviter (<4/10)
+        # CORRECTION: Utiliser directement couleurs_eviter calculées par colorimetry
+        couleurs_eviter = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
+        couleurs_eviter = PDFDataMapper.enrich_with_display_names(couleurs_eviter)
+        
+        # ✅ FALLBACK: notes_compatibilite + allColorsWithNotes (pour référence)
         notes_compatibilite = PDFDataMapper._safe_dict(colorimetry_raw.get("notes_compatibilite", {}))
         all_colors_with_notes = PDFDataMapper._build_all_colors_with_notes(notes_compatibilite)
         all_colors_with_notes = PDFDataMapper.enrich_with_display_names(all_colors_with_notes)
         
+        # ✅ PAGE 6: Associations de couleurs (occasions)
         associations = PDFDataMapper._safe_list(colorimetry_raw.get("associations_gagnantes", []))
         associations = PDFDataMapper._enrich_associations_with_colors(associations, palette)
         
+        # Couleurs refusées
         unwanted_colors = PDFDataMapper._safe_list(colorimetry_raw.get("unwanted_colors", []))
         unwanted_colors = PDFDataMapper.enrich_with_display_names(unwanted_colors)
         
         alternatives = PDFDataMapper._safe_dict(colorimetry_raw.get("alternatives_couleurs_refusees", {}))
         
-        # MAKEUP
-        guide_maquillage_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("guide_maquillage", {}))
-        shopping_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("shopping_couleurs", {}))
+        # ═══════════════════════════════════════════════════════════
+        # MAKEUP - CORRECTION PAGE 7
+        # ═══════════════════════════════════════════════════════════
+        # ✅ CORRIGÉ: Utiliser la structure makeup que colorimetry construit activement
+        makeup_raw = PDFDataMapper._safe_dict(colorimetry_raw.get("makeup", {}))
         
         raw_nail_colors = PDFDataMapper._safe_list(colorimetry_raw.get("nailColors", []))
         nail_colors_transformed = PDFDataMapper._transform_nail_colors(raw_nail_colors, palette)
         
         makeup_mapping = {
-            "foundation": guide_maquillage_raw.get("teint", ""),
-            "blush": guide_maquillage_raw.get("blush", ""),
-            "bronzer": guide_maquillage_raw.get("bronzer", ""),
-            "highlighter": guide_maquillage_raw.get("highlighter", ""),
-            "eyeshadows": guide_maquillage_raw.get("eyeshadows", ""),
-            "eyeliner": guide_maquillage_raw.get("eyeliner", ""),
-            "mascara": guide_maquillage_raw.get("mascara", ""),
-            "brows": guide_maquillage_raw.get("brows", ""),
-            "lipsNatural": guide_maquillage_raw.get("lipsNatural", ""),
-            "lipsDay": guide_maquillage_raw.get("lipsDay", ""),
-            "lipsEvening": guide_maquillage_raw.get("lipsEvening", ""),
-            "lipsAvoid": guide_maquillage_raw.get("lipsAvoid", ""),
+            "foundation": makeup_raw.get("foundation", ""),
+            "blush": makeup_raw.get("blush", ""),
+            "bronzer": makeup_raw.get("bronzer", ""),
+            "highlighter": makeup_raw.get("highlighter", ""),
+            "eyeshadows": makeup_raw.get("eyeshadows", ""),
+            "eyeliner": makeup_raw.get("eyeliner", ""),
+            "mascara": makeup_raw.get("mascara", ""),
+            "brows": makeup_raw.get("brows", ""),
+            "lipsNatural": makeup_raw.get("lipsNatural", ""),
+            "lipsDay": makeup_raw.get("lipsDay", ""),
+            "lipsEvening": makeup_raw.get("lipsEvening", ""),
+            "lipsAvoid": makeup_raw.get("lipsAvoid", ""),
             "nailColors": nail_colors_transformed,
+        }
+        
+        # ✅ NOUVEAU: Shopping structure (vide car non fourni par colorimetry)
+        shopping = {
+            "priorite1": [],
+            "priorite2": [],
+            "eviterAbsolument": [],
         }
         
         # ANALYSE COLORIMETRIQUE
@@ -318,25 +310,19 @@ class PDFDataMapper:
             "bloc_emotionnel": analyse_raw.get("bloc_emotionnel", analyse_raw.get("blocEmotionnel", "")),
             "impact_visuel": {
                 "effet_couleurs_chaudes": impact_visuel_raw.get("effet_couleurs_chaudes", impact_visuel_raw.get("effetCouleursChaudes", "")),
-                "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFroides", "")),
-                "pourquoi": impact_visuel_raw.get("pourquoi", ""),
+                "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFreides", "")),
             }
         }
         
-        hauts_visuals = PDFDataMapper._safe_list(morphology_raw.get("hauts_visuals", []))
-        priorite_1 = PDFDataMapper._safe_list(shopping_raw.get("priorite_1", []))
-        priorite_2 = PDFDataMapper._safe_list(shopping_raw.get("priorite_2", []))
-        eviter = PDFDataMapper._safe_list(shopping_raw.get("eviter_absolument", []))
-        
+        # BUILD LIQUID DATA
         liquid_data = {
             "user": {
-                "firstName": user_data.get("first_name", ""),
-                "lastName": user_data.get("last_name", ""),
+                "firstName": user_data.get("user_name", "").split()[0] if user_data.get("user_name") else "",
+                "lastName": user_data.get("user_name", "").split()[-1] if user_data.get("user_name") else "",
+                "fullName": user_data.get("user_name", ""),
+                "email": user_data.get("user_email", ""),
                 "age": user_data.get("age", ""),
                 "height": user_data.get("height", ""),
-                "weight": user_data.get("weight", ""),
-                "facePhotoUrl": user_data.get("face_photo_url", ""),
-                "bodyPhotoUrl": user_data.get("body_photo_url", ""),
                 "clothingSize": user_data.get("clothing_size", ""),
             },
             
@@ -345,25 +331,39 @@ class PDFDataMapper:
                 "sous_ton_detecte": colorimetry_raw.get("sous_ton_detecte", ""),
                 "eye_color": colorimetry_raw.get("eye_color", user_data.get("eye_color", "")),
                 "hair_color": colorimetry_raw.get("hair_color", user_data.get("hair_color", "")),
+                
+                # ✅ PAGE 3: Palette personnalisée (10 couleurs)
                 "palette_personnalisee": palette,
+                
+                # ✅ PAGE 4: Couleurs génériques
+                "couleurs_generiques": couleurs_generiques,
+                
+                # ✅ PAGE 5: Couleurs à manier avec prudence
+                "couleurs_prudence": couleurs_prudence,
+                
+                # ✅ PAGE 5: Couleurs à éviter
+                "couleurs_eviter": couleurs_eviter,
+                
                 "notes_compatibilite": notes_compatibilite,
                 "allColorsWithNotes": all_colors_with_notes,
                 "unwanted_colors": unwanted_colors,
                 "alternatives_couleurs": alternatives,
+                
+                # ✅ PAGE 6: Associations de couleurs
                 "associations_gagnantes": associations,
+                
                 "analyse_colorimetrique_detaillee": analyse_snake,
                 "season": colorimetry_raw.get("saison_confirmee", ""),
                 "topColors": ", ".join([c.get("displayName", c.get("name", "")) for c in palette[:4]]) if palette else "",
             },
             
+            # ✅ PAGE 7: Makeup
             "makeup": makeup_mapping,
             
-            "shopping": {
-                "priorite1": priorite_1,
-                "priorite2": priorite_2,
-                "eviterAbsolument": eviter,
-            },
+            # Shopping (structure vide mais présente)
+            "shopping": shopping,
             
+            # ✅ PAGE 8: Morphology page 1
             "morphology_page1": morphology_page1,
             
             "morphology": {
@@ -371,15 +371,12 @@ class PDFDataMapper:
                 "objectiveShort": morphology_raw.get("objective_comment", "")[:50] + "..." if morphology_raw.get("objective_comment") else "",
             },
             
+            # ✅ PAGES 9-15: Morpho categories
             "morpho": {
                 "categories": morpho_categories,
             },
             
             "morphology_highlights": morphology_raw.get("highlights", {
-                "announcement": "",
-                "explanation": ""
-            }),
-            "morphology_minimizes": morphology_raw.get("minimizes", {
                 "announcement": "",
                 "explanation": ""
             }),
@@ -414,10 +411,13 @@ class PDFDataMapper:
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
-        print(f"\n✅ Mapper v5.2 (avec vraies recommendations):")
+        print(f"\n✅ Mapper v5.3 (CORRIGÉ - Pages 4, 5, 7):")
         print(f"   ✓ Palette: {len(palette)} couleurs")
-        print(f"   ✓ AllColorsWithNotes: {len(all_colors_with_notes)} couleurs")
+        print(f"   ✓ Couleurs génériques: {len(couleurs_generiques)} couleurs")
+        print(f"   ✓ Couleurs prudence: {len(couleurs_prudence)} couleurs")
+        print(f"   ✓ Couleurs à éviter: {len(couleurs_eviter)} couleurs")
         print(f"   ✓ Associations: {len(associations)} enrichies")
+        print(f"   ✓ Makeup: {sum(1 for v in makeup_mapping.values() if v)} champs remplis")
         print(f"   ✓ Morpho categories: {list(morpho_categories.keys())}")
         
         return liquid_data
@@ -481,7 +481,7 @@ class PDFDataMapper:
     @staticmethod
     def _generate_morphology_categories(morphology_raw: dict, user_data: dict) -> dict:
         """
-        ✅ v5.2 FIXED: Utilise les VRAIES recommendations d'OpenAI Part 2
+        ✅ v5.3 FIXED: Utilise les VRAIES recommendations d'OpenAI Part 2
         Récupère hauts, bas, robes, vestes, etc. depuis morphology_raw.get("recommendations")
         """
         
