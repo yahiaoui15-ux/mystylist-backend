@@ -332,7 +332,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1200
+                max_tokens=1500
             )
             print(f"✅ RÉPONSE REÇUE")
             
@@ -405,7 +405,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4",
-                max_tokens=1400
+                max_tokens=1800
             )
             print(f"✅ RÉPONSE REÇUE")
             
