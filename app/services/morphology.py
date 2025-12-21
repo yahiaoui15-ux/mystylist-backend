@@ -12,6 +12,7 @@ from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
+from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
 
 
 class MorphologyService:
@@ -226,6 +227,78 @@ class MorphologyService:
                     print("   ❌ Pas de JSON trouvé - génération fallback")
                     part2_result = self._generate_default_recommendations(silhouette)
             
+
+            # ========================================================================
+            # MORPHOLOGY PART 3 - DÉTAILS DE STYLING (MATIERES + MOTIFS + PIÈGES)
+            # ========================================================================
+            print("\n" + "="*80)
+            print("🔍 MORPHOLOGIE PART 3 - DÉTAILS DE STYLING")
+            print("="*80)
+
+            print("\n📋 AVANT APPEL:")
+            print("   • Silhouette: {}".format(silhouette))
+            print("   • Type: OpenAI Chat API")
+            print("   • Max tokens: 1800")
+
+            self.openai.set_context("Morphology Part 3", "PART 3: Détails Styling")
+            self.openai.set_system_prompt(MORPHOLOGY_PART3_SYSTEM_PROMPT)
+
+            # Préparer le user prompt Part 3
+            styling_objectives_str = ", ".join(styling_objectives) if styling_objectives else "Optimal"
+            body_parts_highlight = part1_result.get("body_parts_to_highlight", [])
+            body_parts_minimize = part1_result.get("body_parts_to_minimize", [])
+
+            highlight_str = ", ".join(body_parts_highlight) if body_parts_highlight else "Général"
+            minimize_str = ", ".join(body_parts_minimize) if body_parts_minimize else "Général"
+
+            user_prompt_part3 = self.safe_format(
+                MORPHOLOGY_PART3_USER_PROMPT,
+                silhouette_type=silhouette,
+                styling_objectives=styling_objectives_str,
+                body_parts_to_highlight=highlight_str,
+                body_parts_to_minimize=minimize_str
+            )
+
+            print("\n🤖 APPEL OPENAI EN COURS...")
+            response_part3 = await self.openai.call_chat(
+                prompt=user_prompt_part3,
+                model="gpt-4-turbo",
+                max_tokens=1800  # ✅ Pour générer les 7 pièges
+            )
+            print("✅ RÉPONSE REÇUE")
+
+            content_part3 = response_part3.get("content", "")
+
+            print("\n📝 RÉPONSE BRUTE COMPLÈTE (Part 3) - {} chars:".format(len(content_part3)))
+            print("="*80)
+            print(content_part3[:1000] if len(content_part3) > 1000 else content_part3)
+            print("="*80)
+
+            # PARSING PART 3
+            print("\n🔍 PARSING JSON PART 3:")
+            content_part3_clean = self.clean_json_string(content_part3)
+
+            try:
+                part3_result = json.loads(content_part3_clean)
+                print("   ✅ Parsing réussi!")
+                details = part3_result.get("details", {})
+                print("      • Catégories trouvées: {}".format(list(details.keys())))
+                
+            except json.JSONDecodeError as e:
+                print(f"   ❌ Erreur parsing JSON: {str(e)}")
+                print("   → Tentative extraction JSON brute...")
+                
+                json_match = re.search(r'\{[\s\S]*\}', content_part3_clean)
+                if json_match:
+                    try:
+                        part3_result = json.loads(json_match.group())
+                        print("   ✅ Extraction réussie!")
+                    except:
+                        print("   ❌ Extraction échouée - Utilisation fallback")
+                        part3_result = {"details": {}}
+                else:
+                    print("   ❌ Aucun JSON trouvé - Utilisation fallback")
+                    part3_result = {"details": {}}
             # ========================================================================
             # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
             # ========================================================================
@@ -322,6 +395,38 @@ class MorphologyService:
             print("\n✅ Minimizes générés:")
             print(f"   • Parties: {merged_minimize_parts}")
             
+            
+            # ========================================================================
+            # FUSION PART 2 + PART 3 (Ajouter les matieres, motifs, pieges)
+            # ========================================================================
+            print("\n" + "="*80)
+            print("🔗 FUSION PART 2 + PART 3")
+            print("="*80)
+
+            recommendations_part2 = part2_result.get("recommendations", {})
+            details_part3 = part3_result.get("details", {})
+
+            # Fusionner les deux pour chaque catégorie
+            merged_recommendations = {}
+            for category in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
+                part2_cat = recommendations_part2.get(category, {})
+                part3_cat = details_part3.get(category, {})
+                
+                merged = {
+                    "introduction": part2_cat.get("introduction", ""),
+                    "recommandes": part2_cat.get("recommandes", []),
+                    "a_eviter": part2_cat.get("a_eviter", []),
+                    "matieres": part3_cat.get("matieres", part2_cat.get("matieres", "")),
+                    "motifs": part3_cat.get("motifs", part2_cat.get("motifs", {})),
+                    "pieges": part3_cat.get("pieges", []),  # ✅ Des Part 3!
+                    "visuels": []
+                }
+                
+                merged_recommendations[category] = merged
+                pieges_count = len(merged.get('pieges', []))
+                print(f"   • {category}: {pieges_count} pièges")
+
+            print("   ✅ Fusion complétée!")
             # ========================================================================
             # RÉSULTAT FINAL
             # ========================================================================
@@ -337,7 +442,7 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": part2_result.get("recommendations", {}),
+                "recommendations": merged_recommendations,  # ✅ Avec Part 2 + Part 3!
                 
                 # ✨ DONNÉES POUR PAGE 8 (GÉNÉRÉES EN INTERNE)
                 "highlights": highlights_data,
@@ -364,7 +469,7 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": part2_result.get("recommendations", {}),
+                "recommendations": merged_recommendations,  # ✅ Avec Part 2 + Part 3!
             }
     
     def _format_highlights_for_page8(self, parties: list, silhouette_explanation: str,
