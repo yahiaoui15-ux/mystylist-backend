@@ -18,14 +18,14 @@ class VisualsService:
         normalized = cut_name.lower().strip()
         
         # Supprimer les conjonctions et mots vides
-        remove_words = ['ou', 'et', 'de', 'des', 'la', 'le', 'très', 'très', 'trop']
+        remove_words = ['ou', 'et', 'de', 'des', 'la', 'le', 'très', 'tres', 'trop']
         for word in remove_words:
             normalized = re.sub(r'\b' + word + r'\b', '', normalized)
         
         # Espaces → underscores
         normalized = re.sub(r'\s+', '_', normalized)
         
-        # Accents
+        # Accents (UTF-8 correct)
         accents = {
             'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a',
             'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
@@ -88,7 +88,7 @@ class VisualsService:
         Stratégie:
         1. Match EXACT (nom_simplifie exact)
         2. Match FUZZY (score ≥ 0.45)
-        3. Match par MOTS-CLES (cherche mots importants dans nom_simplifie)
+        3. Match par MOTS-CLÉS (cherche mots importants dans nom_simplifie)
         4. Retour vide gracieux
         """
         try:
@@ -152,10 +152,10 @@ class VisualsService:
                     "nom_simplifie": best_match.get("nom_simplifie", "")
                 }
                 self._cache[cache_key] = cached_visual
-                print(f"📊 FUZZY ({best_score:.2f}): {category}/{cut_key} → {best_match['nom_simplifie']}")
+                print(f"🔍 FUZZY ({best_score:.2f}): {category}/{cut_key} → {best_match['nom_simplifie']}")
                 return cached_visual
             
-            # 3️⃣ MATCH PAR MOTS-CLES (alternative if fuzzy failed)
+            # 3️⃣ MATCH PAR MOTS-CLÉS (alternative if fuzzy failed)
             # Chercher si des mots importants de cut_name matchent
             keywords = [word for word in cut_key.split('_') if len(word) > 2]  # Mots > 2 chars
             
@@ -187,7 +187,13 @@ class VisualsService:
             
             for rec in recommendations:
                 try:
-                    cut_name = rec.get("name", "")
+                    # ✅ FIX: Chercher "cut_display" EN PREMIER (OpenAI Part 2)
+                    cut_name = rec.get("cut_display") or rec.get("name") or rec.get("coupe", "")
+                    
+                    if not cut_name:
+                        enriched.append({**rec, "visual_url": "", "visual_key": ""})
+                        continue
+                    
                     visual = self.fetch_visual_for_cut(category, cut_name)
                     
                     enriched_rec = {
