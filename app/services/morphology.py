@@ -11,8 +11,8 @@ import re
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
-from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
-from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
+from app.prompts.morphology_part2_prompt_OPTIMIZED import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
+from app.prompts.morphology_part3_prompt_OPTIMIZED import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
 
 
 class MorphologyService:
@@ -183,7 +183,7 @@ class MorphologyService:
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=2000  # ✅ Augmenté de 800 → 2000 pour éviter la troncature
+                max_tokens=2500  # ✅ Augmenté de 800 → 2000 pour éviter la troncature
             )
             print("✅ RÉPONSE REÇUE")
             
@@ -263,7 +263,7 @@ class MorphologyService:
             response_part3 = await self.openai.call_chat(
                 prompt=user_prompt_part3,
                 model="gpt-4-turbo",
-                max_tokens=1800  # ✅ Pour générer les 7 pièges
+                max_tokens=2500  # ✅ Pour générer les 7 pièges
             )
             print("✅ RÉPONSE REÇUE")
 
