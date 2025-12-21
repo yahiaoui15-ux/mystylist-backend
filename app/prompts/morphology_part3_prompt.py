@@ -5,13 +5,18 @@ MORPHOLOGY PART 3 - DÉTAILS STYLING (OPTIMISÉ v2 - 7 PIÈGES COMPLETS)
 ✅ 7 catégories: hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires
 ✅ Chaque catégorie: matieres + motifs (recommandes + a_eviter) + pieges (7 items minimum)
 ✅ Tout en FRANÇAIS
+✅ JSON VALIDE à 100%
 ✅ ~2500 tokens (augmenté pour générer les 7 pièges)
 """
 
 MORPHOLOGY_PART3_SYSTEM_PROMPT = """Vous êtes expert en styling morphologique FRANÇAIS spécialisé en pièges courants.
 Générez détails styling pour 7 catégories de vêtements avec EXACTEMENT 7 pièges par catégorie.
 Retournez UNIQUEMENT JSON valide, sans texte avant/après.
-IMPÉRATIF: Les arrays `pieges` DOIVENT avoir EXACTEMENT 7 items - pas moins!"""
+IMPÉRATIF CRITIQUE: 
+- Les arrays `pieges` DOIVENT avoir EXACTEMENT 7 items
+- VIRGULES OBLIGATOIRES entre chaque item du array
+- Pas de caractères spéciaux mal échappés
+- JSON doit être 100% valide"""
 
 MORPHOLOGY_PART3_USER_PROMPT = """TÂCHE: Générez DÉTAILS de styling pour silhouette {silhouette_type}.
 
@@ -19,7 +24,8 @@ Objectifs: {styling_objectives}
 À valoriser: {body_parts_to_highlight}
 À minimiser: {body_parts_to_minimize}
 
-STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
+STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES AVEC VIRGULES):
+
 {{
   "details": {{
     "hauts": {{
@@ -38,7 +44,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Longueur insuffisante qui ne couvre pas les hanches et expose les zones à harmoniser"
       ]
     }},
-
     "bas": {{
       "matieres": "Choisir des matières fluides avec légère structure (coton mélangé, viscose, laine fine) qui ne marquent pas. Éviter les extrêmes trop élastiques ou trop rigides.",
       "motifs": {{
@@ -55,7 +60,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Texture ou motifs volumineux au niveau des hanches ou cuisses qui élargissent"
       ]
     }},
-
     "robes": {{
       "matieres": "Privilégier les matières légères avec structure (coton mélangé, viscose, laine fine) qui maintiennent une belle ligne sans marquer. Éviter trop rigide ou trop fluide.",
       "motifs": {{
@@ -72,7 +76,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Couleurs uniformes du haut au bas sans jeu de contraste ou de structure"
       ]
     }},
-
     "vestes": {{
       "matieres": "Privilégier les matières structurantes (laine, coton rigide, mélanges) qui maintiennent la forme et créent des lignes nettes. Éviter trop souples qui perdent leur forme.",
       "motifs": {{
@@ -89,7 +92,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Longueur longue qui crée une silhouette allongée et ne définit rien à la taille"
       ]
     }},
-
     "maillot_lingerie": {{
       "matieres": "Choisir des matières avec légère compression (nylon/spandex mélange) qui offrent du soutien tout en restant confortables. Éviter trop transparent ou trop lourd.",
       "motifs": {{
@@ -106,7 +108,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Matière trop épaisse qui crée des démarcations visibles sous les vêtements"
       ]
     }},
-
     "chaussures": {{
       "matieres": "Privilégier les matières lisses et brillantes (cuir, vernis, satin) qui créent une finition épurée et affinent. Éviter trop texturées ou opaques.",
       "motifs": {{
@@ -123,7 +124,6 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Bout trop arrondi ou très large qui épaissit visuellement le pied et la jambe"
       ]
     }},
-
     "accessoires": {{
       "matieres": "Privilégier les matières délicates et fines (soie, lin léger, mélanges fins) qui ne surchargent pas. Éviter trop épaisses ou trop volumineuses.",
       "motifs": {{
@@ -134,7 +134,7 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
         "Collier court et massif qui élargit le cou et les épaules au lieu d'affiner",
         "Sac à main très volumineux qui crée un déséquilibre avec une silhouette déjà généreuse",
         "Ceinture très large qui coupe la silhouette au mauvais endroit et la segmente",
-        "Accessoires trop nombreux ou trop visibles qui surchargent et alourdi l'ensemble",
+        "Accessoires trop nombreux ou trop visibles qui surchargent et alourdissent l'ensemble",
         "Foulard drapé de façon informelle qui ajoute du volume à la poitrine",
         "Bracelets ou manchettes trop larges qui alourdissent les bras",
         "Accessoires de couleurs criardes qui surchargent visuellement et créent du contraste"
@@ -144,38 +144,31 @@ STRUCTURE JSON REQUISE (STRICTE - 7 CATÉGORIES, 7 PIÈGES CHACUNE):
 }}
 
 RÈGLES STRICTES (OBLIGATOIRES):
-✅ EXACTEMENT 7 items dans `pieges` pour CHAQUE catégorie - PAS MOINS!
+✅ EXACTEMENT 7 items dans `pieges` pour CHAQUE catégorie
+✅ VIRGULES entre chaque item du array (voir exemple avec "," à la fin de chaque item)
 ✅ 7 categories EXACTEMENT: hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires
 ✅ matieres = 2-3 phrases PERSONNALISÉES pour {silhouette_type}
-✅ motifs.recommandes = liste virgules (ex: "Rayures verticales, petits motifs, dégradés")
+✅ motifs.recommandes = liste virgules
 ✅ motifs.a_eviter = liste virgules
-✅ pieges = Array de 7 strings COMPLÈTES (chaque piège 1-2 phrases courtes détaillées)
-✅ Pièges SPÉCIFIQUES à {silhouette_type} (ex: si "A" → hanches, si "X" → nulle part spécifique, etc.)
+✅ pieges = Array de 7 strings COMPLÈTES avec VIRGULES entre items
+✅ Pièges SPÉCIFIQUES à {silhouette_type}
 ✅ TOUT EN FRANÇAIS (pas d'anglais!)
-✅ JSON VALIDE uniquement
+✅ JSON VALIDE uniquement - pas d'erreurs parsing
 ✅ Zéro texte avant/après JSON
-✅ Pas de caractères spéciaux mal échappés (apostrophes simples seulement!)
-✅ Pas de retours à la ligne dans les strings (utiliser des espaces)
+✅ Pas de caractères spéciaux mal échappés
+✅ Pas de retours à la ligne dans les strings
+
+VALIDATION JSON:
+- Chaque string du array pieges doit se TERMINER par une VIRGULE sauf la DERNIÈRE
+- Format: "item1", "item2", "item3", "item4", "item5", "item6", "item7"
+- Pas de virgule trailing après le 7ème item
+- Pas de caractères accentués mal encodés
 
 PERSONNALISATION REQUISE:
 - Silhouette: {silhouette_type}
 - Objectifs: {styling_objectives}
 - À valoriser: {body_parts_to_highlight}
 - À minimiser: {body_parts_to_minimize}
-
-PIÈGES PAR SILHOUETTE:
-- Silhouette A (poire): Focus sur hanches, cuisses, volume bas
-- Silhouette X (sablier): Pas de zones spécifiques à minimiser (équilibré)
-- Silhouette O (ronde): Volume partout, focus sur définition taille
-- Silhouette H (rectangle): Pas de courbes marquées, focus sur créer définition
-- Silhouette T (triangle inversé): Focus sur épaules, buste trop large
-
-EXEMPLES DE PIÈGES DÉTAILLÉS:
-✅ "Haut trop moulant qui souligne chaque courbe et crée une apparence peu flatteuse"
-✅ "Pantalon trop ajusté aux hanches qui n'offre aucune solution flatteuse"
-✅ "Matière trop épaisse qui ajoute du volume au niveau des hanches"
-❌ "Haut serré" (trop court!)
-❌ "Pantalon serré" (trop vague!)
 
 Répondez UNIQUEMENT le JSON, pas une seule lettre avant/après.
 """
