@@ -217,24 +217,58 @@ class ColorimetryService:
         filtered.sort(key=lambda x: x.get("note", 5), reverse=True)
         return filtered
     
+
     def _build_makeup_structure(self, result_part3: dict) -> dict:
         """✅ Construit structure makeup pour PDFMonkey (Page 7)"""
         guide = result_part3.get("guide_maquillage", {})
         
+        # ✅ CORRIGÉ: Utiliser les VRAIES clés générées par Part 3
         makeup = {
-            "foundation": guide.get("teint", {}),
-            "eyes": guide.get("yeux", {}),
-            "lips": guide.get("levres", {}),
-            "nails": guide.get("ongles", {})
+            "foundation": guide.get("teint", ""),
+            "blush": guide.get("blush", ""),
+            "bronzer": guide.get("bronzer", ""),
+            "highlighter": guide.get("highlighter", ""),
+            "eyeshadows": guide.get("eyeshadows", ""),
+            "eyeliner": guide.get("eyeliner", ""),
+            "mascara": guide.get("mascara", ""),
+            "brows": guide.get("brows", ""),
+            "lipsNatural": guide.get("lipsNatural", ""),
+            "lipsDay": guide.get("lipsDay", ""),
+            "lipsEvening": guide.get("lipsEvening", ""),
+            "lipsAvoid": guide.get("lipsAvoid", ""),
+            "nailColors": result_part3.get("nailColors", [])
         }
         
         print(f"\n   ✅ Makeup structure créée:")
-        print(f"      • Foundation: {len(makeup['foundation'])} champs" if makeup['foundation'] else "      • Foundation: vide")
-        print(f"      • Eyes: {len(makeup['eyes'])} champs" if makeup['eyes'] else "      • Eyes: vide")
-        print(f"      • Lips: {len(makeup['lips'])} champs" if makeup['lips'] else "      • Lips: vide")
-        print(f"      • Nails: {len(makeup['nails'])} champs" if makeup['nails'] else "      • Nails: vide")
+        filled = sum(1 for v in makeup.values() if v)
+        print(f"      • Champs remplis: {filled}/13")
+        print(f"      • Foundation: {'✅' if makeup['foundation'] else '❌'}")
+        print(f"      • Blush: {'✅' if makeup['blush'] else '❌'}")
+        print(f"      • Bronzer: {'✅' if makeup['bronzer'] else '❌'}")
+        print(f"      • Eyeliner: {'✅' if makeup['eyeliner'] else '❌'}")
+        print(f"      • Lips (Naturel): {'✅' if makeup['lipsNatural'] else '❌'}")
+        print(f"      • Lips (Jour): {'✅' if makeup['lipsDay'] else '❌'}")
+        print(f"      • Lips (Soirée): {'✅' if makeup['lipsEvening'] else '❌'}")
+        print(f"      • Nails: {'✅' if makeup['nailColors'] else '❌'}")
         
         return makeup
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     
     async def _call_part1(self, user_data: dict, face_photo_url: str, eye_color: str = None, hair_color: str = None) -> dict:
         """PART 1 - Vision avec image"""
@@ -332,7 +366,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1500
+                max_tokens=1200
             )
             print(f"✅ RÉPONSE REÇUE")
             
@@ -405,7 +439,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4",
-                max_tokens=1800
+                max_tokens=1400
             )
             print(f"✅ RÉPONSE REÇUE")
             
