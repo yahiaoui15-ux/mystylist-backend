@@ -324,6 +324,7 @@ class PDFDataMapper:
                 "age": user_data.get("age", ""),
                 "height": user_data.get("height", ""),
                 "clothingSize": user_data.get("clothing_size", ""),
+                "facePhotoUrl": user_data.get("face_photo_url", ""),  # ✅ Photo visage Page 2
             },
             
             "colorimetry": {
