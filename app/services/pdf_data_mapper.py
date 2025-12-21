@@ -382,6 +382,12 @@ class PDFDataMapper:
                 "explanation": ""
             }),
             
+            "morphology_minimizes": morphology_raw.get("minimizes", {  # ✅ AJOUTÉ - Parties à minimiser Page 8
+                "announcement": "",
+                "explanation": "",
+                "tips": []
+            }),
+            
             "style": {
                 "archetypes": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", [])),
                 "primaryArchetype": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", []))[0] if styling_raw.get("style_archetypes") else {},
