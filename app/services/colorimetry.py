@@ -275,7 +275,7 @@ class ColorimetryService:
         
         print(f"\n   ✅ Makeup structure créée:")
         filled = sum(1 for v in makeup.values() if v)
-        print(f"      • Champs remplis: {filled}/13")
+        print(f"      • Champs remplis: {filled}/12")
         print(f"      • Foundation: {'✅' if makeup['foundation'] else '❌'}")
         print(f"      • Blush: {'✅' if makeup['blush'] else '❌'}")
         print(f"      • Bronzer: {'✅' if makeup['bronzer'] else '❌'}")
@@ -283,7 +283,7 @@ class ColorimetryService:
         print(f"      • Lips (Naturel): {'✅' if makeup['lipsNatural'] else '❌'}")
         print(f"      • Lips (Jour): {'✅' if makeup['lipsDay'] else '❌'}")
         print(f"      • Lips (Soirée): {'✅' if makeup['lipsEvening'] else '❌'}")
-        print(f"      • Nails: {'✅' if makeup['nailColors'] else '❌'}")
+        # Nails are handled separately (line 163), not in makeup structure
         
         return makeup
 
