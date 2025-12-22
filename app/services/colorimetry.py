@@ -322,6 +322,7 @@ class ColorimetryService:
 
             print(f"\n📝 RÉPONSE BRUTE COMPLÈTE (Part 3) - {len(content)} chars:")
             print("="*80)
+            with open("/tmp/colorimetry_part3_response.txt", "w") as f: f.write(content)
             print(content)
             print("="*80)
             print(f"\n🔍 PARSING JSON:")
