@@ -21,6 +21,7 @@ from app.prompts.colorimetry_part2_prompt import (
 from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
 from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
+from app.services.color_image_matcher import ColorImageMatcher
 
 
 class ColorimetryService:
@@ -76,6 +77,8 @@ class ColorimetryService:
             
             palette = result_part2.get("palette_personnalisee", [])
             associations = result_part2.get("associations_gagnantes", [])
+            # ✅ AJOUT: Ajouter les images à chaque association
+            associations = self._add_images_to_associations(associations, result_part1.get("saison_confirmee", "Printemps"))
             generiques = result_part2.get("couleurs_generiques", [])
             all_colors_raw = result_part2.get("allColorsWithNotes", [])
             
@@ -216,6 +219,39 @@ class ColorimetryService:
         ]
         filtered.sort(key=lambda x: x.get("note", 5), reverse=True)
         return filtered
+    
+    def _add_images_to_associations(self, associations: list, saison: str) -> list:
+        """✅ Ajoute les images Supabase à chaque association de couleurs"""
+        if not associations:
+            return []
+        
+        print(f"\n   🖼️  Ajout des images aux associations:")
+        associations_with_images = []
+        
+        for assoc in associations:
+            # Récupérer les noms de couleurs de l'association
+            color_names = assoc.get("colors", [])
+            context = assoc.get("occasion", "")
+            
+            # Chercher l'image correspondante dans Supabase
+            image_data = ColorImageMatcher.get_image_for_association(
+                season=saison,
+                context=context,
+                colors=color_names
+            )
+            
+            # Ajouter l'URL et le filename si trouvé
+            assoc["image_url"] = image_data.get("url") if image_data.get("found") else None
+            assoc["image_filename"] = image_data.get("filename")
+            
+            if image_data.get("found"):
+                print(f"      ✅ Image trouvée: {context} → {image_data.get('filename')}")
+            else:
+                print(f"      ⚠️  Pas d'image: {context} (couleurs non matchées)")
+            
+            associations_with_images.append(assoc)
+        
+        return associations_with_images
     
 
     def _build_makeup_structure(self, result_part3: dict) -> dict:
