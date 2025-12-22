@@ -1,5 +1,5 @@
 """
-Morphology Service v5.2 - FINAL CORRIGÉE
+Morphology Service v5.2 - FINAL CORRIGÉ
 ✅ Accepte la vraie structure retournée par Part 1
 ✅ Génère highlights et minimizes EN INTERNE à partir de body_parts_to_highlight/minimize
 ✅ Fusionne avec onboarding morphology_goals
