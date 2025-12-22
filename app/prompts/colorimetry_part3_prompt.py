@@ -33,17 +33,21 @@ Couleurs refusées: {UNWANTED_COLORS}
 ========================================================================
 TÂCHE CRITIQUE ABSOLUE:
 Générer EXACTEMENT 4 couleurs de vernis à ongles harmonisant avec la saison {SAISON}.
-- Chaque couleur: "displayName" (nom français) + "hex" (code couleur #RRGGBB)
-- Les 4 couleurs DOIVENT être présentes (JAMAIS vide, JAMAIS moins de 4)
-- Générer des couleurs RÉELLES adaptées à {SAISON}, pas d'exemples
+RÈGLE STRICTE: Les 4 noms DOIVENT être DIFFÉRENTS (JAMAIS 2 fois le même nom!)
+- Couleur 1: Nom unique + hex
+- Couleur 2: Nom DIFFÉRENT + hex différent
+- Couleur 3: Nom DIFFÉRENT + hex différent
+- Couleur 4: Nom DIFFÉRENT + hex différent
 
 EXEMPLE STRUCTURE (adapter les couleurs à {SAISON}):
 [
-  {{"displayName": "Doré", "hex": "#E1AD01"}},
-  {{"displayName": "Bronze", "hex": "#CD7F32"}},
-  {{"displayName": "Cuivre", "hex": "#B87333"}},
-  {{"displayName": "Bordeaux", "hex": "#6D071A"}}
+  {{"displayName": "Sienna Brûlée", "hex": "#A0522D"}},
+  {{"displayName": "Cannelle Épicée", "hex": "#D2691E"}},
+  {{"displayName": "Oranger Rouille", "hex": "#FF4500"}},
+  {{"displayName": "Prune Automnale", "hex": "#6D3C1B"}}
 ]
+
+⚠️ IMPÉRATIF: Chaque displayName UNIQUE! Pas de doublons!
 
 ========================================================================
 SECTION 2: NOTES COMPATIBILITÉ (19 couleurs EXACTEMENT)

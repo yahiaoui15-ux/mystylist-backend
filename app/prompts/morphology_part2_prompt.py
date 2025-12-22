@@ -15,8 +15,8 @@ Objectifs: {styling_objectives}
 Générez JSON avec 7 catégories (hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires).
 Chaque catégorie: introduction (1 phrase), recommandes (3-4 items), a_eviter (2-3 items), matieres (2-3 phrases).
 
-Pour recommandes et a_eviter: cut_display (nom pièce), why (80-100 mots explicatif spécifique à {silhouette_type}).
-Matieres: personnalisé pour {silhouette_type}, 2-3 phrases détaillées.
+Pour recommandes et a_eviter: cut_display (nom pièce), why (MAX 50 mots explicatif spécifique à {silhouette_type}).
+Matieres: personnalisé pour {silhouette_type}, 1-2 phrases (pas plus de 30 mots).
 
 Tout en français. JSON valide uniquement.
 
