@@ -219,7 +219,6 @@ class ColorimetryService:
         ]
         filtered.sort(key=lambda x: x.get("note", 5), reverse=True)
         return filtered
-    
     def _add_images_to_associations(self, associations: list, saison: str) -> list:
         """✅ Ajoute les images Supabase à chaque association de couleurs"""
         if not associations:
@@ -276,7 +275,7 @@ class ColorimetryService:
         
         print(f"\n   ✅ Makeup structure créée:")
         filled = sum(1 for v in makeup.values() if v)
-        print(f"      • Champs remplis: {filled}/12")
+        print(f"      • Champs remplis: {filled}/13")
         print(f"      • Foundation: {'✅' if makeup['foundation'] else '❌'}")
         print(f"      • Blush: {'✅' if makeup['blush'] else '❌'}")
         print(f"      • Bronzer: {'✅' if makeup['bronzer'] else '❌'}")
@@ -284,6 +283,7 @@ class ColorimetryService:
         print(f"      • Lips (Naturel): {'✅' if makeup['lipsNatural'] else '❌'}")
         print(f"      • Lips (Jour): {'✅' if makeup['lipsDay'] else '❌'}")
         print(f"      • Lips (Soirée): {'✅' if makeup['lipsEvening'] else '❌'}")
+        print(f"      • Nails: {'✅' if makeup['nailColors'] else '❌'}")
         
         return makeup
 
