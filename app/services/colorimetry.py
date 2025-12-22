@@ -319,12 +319,6 @@ class ColorimetryService:
             print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
             print(f"   {content[:400]}...")
             
-
-            print(f"\n📝 RÉPONSE BRUTE COMPLÈTE (Part 3) - {len(content)} chars:")
-            print("="*80)
-            with open("/tmp/colorimetry_part3_response.txt", "w") as f: f.write(content)
-            print(content)
-            print("="*80)
             print(f"\n🔍 PARSING JSON:")
             content_cleaned = self._fix_json_for_parsing(content)
             result = RobustJSONParser.parse_json_with_fallback(content_cleaned)

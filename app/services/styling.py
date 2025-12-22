@@ -8,6 +8,7 @@ from datetime import datetime
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.styling_prompt import STYLING_SYSTEM_PROMPT, STYLING_USER_PROMPT
+from app.services.robust_json_parser import RobustJSONParser
 
 
 class StylingService:
