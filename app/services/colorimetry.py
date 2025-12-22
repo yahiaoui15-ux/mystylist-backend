@@ -235,8 +235,7 @@ class ColorimetryService:
             "lipsNatural": guide.get("lipsNatural", ""),
             "lipsDay": guide.get("lipsDay", ""),
             "lipsEvening": guide.get("lipsEvening", ""),
-            "lipsAvoid": guide.get("lipsAvoid", ""),
-            "nailColors": result_part3.get("nailColors", [])
+            "lipsAvoid": guide.get("lipsAvoid", "")
         }
         
         print(f"\n   ✅ Makeup structure créée:")
