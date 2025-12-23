@@ -179,6 +179,8 @@ class PDFDataMapper:
                 "colors": color_names,
                 "color_hex": hex_codes,
                 "color_details": color_details,
+                "image_url": assoc.get("image_url"),  # ✅ AJOUTER
+                "image_filename": assoc.get("image_filename"),  # ✅ AJOUTER
             }
             enriched.append(transformed)
         
