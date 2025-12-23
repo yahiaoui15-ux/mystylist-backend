@@ -172,7 +172,10 @@ class ColorimetryService:
             print(f"   • Vernis ongles: {len(result.get('nailColors', []))} couleurs")
             print(f"   • Guide maquillage: {len(result.get('guide_maquillage', {}))} champs")
             print("="*80 + "\n")
-            
+            # DEBUG: Vérifier que les images sont dans le JSON retourné
+            print(f"\n🔍 DEBUG FINAL - Associations avec images:")
+            for assoc in result.get("associations_gagnantes", []):
+                print(f"   {assoc.get('occasion')}: image_url = {assoc.get('image_url')}")
             return result
             
         except Exception as e:
