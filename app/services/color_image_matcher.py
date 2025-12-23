@@ -1,17 +1,19 @@
 """
-COLOR IMAGE MATCHER - Trouve les images correspondantes aux associations de couleurs
-✅ Normalise les noms de couleurs OpenAI vers les noms de fichiers
-✅ Cherche l'image dans Supabase qui match saison + contexte + 3 couleurs
-✅ Retourne l'URL publique de l'image
+COLOR IMAGE MATCHER v2 - Requête Supabase directement
+✅ Cherche les images dans la table colorimetry_images
+✅ Fuzzy-match intelligent sur les couleurs
+✅ Retourne l'URL directement depuis la BDD
 """
 
 from difflib import SequenceMatcher
 import re
+from supabase import create_client, Client
+from typing import Optional
 
 class ColorImageMatcher:
-    """Matcher intelligent couleurs OpenAI → images Supabase"""
+    """Matcher intelligent - requête Supabase"""
     
-    # 🎨 MAPPING: Couleurs OpenAI → Noms de fichiers
+    # 🎨 MAPPING: Couleurs OpenAI → Noms de fichiers (pour fuzzy match)
     COLOR_ALIASES = {
         # ROSES/CORAILS
         "rose": ["rose", "peche", "corail", "saumon", "rosenude", "rosepoudre", "rosepastel", "rosevieux", "rosefroid", "rosefuchsia", "roserubis"],
@@ -74,6 +76,7 @@ class ColorImageMatcher:
         "bordeaux": ["bordeaux"],
         "rubis": ["rougerubis"],
         "cuivre": ["cuivre"],
+        "cerise": ["bordeaux", "corail", "rouille"],  # Cerise → couleurs rouges
         
         # VIOLETS
         "violet": ["violet", "prune", "prunedouce"],
@@ -108,6 +111,16 @@ class ColorImageMatcher:
         "weekend": "weekend",
         "famille": "casual",  # Fallback à casual
     }
+    
+    # Supabase client (sera initialisé une seule fois)
+    _supabase_client: Optional[Client] = None
+    
+    @classmethod
+    def init_supabase(cls, url: str, key: str):
+        """Initialise le client Supabase une seule fois"""
+        if cls._supabase_client is None:
+            cls._supabase_client = create_client(url, key)
+            print("✅ ColorImageMatcher: Supabase client initialisé")
     
     @staticmethod
     def normalize_color(color_name: str) -> str:
@@ -161,47 +174,12 @@ class ColorImageMatcher:
         
         return best_match if best_ratio > 0.6 else None
     
-    @staticmethod
-    def build_image_filename(season: str, context: str, colors: list) -> str:
+    @classmethod
+    def get_image_for_association(cls, season: str, context: str, colors: list) -> dict:
         """
-        Construit le nom du fichier image à partir de saison, contexte et 3 couleurs
-        Ex: "colorimetry_printemps_casual_peche_menthe_ivoire.jpg"
-        """
-        # Normaliser saison et contexte
-        season_slug = ColorImageMatcher.SEASONS.get(season, season.lower())
-        context_slug = ColorImageMatcher.CONTEXTS.get(context, context.lower())
+        Trouve l'image correspondant à une association de couleurs
         
-        # Matcher les 3 couleurs
-        color_slugs = []
-        for color in colors:
-            matched = ColorImageMatcher.find_matching_filename_color(color)
-            if matched:
-                color_slugs.append(matched)
-        
-        # Si on a moins de 3 couleurs matchées, retourner None
-        if len(color_slugs) < 3:
-            return None
-        
-        # Construire le nom
-        filename = f"colorimetry_{season_slug}_{context_slug}_{color_slugs[0]}_{color_slugs[1]}_{color_slugs[2]}.jpg"
-        return filename
-    
-    @staticmethod
-    def get_supabase_image_url(filename: str, bucket: str = "colorimetry") -> str:
-        """
-        Retourne l'URL publique Supabase pour une image
-        Ex: https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/colorimetry/filename.jpg
-        """
-        if not filename:
-            return None
-        
-        base_url = "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public"
-        return f"{base_url}/{bucket}/{filename}"
-    
-    @staticmethod
-    def get_image_for_association(season: str, context: str, colors: list) -> dict:
-        """
-        Retourne l'image correspondant à une association de couleurs
+        ✅ VERSION v2: Requête Supabase directement
         
         Args:
             season: "Printemps", "Été", "Automne", "Hiver"
@@ -215,52 +193,104 @@ class ColorImageMatcher:
                 "found": True/False
             }
         """
-        filename = ColorImageMatcher.build_image_filename(season, context, colors)
         
-        if not filename:
+        if not cls._supabase_client:
             return {
                 "filename": None,
                 "url": None,
                 "found": False,
-                "reason": "Could not match all 3 colors"
+                "reason": "Supabase client not initialized"
             }
         
-        url = ColorImageMatcher.get_supabase_image_url(filename)
+        # Normaliser saison et contexte
+        season_slug = cls.SEASONS.get(season, season.lower())
+        context_slug = cls.CONTEXTS.get(context, context.lower())
         
-        return {
-            "filename": filename,
-            "url": url,
-            "found": True,
-            "season": season,
-            "context": context,
-            "colors_matched": colors
-        }
-
-
-# 🧪 TEST
-if __name__ == "__main__":
-    matcher = ColorImageMatcher()
-    
-    # Test 1: Printemps Casual
-    result = matcher.get_image_for_association(
-        season="Printemps",
-        context="casual",
-        colors=["Rose Pétale", "Menthe Vital", "Orangé Pastel"]
-    )
-    print(f"Test 1: {result}")
-    
-    # Test 2: Automne Professionnel
-    result = matcher.get_image_for_association(
-        season="Automne",
-        context="professionnel",
-        colors=["Camel", "Olive", "Ivoire"]
-    )
-    print(f"Test 2: {result}")
-    
-    # Test 3: Été Soirée
-    result = matcher.get_image_for_association(
-        season="Été",
-        context="soirée",
-        colors=["Bleu Ardoise", "Mauve", "Perle"]
-    )
-    print(f"Test 3: {result}")
+        # Matcher les 3 couleurs
+        color_slugs = []
+        for color in colors:
+            matched = cls.find_matching_filename_color(color)
+            if matched:
+                color_slugs.append(matched)
+        
+        # Si on a au moins 2 couleurs matchées, chercher en BDD
+        if len(color_slugs) < 2:
+            return {
+                "filename": None,
+                "url": None,
+                "found": False,
+                "reason": f"Could not match all colors (matched: {len(color_slugs)}/3)"
+            }
+        
+        try:
+            # 🔍 REQUÊTE SUPABASE - Chercher une image qui match saison + context + couleurs
+            response = cls._supabase_client.table("colorimetry_images").select(
+                "file_name, public_url"
+            ).eq("season", season_slug).eq("context", context_slug).execute()
+            
+            if not response.data or len(response.data) == 0:
+                return {
+                    "filename": None,
+                    "url": None,
+                    "found": False,
+                    "reason": f"No images found for {season_slug}/{context_slug}"
+                }
+            
+            # 📊 FUZZY MATCH: Parmi les images trouvées, cherche celle qui match le mieux les couleurs
+            best_match = None
+            best_score = 0
+            
+            for image in response.data:
+                # Extraire les couleurs du filename
+                # Format: colorimetry_{season}_{context}_{color1}_{color2}_{color3}.jpg
+                filename = image["file_name"]
+                parts = filename.replace(".jpg", "").split("_")
+                
+                if len(parts) < 6:
+                    continue
+                
+                image_colors = [parts[3], parts[4], parts[5]]
+                
+                # Calculer le score de match
+                matches = 0
+                for color_slug in color_slugs:
+                    if color_slug in image_colors:
+                        matches += 1
+                
+                # Score: nombre de couleurs qui matchent
+                score = matches / 3.0  # Sur 3 couleurs
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = image
+            
+            if best_match:
+                return {
+                    "filename": best_match["file_name"],
+                    "url": best_match["public_url"],
+                    "found": True,
+                    "score": best_score,
+                    "season": season_slug,
+                    "context": context_slug,
+                    "colors_matched": color_slugs
+                }
+            else:
+                # Pas de match parfait, retourner la première image trouvée
+                if response.data:
+                    first = response.data[0]
+                    return {
+                        "filename": first["file_name"],
+                        "url": first["public_url"],
+                        "found": True,
+                        "score": 0.5,  # Score faible car pas de match parfait
+                        "reason": "No perfect color match, using first available image"
+                    }
+        
+        except Exception as e:
+            print(f"❌ Erreur requête Supabase: {e}")
+            return {
+                "filename": None,
+                "url": None,
+                "found": False,
+                "reason": f"Database error: {str(e)}"
+            }
