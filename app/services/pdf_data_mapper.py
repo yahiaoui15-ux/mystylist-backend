@@ -460,8 +460,13 @@ class PDFDataMapper:
         shoulders = user_data.get("shoulder_circumference", 0) or 0
         hips = user_data.get("hip_circumference", 0) or 0
         
-        waist_hip_ratio = round(waist / hips, 2) if hips > 0 else ""
-        waist_shoulder_ratio = round(waist / shoulders, 2) if shoulders > 0 else ""
+       # ✅ Convertir en float avant comparaison
+        hips_float = float(hips) if hips else 0
+        shoulders_float = float(shoulders) if shoulders else 0
+        waist_float = float(waist) if waist else 0
+
+        waist_hip_ratio = round(waist_float / hips_float, 2) if hips_float > 0 else ""
+        waist_shoulder_ratio = round(waist_float / shoulders_float, 2) if shoulders_float > 0 else ""
         
         return {
             "bodyType": silhouette_type,

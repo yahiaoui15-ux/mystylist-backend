@@ -533,5 +533,17 @@ class ColorimetryService:
         text = re.sub(r'\\([^"\\bfnrtu/])', fix_invalid_escapes, text)
         return text
 
+# ═══════════════════════════════════════════════════════════
+# ✅ INITIALISER SUPABASE POUR COLOR IMAGE MATCHER
+# ═══════════════════════════════════════════════════════════
+import os
+from app.services.color_image_matcher import ColorImageMatcher
+
+# Utiliser les mêmes credentials que pour Supabase (tu les as déjà)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://eqtovvjueqsralaprsvm.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")  # À configurer en env var!
+
+if SUPABASE_KEY:
+    ColorImageMatcher.init_supabase(SUPABASE_URL, SUPABASE_KEY)
 
 colorimetry_service = ColorimetryService()
