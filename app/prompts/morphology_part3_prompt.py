@@ -3,6 +3,8 @@ MORPHOLOGY PART 3 - DÉTAILS STYLING (OPTIMISE - TOKEN-LEAN)
 ✅ 7 pièges OBLIGATOIRES + matieres + motifs
 ✅ Prompt compact sans exemples JSON volumineux
 ✅ Token budget: ~1200-1500 au lieu de 2680+
+✅Pièges: 'ternit votre teint', 'élargit vos épaules'. Personnalisé à SA morphologie.
+
 """
 
 MORPHOLOGY_PART3_SYSTEM_PROMPT = """Vous êtes expert styling morphologique français spécialisé pièges.

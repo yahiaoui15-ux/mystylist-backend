@@ -84,6 +84,7 @@ REGLES STRICTES:
 ✅ Pas d'apostrophes dans les strings JSON
 ✅ JSON VALIDE uniquement
 ✅ ZÉRO texte avant/après JSON
+✅ Adressez-vous à la cliente: 'Vos atouts', 'Pour vous'. Tips: 'Privilégiez les...' pas 'conviennent à cette silhouette'
 
 Répondez UNIQUEMENT le JSON.
 """

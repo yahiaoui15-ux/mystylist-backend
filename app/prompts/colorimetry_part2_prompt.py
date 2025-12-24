@@ -49,6 +49,7 @@ RÈGLES:
 ✅ Commentaires courts (<15 mots) EN FRANÇAIS
 ✅ Pas d'apostrophe: "s harmonise" pas "s'harmonise"
 ✅ JSON valide
+✅ Adressez-vous directement: 'Votre palette', 'Pour vous'. 
 
 Répondez UNIQUEMENT le JSON, pas de texte avant/après.
 """

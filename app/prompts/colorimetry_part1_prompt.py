@@ -25,6 +25,8 @@ EXIGENCES CRITIQUES :
 5. Interdiction ABSOLUE d'écrire un texte qui contredit la saison choisie.
 6. Toutes les descriptions DOIVENT confirmer la saison retenue.
 7. Répondre UNIQUEMENT en JSON valide.
+8.Adressez-vous à la cliente en la vouvoyant (vous/vos). Ton conseillère bienveillante. 
+Remplacez 'la cliente' par 'vous' partout."
 """
 
 COLORIMETRY_PART1_USER_PROMPT = """Analyse colorimétrique complète. Appliquez STRICTEMENT la matrice décisionnelle fournie dans le système prompt.

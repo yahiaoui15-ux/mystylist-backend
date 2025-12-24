@@ -4,7 +4,7 @@ STYLING PROMPT FIXED v2.2 - Archétypes PERSONNALISÉS + primaryArchetype + esse
 ✅ primaryArchetype = meilleur style pour ce client
 ✅ essenceShort = essence du style en phrase courte
 ✅ Page 16 du rapport remplie correctement
-"""
+✅ essenceShort: 'Vous incarnez...'. Valorisant et personnel.
 
 STYLING_SYSTEM_PROMPT = """Expert stylistique personnel. Générez profil stylistique complet.
 Retournez UNIQUEMENT JSON valide, sans texte avant/après."""

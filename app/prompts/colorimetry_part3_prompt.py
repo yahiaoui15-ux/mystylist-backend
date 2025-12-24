@@ -150,6 +150,8 @@ RÈGLES STRICTES ET OBLIGATOIRES:
 
 ✅ guide_maquillage = 12 champs TOUS présents (pas d'omissions)
 
+✅guide_maquillage: conseils directs ('Choisissez...', 'Optez...'). Vouvoyez.
+
 ✅ JSON VALIDE COMPLET
 ✅ Doubles accolades {{ }} pour imbrication dans le template
 ✅ ZÉRO TEXTE avant le JSON

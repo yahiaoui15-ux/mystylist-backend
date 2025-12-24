@@ -3,6 +3,8 @@ MORPHOLOGY PART 2 - RECOMMANDATIONS STYLING (OPTIMISE - TOKEN-LEAN)
 ✅ Descriptions longues (80-100 mots) + matieres personnalisées
 ✅ Prompt compact sans exemples JSON volumineux
 ✅ Token budget: ~1500-1800 au lieu de 3760+
+✅'Pour vous...', 'qui allongent vos jambes'. Explicitez pourquoi c'est BON POUR ELLE.
+
 """
 
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """Vous êtes expert styling morphologique français.
