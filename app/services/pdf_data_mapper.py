@@ -203,8 +203,8 @@ class PDFDataMapper:
                 
                 if not found:
                     found = {
-                        "name": nail_color.get("name", "Rose"),
-                        "displayName": PDFDataMapper.generate_display_name(nail_color.get("name", "Rose")),
+                        "name": nail_color.get("name", "Couleur"),
+                        "displayName": nail_color.get("displayName", PDFDataMapper.generate_display_name(nail_color.get("name", "Couleur"))),
                         "hex": hex_code,
                     }
                 
