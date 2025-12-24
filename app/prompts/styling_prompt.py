@@ -1,7 +1,7 @@
 """
-STYLING PROMPT COMPLET v3.0 - PREMIUM CONSEILLERE EN IMAGE
+STYLING PROMPT COMPLET v3.1 - PARAMETERS CORRIGES
 Structure JSON STRICTE pour pages 16-21
-Integre colorimetrie + morphologie + personnalite
+Parametres alignes avec styling.py
 """
 
 STYLING_SYSTEM_PROMPT = """Tu es une CONSEILLERE EN IMAGE et STYLISTE PERSONNELLE haut de gamme.
@@ -50,9 +50,8 @@ STYLING_USER_PROMPT = """PROFIL CLIENT:
 - Sous-ton: {sous_ton}
 - Palette dominante: {palette}
 - Silhouette morphologique: {silhouette_type}
-- Objectifs morphologiques: {morpho_objectives}
+- Recommandations morphologiques: {recommendations}
 - Styles preferes declares: {style_preferences}
-- Situations de vie: {situations}
 - Marques affinitaires: {brand_preferences}
 
 MISSION:
@@ -63,7 +62,7 @@ Tu dois generer un OBJET JSON STRICTEMENT CONFORME a cette structure:
 {{
   "essenceShort": "1-2 phrases courtes decrivant l'essence stylistique unique de cette cliente. Valorisant, personnel, coherent avec saison + silhouette. Adresse-la en 'vous'.",
   
-  "psychoStylisticReading": "50-80 mots. Ce que ses choix de style disent de sa personnalite. Comment elle se projette. Base sur style_preferences + situations. Bienveillant, insightful, pas cliche.",
+  "psychoStylisticReading": "50-80 mots. Ce que ses choix de style disent de sa personnalite. Comment elle se projette. Bases sur style_preferences. Bienveillant, insightful, pas cliche.",
   
   "primaryArchetype": {{
     "name": "Nom unique du style dominant (ex: Classique Minimaliste Chaud)",
