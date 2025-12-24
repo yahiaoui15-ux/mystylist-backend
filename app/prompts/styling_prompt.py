@@ -1,328 +1,329 @@
-<!-- ════════════════════════════════════════════════════════════════════════════════
-     PAGES 16-21: STYLING COMPLET - A3 PAYSAGE
-     Copiez ce code ENTIER après la PAGE 15 (Accessoires) dans votre template
-     ════════════════════════════════════════════════════════════════════════════════ -->
+"""
+STYLING PROMPT COMPLET v3.0 - PREMIUM CONSEILLERE EN IMAGE
+Structure JSON STRICTE pour pages 16-21
+Integre colorimetrie + morphologie + personnalite
+"""
 
-<!-- PAGE 16 : VOTRE PROFIL STYLISTIQUE & ARCHÉTYPES -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">🎯 Votre Profil Stylistique</h2>
-    <span class="page-number">Page 16 / 21</span>
-  </div>
+STYLING_SYSTEM_PROMPT = """Tu es une CONSEILLERE EN IMAGE et STYLISTE PERSONNELLE haut de gamme.
+Tu travailles pour my-stylist.io, un service premium de stylisme assiste par IA.
 
-  <!-- BLOC 1: Essence Stylistique -->
-  <div style="background:linear-gradient(135deg, #f0ecf9 0%, #f8f4ff 100%); padding:25px; border-radius:12px; border-left:5px solid #9b59b6; margin-bottom:25px;">
-    <h3 style="color:#9b59b6; margin:0 0 15px 0; font-size:22px; font-weight:700;">✨ Votre Essence Stylistique</h3>
-    
-    <p style="color:#2c3e50; font-size:14px; line-height:1.8; margin:0 0 15px 0;">
-      {{style.essenceShort | default: "Votre style personnel reflète une harmonie unique entre votre silhouette, vos couleurs naturelles et votre personnalité."}}
-    </p>
-    
-    <div style="background:white; padding:15px; border-radius:8px; border-left:3px solid #e91e63;">
-      <p style="color:#666; font-size:13px; line-height:1.6; margin:0; font-style:italic;">
-        💡 Conseil: Gardez cette essence à l'esprit lors de vos achats. Elle vous aide à ignorer les tendances qui ne vous conviennent pas.
-      </p>
-    </div>
-  </div>
+OBJECTIF:
+Generer un PROFIL STYLISTIQUE COMPLET, STRUCTURE et MONETISABLE,
+destine a etre injecte dans un rapport PDF A3 paysage (pages 16 a 21).
 
-  <!-- BLOC 2: Lecture Psycho-Stylistique -->
-  <div style="background:#f8f9fa; padding:20px; border-radius:10px; margin-bottom:25px;">
-    <h3 style="color:#2c3e50; margin:0 0 12px 0; font-size:18px; font-weight:700;">👁️ Ce que votre style dit de vous</h3>
-    <p style="color:#555; font-size:12px; line-height:1.7; margin:0;">
-      {{style.psychoStylisticReading | default: "Votre style reflète vos choix conscients et votre personnalité profonde. Chaque pièce que vous choisissez raconte une histoire."}}
-    </p>
-  </div>
+CONTRAINTES ABSOLUES:
+- Tu dois repondre UNIQUEMENT en JSON VALIDE.
+- AUCUN texte hors JSON.
+- AUCUNE balise HTML.
+- AUCUN commentaire.
+- Pas d'emoji dans les contenus textuels.
+- Ton professionnel, bienveillant, expert, pedagogique.
+- Pas de phrases vagues ou generiques.
 
-  <!-- BLOC 3: Archétype Principal -->
-  <div style="background:white; padding:20px; border-radius:10px; box-shadow:0 3px 12px rgba(0,0,0,0.08); border-left:5px solid #9b59b6;">
-    <h3 style="color:#9b59b6; margin:0 0 15px 0; font-size:18px; font-weight:700;">👗 Votre Archétype Principal</h3>
-    
-    {% if style.primaryArchetype %}
-      <div style="display:flex; align-items:flex-start; gap:15px;">
-        <div style="width:70px; height:70px; border-radius:999px; background:#9b59b6; color:white; display:flex; align-items:center; justify-content:center; font-size:32px; flex-shrink:0;">
-          {{style.primaryArchetype.icon | default: '👗'}}
-        </div>
-        <div style="flex:1;">
-          <h4 style="color:#9b59b6; margin:0 0 8px 0; font-size:16px; font-weight:700;">
-            {{style.primaryArchetype.name | default: "Votre style"}}
-          </h4>
-          <p style="color:#555; font-size:12px; line-height:1.6; margin:0;">
-            {{style.primaryArchetype.description | default: "Cet archétype incarne votre style naturel dominant."}}
-          </p>
-        </div>
-      </div>
-    {% endif %}
-  </div>
+LOGIQUE METIER:
+- Le style doit etre coherent avec:
+  • la saison colorimetrique
+  • la silhouette morphologique
+  • la personnalite
+  • le mode de vie
+- Le styling NE DOIT PAS repeter la morphologie ni la colorimetrie,
+  mais les UTILISER comme contraintes silencieuses.
 
-  <div class="page-footer" style="margin-top:30px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
+BUSINESS:
+- Le contenu doit naturellement introduire:
+  • l'audit de garde-robe IA (upsell)
+  • les recommandations produits affiliees
+- Sans jamais etre agressif ou commercial.
 
-<!-- PAGE 17 : LES 5 ARCHÉTYPES + MIX & MATCH FORMULAS -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">🌈 Vos Archétypes & Mix & Match</h2>
-    <span class="page-number">Page 17 / 21</span>
-  </div>
+STRUCTURE ATTENDUE:
+Tu dois produire EXACTEMENT les cles JSON decrites dans le prompt utilisateur.
+Toute cle manquante est une ERREUR.
 
-  <!-- Les 5 Archétypes -->
-  <div style="margin-bottom:25px;">
-    <h3 style="color:#388e3c; margin:0 0 15px 0; font-size:18px; font-weight:700;">Les 4 Archétypes qui vous Complètent</h3>
-    
-    {% if style.archetypes %}
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        {% for archetype in style.archetypes limit:4 %}
-          <div style="background:#f0f7f4; padding:14px; border-radius:10px; border-left:3px solid #4caf50;">
-            <h4 style="color:#388e3c; margin:0 0 6px 0; font-size:13px; font-weight:700;">{{archetype.name}}</h4>
-            <p style="color:#555; font-size:11px; line-height:1.5; margin:0;">
-              {{archetype.description}}
-            </p>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  </div>
+FORMAT:
+- Textes prets a etre affiches tels quels dans un PDF premium.
+- Paragraphes courts, concrets, actionnables.
+- Adressez-vous a la cliente en la vouvoyant (vous/votre).
+"""
 
-  <!-- Mix & Match Formulas -->
-  <div>
-    <h3 style="color:#2c3e50; margin:0 0 15px 0; font-size:18px; font-weight:700;">🧩 Mix & Match: Vos 3 Formulas Gagnantes</h3>
-    
-    {% if style.mix_and_match_formulas %}
-      {% for formula in style.mix_and_match_formulas limit:3 %}
-        <div style="background:{% if forloop.index == 1 %}#e8f5e9{% elsif forloop.index == 2 %}#f3e5f5{% else %}#ffe8f0{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border-left:5px solid {% if forloop.index == 1 %}#4caf50{% elsif forloop.index == 2 %}#ba68c8{% else %}#e83e8c{% endif %};">
-          
-          <h4 style="color:{% if forloop.index == 1 %}#388e3c{% elsif forloop.index == 2 %}#6a1b9a{% else %}#d63384{% endif %}; margin:0 0 8px 0; font-size:14px; font-weight:700;">
-            {{formula.title}}
-          </h4>
-          
-          <p style="color:#666; font-size:11px; margin:0 0 10px 0; font-style:italic;">
-            {{formula.context}}
-          </p>
-          
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-            <div>
-              <p style="color:{% if forloop.index == 1 %}#388e3c{% elsif forloop.index == 2 %}#6a1b9a{% else %}#d63384{% endif %}; font-weight:700; margin:0 0 4px 0; font-size:10px;">BASIQUES:</p>
-              <p style="color:#555; font-size:10px; margin:0; line-height:1.5;">
-                {% for item in formula.base_items %}{{item}}{% if forloop.last %}{% else %}<br>{% endif %}{% endfor %}
-              </p>
-            </div>
-            <div>
-              <p style="color:{% if forloop.index == 1 %}#388e3c{% elsif forloop.index == 2 %}#6a1b9a{% else %}#d63384{% endif %}; font-weight:700; margin:0 0 4px 0; font-size:10px;">STATEMENTS:</p>
-              <p style="color:#555; font-size:10px; margin:0; line-height:1.5;">
-                {% for item in formula.statement_items %}{{item}}{% if forloop.last %}{% else %}<br>{% endif %}{% endfor %}
-              </p>
-            </div>
-          </div>
-          
-          <div style="background:white; padding:8px; border-radius:6px;">
-            <p style="color:#555; font-size:10px; margin:0; font-style:italic;">
-              💡 {{formula.styling_tip}}
-            </p>
-          </div>
-        </div>
-      {% endfor %}
-    {% endif %}
-  </div>
+STYLING_USER_PROMPT = """PROFIL CLIENT:
+- Saison colorimetrique: {season}
+- Sous-ton: {sous_ton}
+- Palette dominante: {palette}
+- Silhouette morphologique: {silhouette_type}
+- Objectifs morphologiques: {morpho_objectives}
+- Styles preferes declares: {style_preferences}
+- Situations de vie: {situations}
+- Marques affinitaires: {brand_preferences}
 
-  <div class="page-footer" style="margin-top:30px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
+MISSION:
+Construis un PROFIL STYLISTIQUE PREMIUM, comme le ferait une vraie conseillere en image.
 
-<!-- PAGE 18 : CAPSULE WARDROBE - BASIQUES -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">👔 Garde-Robe Capsule: Les Basiques</h2>
-    <span class="page-number">Page 18 / 21</span>
-  </div>
+Tu dois generer un OBJET JSON STRICTEMENT CONFORME a cette structure:
 
-  <div style="background:#f0f4f8; padding:15px; border-radius:10px; margin-bottom:20px; border-left:4px solid #17a2b8;">
-    <p style="margin:0; color:#2c3e50; font-size:12px; line-height:1.6;">
-      <strong>Les pièces essentielles:</strong> Ces couleurs neutres forment la fondation indestructible de votre garde-robe. 
-      Investissez dans la QUALITÉ (coton bio, laine fine) plutôt que la quantité. Budget estimé première phase: 200-300€
-    </p>
-  </div>
+{{
+  "essenceShort": "1-2 phrases courtes decrivant l'essence stylistique unique de cette cliente. Valorisant, personnel, coherent avec saison + silhouette. Adresse-la en 'vous'.",
+  
+  "psychoStylisticReading": "50-80 mots. Ce que ses choix de style disent de sa personnalite. Comment elle se projette. Base sur style_preferences + situations. Bienveillant, insightful, pas cliche.",
+  
+  "primaryArchetype": {{
+    "name": "Nom unique du style dominant (ex: Classique Minimaliste Chaud)",
+    "icon": "emoji simple (1 seul caractere)",
+    "description": "30-40 mots expliquant cet archetype specifiquement pour elle. Comment il se manifeste dans sa vie quotidienne."
+  }},
+  
+  "archetypes": [
+    {{
+      "name": "Archetype secondaire 1",
+      "description": "20-30 mots. Comment ce style la complete ou l'equilibre."
+    }},
+    {{
+      "name": "Archetype secondaire 2",
+      "description": "20-30 mots."
+    }},
+    {{
+      "name": "Archetype secondaire 3",
+      "description": "20-30 mots."
+    }},
+    {{
+      "name": "Archetype secondaire 4",
+      "description": "20-30 mots."
+    }}
+  ],
+  
+  "mix_and_match_formulas": [
+    {{
+      "title": "Casual Weekend",
+      "context": "Sorties detente, brunch, shopping",
+      "base_items": ["Jean bleu indigo", "T-shirt blanc", "Baskets blanches", "Sac toile"],
+      "statement_items": ["Cardigan camel", "Bijoux fins or"],
+      "styling_tip": "Le cardigan transforme une tenue basique en look soigne. Varie juste l'accessoire chaque jour."
+    }},
+    {{
+      "title": "Professionnel Confiance",
+      "context": "Travail, reunions, entretiens",
+      "base_items": ["Pantalon noir", "Chemise blanche", "Veste blazer", "Escarpins noirs"],
+      "statement_items": ["Ceinture fine", "Montre elegante", "Bijoux discrets"],
+      "styling_tip": "La veste structure tout. Ajoute une ceinture pour creer verticalite et definition."
+    }},
+    {{
+      "title": "Soiree Sophistication",
+      "context": "Diner, evenements, sorties elegantes",
+      "base_items": ["Robe noire ou de votre palette", "Escarpins talon", "Clutch noir"],
+      "statement_items": ["Veste cintree couleur", "Bijoux or ou cuivres", "Maquillage plus affirme"],
+      "styling_tip": "Une robe noire classique + une veste de couleur = look immediatement eleve."
+    }}
+  ],
+  
+  "capsule_wardrobe": {{
+    "basics": [
+      {{
+        "name": "T-shirt blanc coton",
+        "description": "Base incontournable. Coton 100% ou bio. Encolure ronde simple. Porte-le seul, sous une veste ou un cardigan.",
+        "price_range": "15-25 EUR"
+      }},
+      {{
+        "name": "Jean bleu indigo taille haute",
+        "description": "Coupe qui epouse legerement. Indigo fonce facile a associer. La piece de base par excellence.",
+        "price_range": "50-80 EUR"
+      }},
+      {{
+        "name": "Pantalon noir classique",
+        "description": "Taille haute, coupe fluide. Parfait quotidien + soiree. Investis dans la qualite (coupe parfaite + tissu durable).",
+        "price_range": "40-70 EUR"
+      }},
+      {{
+        "name": "Veste blazer cintree",
+        "description": "PIECE CLE qui structure tout. Couleur neutre ou subtile. Donne instantanement de la verticalite et de la confiance.",
+        "price_range": "80-120 EUR"
+      }},
+      {{
+        "name": "Escarpins noirs talon fin",
+        "description": "Talon 5-7cm, pointus ou ronds. Cuir vrai ou bon synthetique. Intemporel et universel.",
+        "price_range": "60-90 EUR"
+      }},
+      {{
+        "name": "Sac structure de taille moyenne",
+        "description": "Couleur neutre. Contient laptop + quotidien. Simple, intemporel, de qualite.",
+        "price_range": "60-100 EUR"
+      }}
+    ],
+    "statements": [
+      {{
+        "name": "Chemise ou blouse en couleur de votre palette",
+        "description": "Couleur chaude (camel, moutarde, corail). Matiere fluide. Porte-la sur un basique neutre pour instant impact.",
+        "price_range": "35-50 EUR"
+      }},
+      {{
+        "name": "Pull ou cardigan dore/moutarde",
+        "description": "Laine fine ou coton structurant. Peut se porter seul ou ouvert. Tres polyvalent et lumineux.",
+        "price_range": "40-60 EUR"
+      }},
+      {{
+        "name": "Veste ou robe couleur de saison",
+        "description": "Bordeaux, olive, ou couleur dominante de votre palette. Sophistica et personnelle.",
+        "price_range": "50-80 EUR"
+      }},
+      {{
+        "name": "Haut ou robe rose corail/lumineux",
+        "description": "Energique et lumineux. Petit haut ou robe fluide. Eclaire le teint instantanement.",
+        "price_range": "30-45 EUR"
+      }},
+      {{
+        "name": "Pantalon ou veste olive/vert-brun",
+        "description": "Naturel, discret mais puissant. Cree une tenue entiere avec un basique blanc.",
+        "price_range": "40-70 EUR"
+      }},
+      {{
+        "name": "Accessoire ou veste cuivre/metallique",
+        "description": "Sophistique et luxe. Veste cintree ou bijoux dores cuivres. Pour les moments 'je me sens speciale'.",
+        "price_range": "45-75 EUR"
+      }}
+    ]
+  }},
+  
+  "ready_to_wear_outfits": [
+    {{
+      "day": "Jour 1 - Travail",
+      "context": "Bureau, reunions, presentations",
+      "items": ["Chemise blanche", "Pantalon noir", "Veste blazer neutre", "Escarpins noirs", "Ceinture fine", "Montre elegante"]
+    }},
+    {{
+      "day": "Jour 2 - Casual",
+      "context": "Sortie detente, brunch, shopping",
+      "items": ["T-shirt blanc", "Jean bleu indigo", "Cardigan camel", "Baskets blanches", "Sac toile", "Bijoux fins"]
+    }},
+    {{
+      "day": "Jour 3 - Weekend Actif",
+      "context": "Marche, musee, loisirs",
+      "items": ["Pull moutarde", "Jean noir", "Veste courte", "Bottines camel", "Sac crossbody"]
+    }},
+    {{
+      "day": "Jour 4 - Soiree Chic",
+      "context": "Diner, cocktail, evenement",
+      "items": ["Robe noire midi", "Veste bordeaux cintree", "Escarpins noirs", "Bijoux or discrets", "Clutch noir"]
+    }},
+    {{
+      "day": "Jour 5 - Confiance",
+      "context": "Entretien, presentation importante",
+      "items": ["Chemise corail", "Jean noir", "Veste neutre", "Escarpins noirs", "Bijoux fins or"]
+    }},
+    {{
+      "day": "Jour 6 - Detente Cocooning",
+      "context": "Maison, detente, confortable",
+      "items": ["T-shirt blanc", "Pantalon olive souple", "Cardigan camel", "Baskets confortables", "Sac souple"]
+    }},
+    {{
+      "day": "Jour 7 - Brunch Sociale",
+      "context": "Entre amies, moment convivial",
+      "items": ["Chemise camel", "Jean blanc ou kaki", "Mocassins cuir", "Sac moyen structure", "Lunettes de soleil"]
+    }}
+  ],
+  
+  "wardrobe_audit_pitch": {{
+    "title": "Passez a l'etape superieure: l'audit de votre garde-robe IA",
+    "description": "En important les photos de vos vetements actuels, notre IA analyse ce que vous possedez deja. Elle vous indique exactement ce qui vous met en valeur, ce qui peut etre optimise, et ce qui manque pour completer vos tenues. Resultat: moins d'achats inutiles, tenues prets a l'emploi, dressing 100% aligne avec votre profil.",
+    "benefits": [
+      "Analyse IA complete de vos vetements existants",
+      "Identification des pieces phares qui vous mettent en valeur",
+      "Suggestions precises de complements manquants",
+      "Reduction drastique des achats impulsifs",
+      "Tenues instantanement disponibles"
+    ]
+  }},
+  
+  "styling_plan_4_weeks": [
+    {{
+      "week": "SEMAINE 1: Les Basiques Fondateurs",
+      "focus": "Construire votre socle de pieces neutres stables",
+      "actions": [
+        "Verifier/acheter: T-shirt blanc, jean bleu, pantalon noir",
+        "Investir dans une BONNE veste blazer (qualite = durabilite)",
+        "Essayer les chaussures basiques: escarpins noirs, baskets blanches",
+        "Prendre des photos de chaque piece achetee pour votre dossier"
+      ],
+      "budget_range": "200-300 EUR"
+    }},
+    {{
+      "week": "SEMAINE 2: L'Expression Coloree",
+      "focus": "Ajouter 2-3 pieces COLOREES de votre palette personnelle",
+      "actions": [
+        "Ajouter 2-3 pieces colorees (chemise camel, pull moutarde, etc.)",
+        "Faire un mood-board avec images d'inspiration de votre style",
+        "Essayer les combos formulas: casual + pro + soiree (pages 17)",
+        "Prendre des selfies avec vos nouvelles tenues"
+      ],
+      "budget_range": "150-250 EUR"
+    }},
+    {{
+      "week": "SEMAINE 3: Accessoires & Sophistication",
+      "focus": "Finaliser avec accessoires discrets qui affinent",
+      "actions": [
+        "Ceintures fines (comme conseille page 15 morphologie)",
+        "Bijoux discrets elegants (colliers, creoles, boucles simples)",
+        "Chaussures secondaires: bottines, ballerines, sandales talon",
+        "Tester chaque accessoire avec vos tenues basiques"
+      ],
+      "budget_range": "100-150 EUR"
+    }},
+    {{
+      "week": "SEMAINE 4: Affirmation & Prendre du Recul",
+      "focus": "Relire tout votre rapport et tester vos 7 tenues en rotation",
+      "actions": [
+        "Relire rapport complet (pages morpho + styling + colorimetrie)",
+        "Porter les 7 tenues prets-a-porter (page 20) en rotation",
+        "Prendre des photos de vos meilleures combos",
+        "Creer un Pinterest ou Notion avec votre style personnel",
+        "Vous projeter dans 3 mois: quels achats suivants?"
+      ],
+      "budget_range": "0 EUR (juste organisation)"
+    }}
+  ]
+}}
 
-  {% if style.capsule_wardrobe.basics %}
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-      {% for basic in style.capsule_wardrobe.basics limit:6 %}
-        <div style="background:white; padding:12px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border:1px solid #ecf0f1;">
-          <div style="background:#f5f5f5; width:100%; height:70px; border-radius:8px; margin-bottom:10px; display:flex; align-items:center; justify-content:center; font-size:28px;">
-            {% if forloop.index == 1 %}👕{% elsif forloop.index == 2 %}👖{% elsif forloop.index == 3 %}🩳{% elsif forloop.index == 4 %}🧥{% elsif forloop.index == 5 %}👠{% else %}👜{% endif %}
-          </div>
-          <h4 style="color:#2c3e50; margin:0 0 5px 0; font-size:12px; font-weight:700;">{{basic.name}}</h4>
-          <p style="color:#7f8c8d; font-size:10px; line-height:1.4; margin:0 0 6px 0;">
-            {{basic.description}}
-          </p>
-          <p style="color:#999; font-size:9px; margin:0; font-weight:600;">💰 {{basic.price_range}}</p>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+REGLES METIER IMPORTANTES:
 
-  <div style="background:#e8f5e9; padding:12px; border-radius:10px; margin-top:15px; border-left:4px solid #4caf50;">
-    <p style="margin:0; color:#388e3c; font-size:11px; line-height:1.5;">
-      <strong>✅ Avec ces 6 basiques:</strong> Vous avez la fondation solide. Chaque pièce se porte seule ou en combo. Une fois achetées, c'est fini pour 1-2 ans!
-    </p>
-  </div>
+1. ARCHETYPES
+- 1 archetype principal clair et NOMME (pas generique)
+- 4 archetypes secondaires coherents avec les styles declares
+- Chaque description personnalisee a ELLE, pas generique
 
-  <div class="page-footer" style="margin-top:30px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
+2. MIX & MATCH
+- EXACTEMENT 3 formulas (casual / pro / soiree)
+- Logique claire: 1 basique neutre + 1 statement colore
+- Styling tips concrets et applicables immediatement
 
-<!-- PAGE 19 : CAPSULE WARDROBE - STATEMENTS -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">✨ Garde-Robe Capsule: Les Statements</h2>
-    <span class="page-number">Page 19 / 21</span>
-  </div>
+3. CAPSULE WARDROBE
+- Basics: 6 pieces EXACTEMENT
+- Statements: 6 pieces EXACTEMENT
+- Prix realistes (femme 25-45 ans, classe moyenne+)
+- Descriptions qui VENDENT: pourquoi c'est indispensable
 
-  <div style="background:#fff5e6; padding:15px; border-radius:10px; margin-bottom:20px; border-left:4px solid #f39c12;">
-    <p style="margin:0; color:#2c3e50; font-size:12px; line-height:1.6;">
-      <strong>Les pièces déclaratives:</strong> Ces pièces COLORÉES expriment votre personnalité unique. 
-      Combinez 1 statement avec un basique neutre = tenue complète et harmonieuse! Budget: 150-250€ pour 6 pièces
-    </p>
-  </div>
+4. TENUES PRETS-A-PORTER
+- EXACTEMENT 7 tenues (7 jours)
+- Simples, realistes, reutilisables 4+ fois/mois
+- Contextes varies (travail, casual, soiree, etc)
+- Pas de fantaisie: du quotidien praticable
 
-  {% if style.capsule_wardrobe.statements %}
-    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-      {% for statement in style.capsule_wardrobe.statements limit:6 %}
-        <div style="background:white; padding:12px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.08); border:2px solid #f39c12;">
-          <div style="background:linear-gradient(135deg, #C19A6B 0%, #E2725B 100%); width:100%; height:70px; border-radius:8px; margin-bottom:10px; display:flex; align-items:center; justify-content:center; color:white; font-size:11px; font-weight:700; text-align:center;">
-            Couleur {{forloop.index}}
-          </div>
-          <h4 style="color:#2c3e50; margin:0 0 5px 0; font-size:12px; font-weight:700;">{{statement.name}}</h4>
-          <p style="color:#7f8c8d; font-size:10px; line-height:1.4; margin:0 0 6px 0;">
-            {{statement.description}}
-          </p>
-          <p style="color:#999; font-size:9px; margin:0; font-weight:600;">💰 {{statement.price_range}}</p>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+5. AUDIT DE GARDE-ROBE (UPSELL)
+- Doit donner ENVIE, pas vendre agressivement
+- Mettre en avant l'ANALYSE IA des vetements existants
+- Benefices concrets: moins d'achats inutiles, tenues prets-a-l'emploi
 
-  <div style="background:#f3e5f5; padding:12px; border-radius:10px; margin-top:15px; border-left:4px solid #ba68c8;">
-    <p style="margin:0; color:#6a1b9a; font-size:11px; line-height:1.5;">
-      <strong>✨ Formule gagnante:</strong> Chaque statement se porte avec UN basique neutre. Exemple: Chemise camel + jean noir = 1 tenue parfaite. Variez juste le statement!
-    </p>
-  </div>
+6. STYLING PLAN
+- EXACTEMENT 4 semaines
+- Progression logique: bases -> couleurs -> accessoires -> affirmation
+- Budgets realistes et progressifs (total ~450-700 EUR phase 1)
 
-  <div class="page-footer" style="margin-top:30px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
+7. TON & QUALITE
+- Pas de jargon marketing
+- Pas de promesses irrealistes
+- Conseils concrets, credibles, elegants
+- Adresse-toi a la cliente en VOUS (formel bienveillant)
+- Valorise chaque recommandation: POURQUOI c'est bon pour elle
 
-<!-- PAGE 20 : TENUES PRÊTES-À-PORTER -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">👗 7 Jours de Tenues Prêtes-à-Porter</h2>
-    <span class="page-number">Page 20 / 21</span>
-  </div>
-
-  <div style="background:#d1ecf1; padding:12px; border-radius:10px; margin-bottom:15px; border-left:4px solid #17a2b8;">
-    <p style="margin:0; color:#2c3e50; font-size:11px; line-height:1.5;">
-      <strong>🎯 Pas de prise de tête le matin!</strong> Voici 7 tenues testées. Portez-les en rotation pendant un mois, changez juste les accessoires et bijoux!
-    </p>
-  </div>
-
-  {% if style.ready_to_wear_outfits %}
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-      {% for outfit in style.ready_to_wear_outfits limit:7 %}
-        <div style="background:#f8f9fa; padding:11px; border-radius:8px; border-left:3px solid #9b59b6;">
-          <h4 style="color:#9b59b6; margin:0 0 5px 0; font-size:11px; font-weight:700;">{{outfit.day}}</h4>
-          <p style="color:#999; font-size:9px; margin:0 0 7px 0; font-style:italic;">{{outfit.context}}</p>
-          <p style="color:#2c3e50; font-size:10px; line-height:1.4; margin:0;">
-            {% for item in outfit.items %}{{item}}{% if forloop.last %}{% else %}<br>{% endif %}{% endfor %}
-          </p>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
-
-  <div style="background:#fff5e6; padding:12px; border-radius:10px; margin-top:12px; border-left:4px solid #f39c12;">
-    <p style="margin:0; color:#e67e22; font-size:10px; line-height:1.5;">
-      <strong>💡 ASTUCE:</strong> Vous avez 7 tenues de base. Portez-les en boucle pendant un mois entier et changez juste les bijoux/accessoires. Ensuite, vos formules gagnantes deviennent des automatismes!
-    </p>
-  </div>
-
-  <div class="page-footer" style="margin-top:30px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
-
-<!-- PAGE 21 : VOTRE PLAN D'ACTION 4 SEMAINES + AUDIT IA -->
-<div class="page" style="page-break-before:always;">
-  <div class="page-header" style="border-bottom:2px solid #9b59b6;">
-    <h2 class="page-title">🚀 Plan d'Action 4 Semaines</h2>
-    <span class="page-number">Page 21 / 21</span>
-  </div>
-
-  {% if style.styling_plan_4_weeks %}
-    {% for week in style.styling_plan_4_weeks limit:4 %}
-      <div style="background:{% if forloop.index == 1 %}#e8f5e9{% elsif forloop.index == 2 %}#fff5e6{% elsif forloop.index == 3 %}#e1f5fe{% else %}#f3e5f5{% endif %}; padding:12px; border-radius:10px; margin-bottom:10px; border-left:5px solid {% if forloop.index == 1 %}#4caf50{% elsif forloop.index == 2 %}#f39c12{% elsif forloop.index == 3 %}#0288d1{% else %}#ba68c8{% endif %};">
-        
-        <h4 style="color:{% if forloop.index == 1 %}#388e3c{% elsif forloop.index == 2 %}#e67e22{% elsif forloop.index == 3 %}#01579b{% else %}#6a1b9a{% endif %}; margin:0 0 8px 0; font-size:12px; font-weight:700;">
-          {{week.week}}
-        </h4>
-        
-        <p style="color:#555; font-size:10px; margin:0 0 6px 0; font-style:italic;">
-          <strong>Focus:</strong> {{week.focus}}
-        </p>
-        
-        <ul style="color:#555; font-size:9px; margin:0 0 6px 0; padding-left:14px; line-height:1.4;">
-          {% for action in week.actions %}
-            <li style="margin-bottom:2px;">{{action}}</li>
-          {% endfor %}
-        </ul>
-        
-        <p style="color:{% if forloop.index == 1 %}#388e3c{% elsif forloop.index == 2 %}#e67e22{% elsif forloop.index == 3 %}#01579b{% else %}#6a1b9a{% endif %}; font-size:10px; font-weight:600; margin:0;">
-          💰 Budget: {{week.budget_range}}
-        </p>
-      </div>
-    {% endfor %}
-  {% endif %}
-
-  <!-- AUDIT DE GARDE-ROBE UPSELL -->
-  <div style="background:linear-gradient(135deg, #f0ecf9 0%, #f8f4ff 100%); padding:15px; border-radius:10px; border:2px solid #9b59b6; margin-top:15px;">
-    <h3 style="color:#9b59b6; margin:0 0 10px 0; font-size:14px; font-weight:700;">
-      {% if style.wardrobe_audit_pitch.title %}{{style.wardrobe_audit_pitch.title}}{% else %}Prochaine étape: L'audit de votre garde-robe IA{% endif %}
-    </h3>
-    
-    <p style="color:#555; font-size:10px; line-height:1.5; margin:0 0 8px 0;">
-      {% if style.wardrobe_audit_pitch.description %}{{style.wardrobe_audit_pitch.description}}{% else %}Analysez ce que vous possédez déjà et optimisez votre dressing{% endif %}
-    </p>
-    
-    {% if style.wardrobe_audit_pitch.benefits %}
-      <ul style="color:#555; font-size:9px; margin:0; padding-left:14px; line-height:1.4;">
-        {% for benefit in style.wardrobe_audit_pitch.benefits limit:5 %}
-          <li style="margin-bottom:2px;">{{benefit}}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-  </div>
-
-  <!-- RÉSUMÉ FINAL -->
-  <div style="background:#f8f9fa; padding:12px; border-radius:10px; margin-top:12px; border-left:4px solid #2c3e50;">
-    <p style="margin:0; color:#2c3e50; font-size:10px; line-height:1.5;">
-      <strong>Votre profil complet:</strong> Saison {{colorimetry.saison_confirmee}} • Sous-ton {{colorimetry.sous_ton_detecte}} • Silhouette {{morphology_page1.bodyType}}<br>
-      <strong>Budget phase 1:</strong> 450-700€ répartis sur 4 semaines<br>
-      <strong>Objectif:</strong> Une garde-robe cohérente, intemporelle et facile à porter
-    </p>
-  </div>
-
-  <div class="page-footer" style="margin-top:25px;">
-    <span class="footer-brand">my-stylist.io©</span>
-    <span class="footer-contact">contact@my-stylist.io</span>
-  </div>
-</div>
-
-<!-- ════════════════════════════════════════════════════════════════════════════════
-     FIN DES PAGES 16-21
-     ════════════════════════════════════════════════════════════════════════════════ -->
+IMPORTANT:
+- Le JSON doit etre PARSABLE sans correction
+- Aucun champ vide
+- Aucun texte avant ou apres JSON
+- Respecte EXACTEMENT les nombres (6 basics, 6 statements, 7 outfits, 4 weeks, 3 formulas, 4 archetypes)
+"""
