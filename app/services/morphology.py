@@ -416,7 +416,7 @@ class MorphologyService:
                 merged = {
                     "introduction": part2_cat.get("introduction", ""),
                     "recommandes": part2_cat.get("recommandes", []),
-                    "a_eviter": part2_cat.get("a_eviter", []),
+                    "a_eviter": part2_cat.get("pieces_a_eviter", part2_cat.get("a_eviter", [])),
                     "matieres": part3_cat.get("matieres", part2_cat.get("matieres", "")),
                     "motifs": part3_cat.get("motifs", part2_cat.get("motifs", {})),
                     "pieges": part3_cat.get("pieges", []),  # ✅ Des Part 3!
