@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-JSON Parser Robuste v2.4 - AMÉLIORÉ
-✅ Basé sur votre parser actuel
-✅ + PRÉ-TRAITEMENT des newlines/caractères contrôle (LA FIX PRINCIPALE)
-✅ + Ordre de stratégies optimisé
-✅ Extraction du JSON même avec texte avant/après
-✅ Support des blocs ```json
-✅ Pas d'escaping d'apostrophe
-✅ Compte accolades correctement
+JSON Parser Robuste v3.0 - CORRIGÉ SANS FALLBACKS
+✅ Ajoute les guillemets manquants autour des clés JSON
+✅ Supprime TOUS les fallbacks - utilise VRAIES données uniquement
+✅ Raise une erreur si parsing impossible (pas de silence!)
+✅ 7 stratégies optimisées pour JSON cassé
 """
 
 import json
@@ -15,33 +12,36 @@ import re
 
 
 class RobustJSONParser:
-    """Parser JSON robuste avec extraction markdown + apostrophes"""
+    """Parser JSON robuste - NO FALLBACKS, vraies données uniquement"""
     
     @staticmethod
     def parse_json_with_fallback(response_text: str) -> dict:
         """
-        Parse JSON avec stratégies optimisées
+        Parse JSON avec 7 stratégies - SANS FALLBACK
         
-        ✅ Stratégie 0 (NEW): PRÉ-TRAITEMENT des newlines/caractères contrôle
-        ✅ Stratégie 1: Extraire JSON des blocs ```json
-        ✅ Stratégie 2: Parser direct (JSON valide)
-        ✅ Stratégie 3: Fix escapes invalides + retry
+        ✅ Stratégie 0: Pré-traitement newlines/caractères contrôle
+        ✅ Stratégie 0.5: AJOUTER guillemets manquants (NEW!)
+        ✅ Stratégie 1: Extraction depuis bloc ```json
+        ✅ Stratégie 2: Parsing direct
+        ✅ Stratégie 3: Fix escapes invalides
         ✅ Stratégie 4: Extraction complète (compte accolades)
         ✅ Stratégie 5: Nettoyage agressif
-        ✅ Stratégie 6: Fallback minimal
+        ❌ PAS DE FALLBACK - Raise exception si tout échoue!
         
-        Retourne TOUJOURS un dict (jamais d'exception)
+        Retourne TOUJOURS un dict valide avec VRAIES données ou RAISE
         """
-        print("\n🔋 Parsing JSON robuste:")
+        print("\n🔋 Parsing JSON robuste (NO FALLBACKS):")
         
         if not response_text or not isinstance(response_text, str):
-            print("   ❌ Contenu vide ou invalide → Fallback")
-            return RobustJSONParser._minimal_fallback()
+            raise ValueError("❌ Contenu vide ou invalide - impossible de parser")
         
-        # ✅ STRATÉGIE 0 (NEW): PRÉ-TRAITEMENT - Échapper les newlines/caractères contrôle
-        # C'EST LA FIX PRINCIPALE POUR LES CRASHES!
+        # ✅ STRATÉGIE 0: PRÉ-TRAITEMENT - Échapper les newlines/caractères contrôle
         print("   Stratégie 0: Pré-traitement des newlines/caractères contrôle...")
         preprocessed = RobustJSONParser._preprocess_control_chars(response_text)
+        
+        # ✅ STRATÉGIE 0.5: AJOUTER GUILLEMETS MANQUANTS (NEW!)
+        print("   Stratégie 0.5: Ajouter guillemets manquants autour des clés...")
+        preprocessed = RobustJSONParser._add_missing_quotes(preprocessed)
         
         # ✅ STRATÉGIE 1: Extraire JSON des blocs ```json
         print("   Stratégie 1: Extraction depuis bloc ```json...")
@@ -100,32 +100,25 @@ class RobustJSONParser:
         except Exception as e:
             print(f"      ❌ Erreur: {str(e)[:60]}...")
         
-        # ✅ STRATÉGIE 6: Fallback minimal
-        print("   Stratégie 6: Fallback minimal")
-        print("      ⚠️ Retour données minimales")
-        return RobustJSONParser._minimal_fallback()
+        # ❌ PLUS DE FALLBACK - RAISE EXCEPTION
+        error_msg = (
+            "\n❌ IMPOSSIBLE DE PARSER LE JSON!\n"
+            "   Toutes les 7 stratégies ont échoué.\n"
+            "   Response reçue:\n"
+            f"   {response_text[:200]}...\n"
+        )
+        print(error_msg)
+        raise ValueError(error_msg)
     
     @staticmethod
     def _preprocess_control_chars(text: str) -> str:
         """
-        ✅ NEW - PRÉ-TRAITEMENT DES CARACTÈRES DE CONTRÔLE
-        
-        C'EST LA FIX PRINCIPALE POUR VOS CRASHES!
-        
-        Remplace les caractères de contrôle par leurs équivalents échappés
-        avant toute tentative de parsing JSON.
-        
-        Convertit:
-        - Vraies newlines → \\n
-        - Carriage returns → \\r
-        - Tabs → \\t
-        - Autres caractères contrôle → espaces
+        Pré-traitement: Échappe les caractères de contrôle
         """
         if not text:
             return text
         
-        # Remplacer les vraies newlines non échappées par \\n
-        # Pattern: newline qui n'est pas déjà précédée par un backslash
+        # Remplacer les vraies newlines non échappées
         text = re.sub(r'(?<!\\)\n', r'\\n', text)
         text = re.sub(r'(?<!\\)\r', r'\\r', text)
         text = re.sub(r'(?<!\\)\t', r'\\t', text)
@@ -136,23 +129,47 @@ class RobustJSONParser:
         return text
     
     @staticmethod
+    def _add_missing_quotes(text: str) -> str:
+        """
+        ✅ NEW - AJOUTE les guillemets manquants autour des clés JSON
+        
+        Transforme:
+          {saison_confirmee: "Automne"}
+        En:
+          {"saison_confirmee": "Automne"}
+        
+        Pattern regex:
+        - (\\{|,) = accolade ouvrante ou virgule
+        - \\s* = espaces optionnels
+        - ([a-zA-Z_][a-zA-Z0-9_]*) = nom de clé (commence par lettre/underscore)
+        - \\s*: = espaces optionnels puis deux-points
+        
+        Remplace par:
+        - \\1 = le { ou ,
+        - "\\2" = la clé entre guillemets
+        - : = le deux-points
+        """
+        if not text:
+            return text
+        
+        # Ajouter guillemets autour des clés sans guillemets
+        text = re.sub(
+            r'(\{|,)\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:',
+            r'\1 "\2":',
+            text
+        )
+        
+        return text
+    
+    @staticmethod
     def _extract_json_from_markdown(text: str) -> str:
         """
         Extrait JSON depuis bloc ```json
-        
-        Cherche les blocs:
-        ```json
-        {
-          ...
-        }
-        ```
-        
-        Retourne le JSON ou None si pas trouvé
         """
         if not text:
             return None
         
-        # Chercher le bloc ```json...```
+        # Chercher ```json...```
         pattern = r'```json\s*(.*?)\s*```'
         match = re.search(pattern, text, re.DOTALL)
         
@@ -161,13 +178,12 @@ class RobustJSONParser:
             if json_content:
                 return json_content
         
-        # Alternative: chercher juste ```...```
+        # Alternative: chercher ```...```
         pattern2 = r'```\s*(.*?)\s*```'
         match2 = re.search(pattern2, text, re.DOTALL)
         
         if match2:
             json_content = match2.group(1).strip()
-            # Vérifier que c'est du JSON (commence par {)
             if json_content.startswith('{'):
                 return json_content
         
@@ -176,37 +192,18 @@ class RobustJSONParser:
     @staticmethod
     def _fix_invalid_escapes(text: str) -> str:
         """
-        Corrige SEULEMENT les escapes VRAIMENT invalides
-        
-        IMPORTANT - En JSON, les SEULES escapes valides sont:
-        - \\" (guillemet)
-        - \\\\ (backslash)
-        - \\/ (slash)
-        - \\b (backspace)
-        - \\f (form feed)
-        - \\n (newline)
-        - \\r (carriage return)
-        - \\t (tab)
-        - \\uXXXX (unicode)
-        
-        ❌ L'apostrophe ' NE DOIT PAS être échappée!
-        ❌ \\' n'existe pas en JSON valide!
-        
-        Cette méthode:
-        1. Supprimer les caractères de contrôle
-        2. Remplacer \\' par ' (l'apostrophe n'a pas besoin d'escape)
-        3. Corriger les autres escapes invalides
+        Corrige les escapes invalides
         """
         if not text:
             return text
         
-        # 1. Supprimer caractères de contrôle
+        # Supprimer caractères de contrôle
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', text)
         
-        # 2. ✅ CRUCIAL: \\' → ' (l'apostrophe N'A PAS besoin d'escape en JSON!)
+        # ✅ CRUCIAL: \\' → ' (apostrophe n'a pas besoin d'escape)
         text = text.replace("\\'", "'")
         
-        # 3. Corriger les autres escapes invalides
+        # Corriger autres escapes invalides
         def fix_escape(match):
             char_after = match.group(1)
             
@@ -214,7 +211,7 @@ class RobustJSONParser:
             if char_after in '"\\bfnrt/':
                 return match.group(0)
             
-            # \\u suivi de 4 hex est valide
+            # \\u suivi de 4 hex
             if char_after == 'u':
                 return match.group(0)
             
@@ -229,13 +226,6 @@ class RobustJSONParser:
     def _extract_complete_json(response_text: str) -> str:
         """
         Extrait le JSON COMPLET en comptant les accolades
-        
-        Trouve le premier `{` et compte:
-        - Chaque `{` = +1
-        - Chaque `}` = -1
-        - Quand le compte = 0, on a le JSON complet
-        
-        Gère correctement les strings et les échappements
         """
         start_idx = response_text.find('{')
         
@@ -249,7 +239,7 @@ class RobustJSONParser:
         for i in range(start_idx, len(response_text)):
             char = response_text[i]
             
-            # Gérer les échappements dans les strings
+            # Gérer les échappements
             if escape_next:
                 escape_next = False
                 continue
@@ -263,19 +253,18 @@ class RobustJSONParser:
                 in_string = not in_string
                 continue
             
-            # Compter les accolades SEULEMENT hors des strings
+            # Compter les accolades HORS strings
             if not in_string:
                 if char == '{':
                     bracket_count += 1
                 elif char == '}':
                     bracket_count -= 1
                     
-                    # Quand on revient à 0, on a le JSON complet!
                     if bracket_count == 0:
                         extracted = response_text[start_idx:i+1]
                         return extracted
         
-        # Si on arrive ici, il manque des accolades fermantes
+        # Si manquent des accolades fermantes
         if bracket_count > 0:
             return response_text[start_idx:] + '}' * bracket_count
         
@@ -284,22 +273,21 @@ class RobustJSONParser:
     @staticmethod
     def _clean_json(json_str: str) -> str:
         """
-        Nettoie le JSON pour le rendre parsable
+        Nettoie le JSON
         """
-        
         start_idx = json_str.find('{')
         end_idx = json_str.rfind('}')
         
         if start_idx == -1 or end_idx == -1:
-            return "{}"
+            return None
         
         result = json_str[start_idx:end_idx+1]
         
-        # Supprimer les virgules traînantes
+        # Supprimer virgules traînantes
         result = re.sub(r',(\s*})', r'\1', result)
         result = re.sub(r',(\s*])', r'\1', result)
         
-        # Fix escapes invalides
+        # Fix escapes
         result = RobustJSONParser._fix_invalid_escapes(result)
         
         return result
@@ -309,31 +297,17 @@ class RobustJSONParser:
         """
         Nettoyage agressif final
         """
-        
-        # Étape 1: Extraire JSON
         start = json_str.find('{')
         end = json_str.rfind('}')
         
         if start == -1 or end == -1:
-            return "{}"
+            return None
         
         result = json_str[start:end+1]
         
-        # Étape 2: Nettoyer
+        # Nettoyer
         result = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', ' ', result)
         result = re.sub(r',(\s*[}\]])', r'\1', result)
         result = RobustJSONParser._fix_invalid_escapes(result)
         
         return result
-    
-    @staticmethod
-    def _minimal_fallback() -> dict:
-        """
-        Fallback minimal quand tout échoue
-        """
-        return {
-            "notes_compatibilite": {},
-            "unwanted_colors": [],
-            "guide_maquillage": {},
-            "nailColors": []
-        }
