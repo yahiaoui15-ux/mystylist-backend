@@ -57,7 +57,7 @@ class ColorimetryService:
             # PART 1: SAISON + ANALYSES
             # ═══════════════════════════════════════════════════════════
             result_part1 = await self._call_part1(user_data, face_photo_url, eye_color, hair_color)
-            if not result_part1 or result_part1.get("_parse_error"):
+            if not isinstance(result_part1, dict) or result_part1.get("_parse_error"):
             print("⚠️ Colorimétrie Part 1 invalide → mode dégradé")
 
             result_part1 = {
