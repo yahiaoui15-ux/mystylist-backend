@@ -57,8 +57,15 @@ class ColorimetryService:
             # PART 1: SAISON + ANALYSES
             # ═══════════════════════════════════════════════════════════
             result_part1 = await self._call_part1(user_data, face_photo_url, eye_color, hair_color)
-            if not result_part1:
-                return {}
+            if not result_part1 or result_part1.get("_parse_error"):
+            print("⚠️ Colorimétrie Part 1 invalide → mode dégradé")
+
+            result_part1 = {
+            "saison_confirmee": "Indéterminée",
+                "sous_ton_detecte": "neutre",
+                "justification_saison": "",
+                "analyse_colorimetrique_detaillee": {}
+            }
             
             saison = result_part1.get("saison_confirmee", "Indéterminée")
             sous_ton = result_part1.get("sous_ton_detecte", "neutre")
