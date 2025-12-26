@@ -10,7 +10,6 @@ import json
 import re
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
-from app.services.robust_json_parser import RobustJSONParser
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
 from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
@@ -423,6 +422,31 @@ class MorphologyService:
                     "visuels": []
                 }
                 
+                # ======================================================
+                # FALLBACK ANTI-SECTIONS VIDES (MORPHOLOGY)
+                # ======================================================
+
+                if not merged["recommandes"]:
+                    merged["recommandes"] = [
+                        {
+                            "cut_display": "Coupe adaptée à votre silhouette",
+                            "why": "Cette coupe permet d’équilibrer les volumes et de valoriser votre morphologie."
+                        }
+                    ]
+
+                if not merged["a_eviter"]:
+                    merged["a_eviter"] = [
+                        {
+                            "cut_display": "Coupe non structurée",
+                            "why": "Elle risque de déséquilibrer visuellement la silhouette."
+                        }
+                    ]
+
+                if not merged["pieges"]:
+                    merged["pieges"] = [
+                        "Éviter les volumes excessifs qui cassent l’équilibre naturel de la silhouette."
+                    ]
+
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
                 print(f"   • {category}: {pieges_count} pièges")
@@ -524,7 +548,7 @@ EXPLICATION: {explanation}"""
             "A": {
                 "hauts": {
                     "introduction": "Pour silhouette A, valorisez le haut du corps.",
-                    "a_privilegier": [
+                    "recommandes": [
                         {"cut_display": "Haut structuré", "why": "Crée du volume au haut"},
                         {"cut_display": "Encolure V", "why": "Allonge le buste"},
                         {"cut_display": "Col rond ajusté", "why": "Met en avant les épaules"},
@@ -542,7 +566,7 @@ EXPLICATION: {explanation}"""
                 },
                 "bas": {
                     "introduction": "Pour silhouette A, affinez le bas.",
-                    "a_privilegier": [
+                    "recommandes": [
                         {"cut_display": "Jean taille haute", "why": "Allonge les jambes"},
                         {"cut_display": "Pantalon droit", "why": "Équilibre les hanches"},
                         {"cut_display": "Jupe évasée", "why": "Camoufle les hanches"},
@@ -561,70 +585,24 @@ EXPLICATION: {explanation}"""
             }
         }
         
-        result = defaults.get(silhouette, defaults.get("A"))
-        return {"recommendations": result}
-    
-
-    @staticmethod
-    def _repair_broken_json(json_str: str) -> str:
-        """Répare les JSON partiellement cassés"""
-        # Fermer les strings ouvertes
-        json_str = re.sub(r'"([^"]*?)$', r'""', json_str, flags=re.MULTILINE)
+        # Fallback silhouette par défaut
+        result = defaults.get(silhouette, defaults["A"])
         
-        # Ajouter accolades fermantes manquantes
-        open_count = json_str.count('{')
-        close_count = json_str.count('}')
-        if open_count > close_count:
-            json_str += '}' * (open_count - close_count)
-        
-        return json_str
-    
-    def _generate_default_recommendations(self, silhouette: str) -> dict:
-        """Génère des recommandations par défaut si OpenAI échoue"""
-        print("   ✅ Génération recommandations par défaut")
-        
-        defaults = {
-            "A": {
-                "hauts": {
-                    "introduction": "Pour silhouette A, valorisez le haut du corps.",
-                    "a_privilegier": [
-                        {"cut_display": "Haut structuré", "why": "Crée du volume au haut"},
-                        {"cut_display": "Encolure V", "why": "Allonge le buste"},
-                        {"cut_display": "Col rond ajusté", "why": "Met en avant les épaules"},
-                        {"cut_display": "Haut échancré", "why": "Crée de la profondeur"},
-                        {"cut_display": "Manches montantes", "why": "Définit les épaules"},
-                        {"cut_display": "Peplum haut", "why": "Ajoute du volume au haut"},
-                    ],
-                    "a_eviter": [
-                        {"cut_display": "Haut moulant", "why": "Marque trop"},
-                        {"cut_display": "Tunique informe", "why": "Cache le haut"},
-                        {"cut_display": "Manches bouffantes", "why": "Peut élargir"},
-                        {"cut_display": "Col bateau", "why": "Élargit les épaules"},
-                        {"cut_display": "Haut oversize", "why": "Perd les proportions"},
-                    ]
-                },
-                "bas": {
-                    "introduction": "Pour silhouette A, affinez le bas.",
-                    "a_privilegier": [
-                        {"cut_display": "Jean taille haute", "why": "Allonge les jambes"},
-                        {"cut_display": "Pantalon droit", "why": "Équilibre les hanches"},
-                        {"cut_display": "Jupe évasée", "why": "Camoufle les hanches"},
-                        {"cut_display": "Legging taille haute", "why": "Affine le bas"},
-                        {"cut_display": "Pantalon flare", "why": "Crée la verticalité"},
-                        {"cut_display": "Jupe plissée", "why": "Structure le bas"},
-                    ],
-                    "a_eviter": [
-                        {"cut_display": "Pantalon moulant", "why": "Souligne les hanches"},
-                        {"cut_display": "Short court", "why": "Raccourcit les jambes"},
-                        {"cut_display": "Pantalon large", "why": "Élargit"},
-                        {"cut_display": "Jupe portefeuille", "why": "Accentue les hanches"},
-                        {"cut_display": "Motifs larges", "why": "Grossit visuellement"},
-                    ]
+        # 🔒 AJOUT DES CATÉGORIES MANQUANTES (STRUCTURE SAFE)
+        for category in [
+            "robes",
+            "vestes",
+            "maillot_lingerie",
+            "chaussures",
+            "accessoires"
+        ]:
+            if category not in result:
+                result[category] = {
+                    "introduction": f"Recommandations générales pour les {category}.",
+                    "recommandes": [],
+                    "a_eviter": []
                 }
-            }
-        }
         
-        result = defaults.get(silhouette, defaults.get("A"))
         return {"recommendations": result}
 
 

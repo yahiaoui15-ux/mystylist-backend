@@ -182,34 +182,22 @@ class StylingService:
             print("\n" + "="*80 + "\n")
             
             # ======================================================
-            # NORMALISATION & FALLBACKS ANTI-SECTIONS VIDES
+            # FALLBACK STYLING COMPLET - MVP SAFE
             # ======================================================
 
-            # 1. Essence stylistique
+            # Essence stylistique
             result.setdefault(
                 "essenceShort",
-                "Votre style repose sur un équilibre harmonieux entre élégance naturelle, confort et cohérence visuelle."
+                "Votre style repose sur un équilibre entre élégance naturelle, confort et cohérence visuelle, adapté à votre silhouette et à votre mode de vie."
             )
 
             result.setdefault(
                 "psychoStylisticReading",
-                "Votre style traduit une recherche de cohérence, de praticité et d’authenticité dans vos choix vestimentaires."
+                "Votre style traduit un besoin de cohérence, de praticité et d’authenticité. Vous privilégiez des tenues faciles à porter, mais toujours soignées."
             )
 
-            # 2. Archétype principal
-            if not isinstance(result.get("primaryArchetype"), dict):
-                archetypes = result.get("archetypes", [])
-                if isinstance(archetypes, list) and archetypes:
-                    result["primaryArchetype"] = archetypes[0]
-                else:
-                    result["primaryArchetype"] = {
-                        "name": "Élégance naturelle",
-                        "icon": "👗",
-                        "description": "Un style équilibré, facile à porter au quotidien, qui privilégie les coupes justes et les matières agréables."
-                    }
-
-            # 3. Archétypes complémentaires
-            if not isinstance(result.get("archetypes"), list) or len(result["archetypes"]) < 1:
+            # Archétypes
+            if not isinstance(result.get("archetypes"), list) or len(result["archetypes"]) == 0:
                 result["archetypes"] = [
                     {
                         "name": "Classique moderne",
@@ -217,58 +205,107 @@ class StylingService:
                     },
                     {
                         "name": "Décontracté chic",
-                        "description": "Un style confortable mais toujours soigné."
+                        "description": "Un style confortable mais toujours structuré."
                     },
                     {
-                        "name": "Féminin structuré",
-                        "description": "Des lignes nettes qui mettent la silhouette en valeur."
+                        "name": "Féminin équilibré",
+                        "description": "Des lignes douces qui valorisent la silhouette sans excès."
                     },
                     {
                         "name": "Minimal élégant",
-                        "description": "Peu de pièces, mais toujours bien choisies."
+                        "description": "Moins de pièces, mais mieux choisies."
                     }
                 ]
 
-            # 4. Mix & Match
-            if not isinstance(result.get("mix_and_match_formulas"), list):
-                result["mix_and_match_formulas"] = []
+            # Archétype principal
+            if not isinstance(result.get("primaryArchetype"), dict):
+                result["primaryArchetype"] = result["archetypes"][0]
 
-            if len(result["mix_and_match_formulas"]) < 3:
+            # Mix & Match
+            if not isinstance(result.get("mix_and_match_formulas"), list) or len(result["mix_and_match_formulas"]) == 0:
                 result["mix_and_match_formulas"] = [
                     {
                         "title": "Base neutre + pièce forte",
-                        "context": "Idéal pour le quotidien",
-                        "base_items": ["Pantalon neutre", "Top uni"],
-                        "statement_items": ["Veste colorée", "Accessoire fort"],
-                        "styling_tip": "Gardez une base simple pour laisser parler la pièce forte."
+                        "context": "Quotidien",
+                        "base_items": ["Jean droit", "Top uni"],
+                        "statement_items": ["Veste structurée", "Accessoire marquant"],
+                        "styling_tip": "Gardez la base simple pour mettre en valeur la pièce forte."
                     },
                     {
                         "title": "Ton sur ton maîtrisé",
-                        "context": "Professionnel & élégant",
+                        "context": "Professionnel",
                         "base_items": ["Haut clair", "Bas assorti"],
                         "statement_items": ["Chaussures contrastantes"],
-                        "styling_tip": "Jouez sur les textures plutôt que les couleurs."
+                        "styling_tip": "Variez les textures pour éviter la monotonie."
                     },
                     {
                         "title": "Casual chic",
-                        "context": "Week-end ou sorties",
+                        "context": "Week-end",
                         "base_items": ["Jean bien coupé", "T-shirt qualitatif"],
-                        "statement_items": ["Veste structurée"],
-                        "styling_tip": "Structurez toujours une tenue casual."
+                        "statement_items": ["Veste fluide"],
+                        "styling_tip": "Une seule pièce structurée suffit à élever la tenue."
                     }
-                ]   
-            # 5. Capsule wardrobe
+                ]
+
+            # Capsule wardrobe
             result.setdefault("capsule_wardrobe", {})
-            result["capsule_wardrobe"].setdefault("basics", [])
-            result["capsule_wardrobe"].setdefault("statements", [])
 
-            # 6. Tenues prêtes-à-porter
-            if not isinstance(result.get("ready_to_wear_outfits"), list):
-                result["ready_to_wear_outfits"] = []
+            if not isinstance(result["capsule_wardrobe"].get("basics"), list) or len(result["capsule_wardrobe"]["basics"]) == 0:
+                result["capsule_wardrobe"]["basics"] = [
+                    {
+                        "name": "Jean droit foncé",
+                        "description": "Basique polyvalent adapté à toutes les situations.",
+                        "price_range": "60–90€"
+                    },
+                    {
+                        "name": "Top uni de qualité",
+                        "description": "Facile à associer et agréable à porter.",
+                        "price_range": "25–45€"
+                    },
+                    {
+                        "name": "Veste structurée",
+                        "description": "Apporte immédiatement de l’allure à une tenue simple.",
+                        "price_range": "80–120€"
+                    }
+                ]
 
-            # 7. Plan 4 semaines
-            if not isinstance(result.get("styling_plan_4_weeks"), list):
-                result["styling_plan_4_weeks"] = []
+            if not isinstance(result["capsule_wardrobe"].get("statements"), list) or len(result["capsule_wardrobe"]["statements"]) == 0:
+                result["capsule_wardrobe"]["statements"] = [
+                    {
+                        "name": "Chemise colorée",
+                        "description": "Apporte du caractère à une tenue neutre.",
+                        "price_range": "40–70€"
+                    }
+                ]
+
+            # Tenues prêtes-à-porter
+            if not isinstance(result.get("ready_to_wear_outfits"), list) or len(result["ready_to_wear_outfits"]) == 0:
+                result["ready_to_wear_outfits"] = [
+                    {
+                        "day": "Tenue type",
+                        "context": "Polyvalente",
+                        "items": [
+                            "Jean droit",
+                            "Top uni",
+                            "Veste structurée",
+                            "Chaussures confortables"
+                        ]
+                    }
+                ]
+
+            # Plan 4 semaines
+            if not isinstance(result.get("styling_plan_4_weeks"), list) or len(result["styling_plan_4_weeks"]) == 0:
+                result["styling_plan_4_weeks"] = [
+                    {
+                        "week": "Semaine 1",
+                        "focus": "Structurer les bases",
+                        "actions": [
+                            "Identifier les basiques manquants",
+                            "Éliminer les pièces peu portées"
+                        ],
+                        "budget_range": "150–200€"
+                    }
+                ]
 
             # ======================================================
 
