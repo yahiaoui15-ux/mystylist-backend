@@ -180,6 +180,99 @@ class StylingService:
                     result = {}
             
             print("\n" + "="*80 + "\n")
+            
+            # ======================================================
+            # NORMALISATION & FALLBACKS ANTI-SECTIONS VIDES
+            # ======================================================
+
+            # 1. Essence stylistique
+            result.setdefault(
+                "essenceShort",
+                "Votre style repose sur un équilibre harmonieux entre élégance naturelle, confort et cohérence visuelle."
+            )
+
+            result.setdefault(
+                "psychoStylisticReading",
+                "Votre style traduit une recherche de cohérence, de praticité et d’authenticité dans vos choix vestimentaires."
+            )
+
+            # 2. Archétype principal
+            if not isinstance(result.get("primaryArchetype"), dict):
+                archetypes = result.get("archetypes", [])
+                if isinstance(archetypes, list) and archetypes:
+                    result["primaryArchetype"] = archetypes[0]
+                else:
+                    result["primaryArchetype"] = {
+                        "name": "Élégance naturelle",
+                        "icon": "👗",
+                        "description": "Un style équilibré, facile à porter au quotidien, qui privilégie les coupes justes et les matières agréables."
+                    }
+
+            # 3. Archétypes complémentaires
+            if not isinstance(result.get("archetypes"), list) or len(result["archetypes"]) < 1:
+                result["archetypes"] = [
+                    {
+                        "name": "Classique moderne",
+                        "description": "Des pièces intemporelles, bien coupées, faciles à associer."
+                    },
+                    {
+                        "name": "Décontracté chic",
+                        "description": "Un style confortable mais toujours soigné."
+                    },
+                    {
+                        "name": "Féminin structuré",
+                        "description": "Des lignes nettes qui mettent la silhouette en valeur."
+                    },
+                    {
+                        "name": "Minimal élégant",
+                        "description": "Peu de pièces, mais toujours bien choisies."
+                    }
+                ]
+
+            # 4. Mix & Match
+            if not isinstance(result.get("mix_and_match_formulas"), list):
+                result["mix_and_match_formulas"] = []
+
+            if len(result["mix_and_match_formulas"]) < 3:
+                result["mix_and_match_formulas"] = [
+                    {
+                        "title": "Base neutre + pièce forte",
+                        "context": "Idéal pour le quotidien",
+                        "base_items": ["Pantalon neutre", "Top uni"],
+                        "statement_items": ["Veste colorée", "Accessoire fort"],
+                        "styling_tip": "Gardez une base simple pour laisser parler la pièce forte."
+                    },
+                    {
+                        "title": "Ton sur ton maîtrisé",
+                        "context": "Professionnel & élégant",
+                        "base_items": ["Haut clair", "Bas assorti"],
+                        "statement_items": ["Chaussures contrastantes"],
+                        "styling_tip": "Jouez sur les textures plutôt que les couleurs."
+                    },
+                    {
+                        "title": "Casual chic",
+                        "context": "Week-end ou sorties",
+                        "base_items": ["Jean bien coupé", "T-shirt qualitatif"],
+                        "statement_items": ["Veste structurée"],
+                        "styling_tip": "Structurez toujours une tenue casual."
+                    }
+                ]   
+            # 5. Capsule wardrobe
+            result.setdefault("capsule_wardrobe", {})
+            result["capsule_wardrobe"].setdefault("basics", [])
+            result["capsule_wardrobe"].setdefault("statements", [])
+
+            # 6. Tenues prêtes-à-porter
+            if not isinstance(result.get("ready_to_wear_outfits"), list):
+                result["ready_to_wear_outfits"] = []
+
+            # 7. Plan 4 semaines
+            if not isinstance(result.get("styling_plan_4_weeks"), list):
+                result["styling_plan_4_weeks"] = []
+
+            # ======================================================
+
+            
             return result
             
         except Exception as e:
