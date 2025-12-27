@@ -38,6 +38,33 @@ class StylingService:
         content = content.replace('\x00', '')
         content = re.sub(r'\\([éèêëàâäùûüôöîïœæ])', r'\1', content)
         return content
+
+    async def force_valid_json(self, raw_content: str) -> dict:
+        """
+        Demande à OpenAI de renvoyer STRICTEMENT un JSON valide à partir d'un JSON cassé.
+        Objectif: réduire le fallback à quasi 0% quand le modèle renvoie un JSON presque correct.
+        """
+        repair_prompt = f"""
+Corrige le JSON suivant pour qu’il soit STRICTEMENT valide.
+- AUCUN texte hors JSON
+- AUCUN commentaire
+- guillemets doubles uniquement
+- aucune virgule finale
+JSON À CORRIGER :
+{raw_content}
+""".strip()
+
+        self.openai.set_context("Styling - JSON FIX", "")
+        self.openai.set_system_prompt("Tu es un validateur JSON strict. Tu produis uniquement du JSON valide.")
+
+        response = await self.openai.call_chat(
+            prompt=repair_prompt,
+            model="gpt-4",
+            max_tokens=2000
+        )
+
+        content = response.get("content", "").strip()
+        return json.loads(content)
     
     async def generate(
         self,
@@ -155,30 +182,36 @@ class StylingService:
                 print(f"      • Capsule wardrobe: {len(basics)} basics")
                 print(f"      • Mix & match formulas: {len(formulas)}")
                 
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"   ❌ JSON invalide (styling): {e}")
+                # 1) Tentative réparation via OpenAI (Patch C)
                 try:
-                    start = content.find('{')
-                    end = content.rfind('}') + 1
-                    if start != -1 and end > start:
-                        json_str = content[start:end]
-                        result = json.loads(json_str)
-                        print(f"   ✅ Succès (extraction JSON)")
-                        
-                        formulas = result.get("mix_and_match_formulas", [])
-                        archetypes = result.get("archetypes", [])
-                        capsule = result.get("capsule_wardrobe", {})
-                        basics = capsule.get("basics", []) if isinstance(capsule, dict) else []
-                        
-                        print(f"      • Archetypes: {len(archetypes)}")
-                        print(f"      • Capsule wardrobe: {len(basics)} basics")
-                        print(f"      • Mix & match formulas: {len(formulas)}")
+                    fixed = await self.force_valid_json(content)
+                    if isinstance(fixed, dict):
+                        result = fixed
+                        print("   ✅ JSON réparé via OpenAI (Styling - JSON FIX)")
                     else:
-                        print(f"   ❌ Pas de JSON trouvé")
                         result = {}
-                except Exception as e:
-                    print(f"   ❌ Erreur parsing JSON: {e}")
+                except Exception as repair_err:
+                    print(f"   ⚠️ Réparation JSON impossible: {repair_err}")
                     result = {}
-            
+
+                # 2) Si toujours vide, tentative extraction brute
+                if not result:
+                    try:
+                        start = content.find('{')
+                        end = content.rfind('}') + 1
+                        if start != -1 and end > start:
+                            json_str = content[start:end]
+                            result = json.loads(json_str)
+                            print("   ✅ Succès (extraction JSON brute)")
+                        else:
+                            print("   ❌ Pas de JSON trouvé")
+                            result = {}
+                    except Exception as e2:
+                        print(f"   ❌ Erreur extraction brute: {e2}")
+                        result = {}
+
             print("\n" + "="*80 + "\n")
             
             # ======================================================

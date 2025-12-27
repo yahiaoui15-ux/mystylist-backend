@@ -12,6 +12,16 @@ Générez détails styling en JSON valide UNIQUEMENT.
 Zéro texte avant/après JSON.
 IMPÉRATIF: 7 pièges exactement par catégorie."""
 
+IMPORTANT:
+- Tu DOIS répondre UNIQUEMENT avec un JSON STRICT.
+- AUCUN texte avant ou après.
+- Toutes les clés DOIVENT être entre guillemets doubles.
+- AUCUNE virgule finale.
+- AUCUN commentaire.
+- Si tu ne peux pas générer une valeur, mets null ou [].
+- La réponse doit être directement compatible avec json.loads().
+
+
 MORPHOLOGY_PART3_USER_PROMPT = """Silhouette: {silhouette_type}
 Objectifs: {styling_objectives}
 À valoriser: {body_parts_to_highlight}

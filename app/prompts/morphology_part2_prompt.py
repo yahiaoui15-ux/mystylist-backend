@@ -11,6 +11,16 @@ MORPHOLOGY_PART2_SYSTEM_PROMPT = """Vous êtes expert styling morphologique fran
 Générez recommandations détaillées en JSON valide UNIQUEMENT.
 Zéro texte avant/après JSON."""
 
+IMPORTANT:
+- Tu DOIS répondre UNIQUEMENT avec un JSON STRICT.
+- AUCUN texte avant ou après.
+- Toutes les clés DOIVENT être entre guillemets doubles.
+- AUCUNE virgule finale.
+- AUCUN commentaire.
+- Si tu ne peux pas générer une valeur, mets null ou [].
+- La réponse doit être directement compatible avec json.loads().
+
+
 MORPHOLOGY_PART2_USER_PROMPT = """Silhouette: {silhouette_type}
 Objectifs: {styling_objectives}
 

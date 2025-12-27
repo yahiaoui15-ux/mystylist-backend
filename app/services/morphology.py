@@ -202,31 +202,20 @@ class MorphologyService:
                 part2_result = json.loads(content_part2_clean)
                 print("   ✅ Parsing réussi!")
                 
-            except json.JSONDecodeError as e:
-                print(f"   ❌ Erreur parsing JSON: {str(e)}")
-                print("   → Tentative extraction JSON brute avec regex...")
-                
-                # Extraction ultra-robuste : chercher {...}
-                json_match = re.search(r'\{[\s\S]*\}', content_part2_clean)
-                if json_match:
-                    json_str = json_match.group()
-                    try:
-                        part2_result = json.loads(json_str)
-                        print("   ✅ Extraction JSON simple réussie!")
-                    except:
-                        # Fallback ultieme: réparer les quotes non fermés
-                        print("   → Tentative réparation JSON...")
-                        json_str = self._repair_broken_json(json_str)
-                        try:
-                            part2_result = json.loads(json_str)
-                            print("   ✅ Réparation JSON réussie!")
-                        except:
-                            print("   ❌ Tous les essais échoués - génération fallback")
-                            part2_result = self._generate_default_recommendations(silhouette)
-                else:
-                    print("   ❌ Pas de JSON trouvé - génération fallback")
+            except json.JSONDecodeError:
+                print("   ⚠️ JSON invalide → tentative correction OpenAI")
+
+                try:
+                    part2_result = await self.force_valid_json(
+                        content_part2_clean,
+                        context="Morphology Part 2"
+                    )
+                    print("   ✅ JSON corrigé par OpenAI")
+
+                except Exception:
+                    print("   ❌ Correction échouée → fallback")
                     part2_result = self._generate_default_recommendations(silhouette)
-            
+
 
             # ========================================================================
             # MORPHOLOGY PART 3 - DÉTAILS DE STYLING (MATIERES + MOTIFS + PIÈGES)
@@ -284,21 +273,20 @@ class MorphologyService:
                 details = part3_result.get("details", {})
                 print("      • Catégories trouvées: {}".format(list(details.keys())))
                 
-            except json.JSONDecodeError as e:
-                print(f"   ❌ Erreur parsing JSON: {str(e)}")
-                print("   → Tentative extraction JSON brute...")
-                
-                json_match = re.search(r'\{[\s\S]*\}', content_part3_clean)
-                if json_match:
-                    try:
-                        part3_result = json.loads(json_match.group())
-                        print("   ✅ Extraction réussie!")
-                    except:
-                        print("   ❌ Extraction échouée - Utilisation fallback")
-                        part3_result = {"details": {}}
-                else:
-                    print("   ❌ Aucun JSON trouvé - Utilisation fallback")
+            except json.JSONDecodeError:
+                print("   ⚠️ JSON invalide → tentative correction OpenAI")
+
+                try:
+                    part3_result = await self.force_valid_json(
+                        content_part3_clean,
+                        context="Morphology Part 3"
+                    )
+                    print("   ✅ JSON corrigé par OpenAI")
+
+                except Exception:
+                    print("   ❌ Correction échouée → fallback")
                     part3_result = {"details": {}}
+
             # ========================================================================
             # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
             # ========================================================================
@@ -525,7 +513,40 @@ EXPLICATION: {explanation}"""
             "explanation": explanation,
             "full_text": full_text
         }
-    
+
+    def _format_minimizes_for_page8(self, parties: list, silhouette_explanation: str,
+                                    onboarding_parties: list, openai_parties: list) -> dict:
+        """
+        Génère les minimizes pour Page 8
+        Utilise silhouette_explanation comme base pour l'explanation
+        """
+        announcement = ", ".join(parties) if parties else "Votre silhouette"
+
+        # Base explanation
+        explanation = silhouette_explanation or "Certaines zones peuvent être visuellement atténuées par des coupes et volumes mieux placés."
+
+        # Enrichir avec les sources
+        if onboarding_parties and openai_parties:
+            explanation += (
+                f"\n\nCette analyse combine vos préférences (vous aviez sélectionné: {', '.join(onboarding_parties)}) "
+                f"avec nos recommandations morphologiques (nous suggérons: {', '.join(openai_parties)})."
+            )
+        elif onboarding_parties:
+            explanation += f"\n\nVous aviez sélectionné ces zones à minimiser: {', '.join(onboarding_parties)}."
+        elif openai_parties:
+            explanation += f"\n\nNous recommandons de minimiser visuellement: {', '.join(openai_parties)}."
+
+        full_text = f"""ANNONCE: {announcement}
+
+EXPLICATION: {explanation}"""
+
+        return {
+            "announcement": announcement,
+            "explanation": explanation,
+            "full_text": full_text
+        }
+
+
     @staticmethod
     def _repair_broken_json(json_str: str) -> str:
         """Répare les JSON partiellement cassés"""
@@ -540,69 +561,116 @@ EXPLICATION: {explanation}"""
         
         return json_str
     
+    async def force_valid_json(self, raw_content: str, context: str) -> dict:
+        """
+        Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
+        """
+        repair_prompt = f"""
+    Tu as généré le JSON suivant, mais il est INVALIDE.
+
+    Corrige-le pour qu’il soit :
+    - strictement valide JSON
+    - sans rien ajouter
+    - sans texte hors JSON
+
+    JSON À CORRIGER :
+    {raw_content}
+    """
+
+        self.openai.set_context(f"{context} - JSON FIX", "")
+        self.openai.set_system_prompt(
+            "Tu es un validateur JSON strict. Tu ne produis QUE du JSON valide."
+        )
+
+        response = await self.openai.call_chat(
+            prompt=repair_prompt,
+            model="gpt-4-turbo",
+            max_tokens=2000
+        )
+
+        content = response.get("content", "").strip()
+        return json.loads(content)
+
     def _generate_default_recommendations(self, silhouette: str) -> dict:
-        """Génère des recommandations par défaut si OpenAI échoue"""
+        """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
         print("   ✅ Génération recommandations par défaut")
-        
+
+        # --- Base fallback minimal mais complet, compatible template + fusion ---
+        base_category = lambda label: {
+            "introduction": f"Recommandations générales pour les {label}.",
+            "recommandes": [
+                {
+                    "cut_display": "Coupe adaptée à votre silhouette",
+                    "why": "Cette coupe aide à équilibrer les volumes et à structurer la silhouette."
+                }
+            ],
+            "a_eviter": [
+                {
+                    "cut_display": "Coupe non structurée",
+                    "why": "Elle peut déséquilibrer visuellement la silhouette et alourdir la ligne."
+                }
+            ]
+        }
+
         defaults = {
             "A": {
                 "hauts": {
-                    "introduction": "Pour silhouette A, valorisez le haut du corps.",
+                    "introduction": "Pour une silhouette A, l’objectif est de valoriser le haut du corps et d’apporter de la structure aux épaules.",
                     "recommandes": [
                         {"cut_display": "Haut structuré", "why": "Crée du volume au haut"},
                         {"cut_display": "Encolure V", "why": "Allonge le buste"},
                         {"cut_display": "Col rond ajusté", "why": "Met en avant les épaules"},
                         {"cut_display": "Haut échancré", "why": "Crée de la profondeur"},
                         {"cut_display": "Manches montantes", "why": "Définit les épaules"},
-                        {"cut_display": "Peplum haut", "why": "Ajoute du volume au haut"},
+                        {"cut_display": "Peplum placé haut", "why": "Donne du relief au haut du corps"},
                     ],
                     "a_eviter": [
-                        {"cut_display": "Haut moulant", "why": "Marque trop"},
-                        {"cut_display": "Tunique informe", "why": "Cache le haut"},
-                        {"cut_display": "Manches bouffantes", "why": "Peut élargir"},
-                        {"cut_display": "Col bateau", "why": "Élargit les épaules"},
-                        {"cut_display": "Haut oversize", "why": "Perd les proportions"},
+                        {"cut_display": "Haut moulant long", "why": "Accentue le contraste haut/bas"},
+                        {"cut_display": "Tunique informe", "why": "Retire la structure du buste"},
+                        {"cut_display": "Col bateau très large", "why": "Élargit artificiellement"},
+                        {"cut_display": "Haut oversize sans taille", "why": "Perd les proportions"},
+                        {"cut_display": "Manches très bouffantes", "why": "Peut surcharger le haut"},
                     ]
                 },
                 "bas": {
-                    "introduction": "Pour silhouette A, affinez le bas.",
+                    "introduction": "Pour une silhouette A, l’objectif est d’allonger la jambe et d’équilibrer la zone des hanches.",
                     "recommandes": [
-                        {"cut_display": "Jean taille haute", "why": "Allonge les jambes"},
+                        {"cut_display": "Jean taille haute droit", "why": "Allonge les jambes"},
                         {"cut_display": "Pantalon droit", "why": "Équilibre les hanches"},
-                        {"cut_display": "Jupe évasée", "why": "Camoufle les hanches"},
-                        {"cut_display": "Legging taille haute", "why": "Affine le bas"},
-                        {"cut_display": "Pantalon flare", "why": "Crée la verticalité"},
-                        {"cut_display": "Jupe plissée", "why": "Structure le bas"},
+                        {"cut_display": "Jupe évasée", "why": "Harmonise la ligne des hanches"},
+                        {"cut_display": "Pantalon flare léger", "why": "Crée une verticalité"},
+                        {"cut_display": "Jupe plissée fine", "why": "Structure sans épaissir"},
+                        {"cut_display": "Couleurs plus sombres en bas", "why": "Affinent visuellement"},
                     ],
                     "a_eviter": [
-                        {"cut_display": "Pantalon moulant", "why": "Souligne les hanches"},
-                        {"cut_display": "Short court", "why": "Raccourcit les jambes"},
-                        {"cut_display": "Pantalon large", "why": "Élargit"},
-                        {"cut_display": "Jupe portefeuille", "why": "Accentue les hanches"},
-                        {"cut_display": "Motifs larges", "why": "Grossit visuellement"},
+                        {"cut_display": "Pantalon moulant clair", "why": "Met l’accent sur les hanches"},
+                        {"cut_display": "Short très court", "why": "Raccourcit la jambe"},
+                        {"cut_display": "Pantalon très large", "why": "Élargit la silhouette"},
+                        {"cut_display": "Jupe portefeuille épaisse", "why": "Ajoute du volume latéral"},
+                        {"cut_display": "Motifs larges sur les hanches", "why": "Grossissent visuellement"},
                     ]
-                }
+                },
+                "robes": base_category("robes"),
+                "vestes": base_category("vestes"),
+                "maillot_lingerie": base_category("maillots / lingerie"),
+                "chaussures": base_category("chaussures"),
+                "accessoires": base_category("accessoires"),
             }
         }
-        
-        # Fallback silhouette par défaut
+
+        # Si silhouette inconnue → fallback sur A
         result = defaults.get(silhouette, defaults["A"])
-        
-        # 🔒 AJOUT DES CATÉGORIES MANQUANTES (STRUCTURE SAFE)
-        for category in [
-            "robes",
-            "vestes",
-            "maillot_lingerie",
-            "chaussures",
-            "accessoires"
-        ]:
+
+        # Sécurité : s’assurer que toutes les catégories existent
+        for category in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
             if category not in result:
-                result[category] = {
-                    "introduction": f"Recommandations générales pour les {category}.",
-                    "recommandes": [],
-                    "a_eviter": []
-                }
-        
+                result[category] = base_category(category)
+
+            # Sécurité : clés attendues
+            result[category].setdefault("introduction", "")
+            result[category].setdefault("recommandes", [])
+            result[category].setdefault("a_eviter", [])
+
         return {"recommendations": result}
 
 

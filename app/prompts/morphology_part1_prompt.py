@@ -7,6 +7,16 @@ MORPHOLOGY PART 1 - Silhouette + Valorisation/Minimisation (Vision)
 MORPHOLOGY_PART1_SYSTEM_PROMPT = """Expert morphologie corporelle et styling. Analysez la photo + mensurations + choix client.
 Retournez UNIQUEMENT JSON valide (pas d'autre texte)."""
 
+IMPORTANT:
+- Tu DOIS répondre UNIQUEMENT avec un JSON STRICT.
+- AUCUN texte avant ou après.
+- Toutes les clés DOIVENT être entre guillemets doubles.
+- AUCUNE virgule finale.
+- AUCUN commentaire.
+- Si tu ne peux pas générer une valeur, mets null ou [].
+- La réponse doit être directement compatible avec json.loads().
+
+
 MORPHOLOGY_PART1_USER_PROMPT = """Analysez la morphologie et généralisez les recommandations de valorisation/minimisation.
 
 DONNÉES CLIENT:
