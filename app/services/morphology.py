@@ -505,6 +505,130 @@ class MorphologyService:
                 else:
                     merged["motifs"] = "Motifs adaptés à votre morphologie."
 
+                if motifs_text:
+                    merged["motifs"] = "\n\n".join(motifs_text)
+                else:
+                    merged["motifs"] = (
+                        "À privilégier :\n"
+                        "• Motifs proportionnés à votre silhouette\n"
+                        "• Détails verticaux ou structurants\n\n"
+                        "À éviter :\n"
+                        "• Motifs trop larges ou mal placés\n"
+                        "• Accumulation de détails décoratifs"
+                    )
+
+                # ======================================================
+                # PATCH B — FALLBACK MOTIFS & DÉTAILS PAR CATÉGORIE
+                # ======================================================
+
+                if merged["motifs"] in [
+                    "",
+                    "Motifs adaptés à votre morphologie.",
+                    "Motifs adaptés à votre silhouette."
+                ]:
+                    fallback_motifs = {
+                        "hauts": {
+                            "recommandes": [
+                                "détails verticaux",
+                                "rayures fines",
+                                "encolures structurées",
+                                "petits imprimés centrés"
+                            ],
+                            "a_eviter": [
+                                "rayures horizontales larges",
+                                "motifs très imposants",
+                                "imprimés placés sur les zones à minimiser"
+                            ]
+                        },
+                        "bas": {
+                            "recommandes": [
+                                "motifs discrets",
+                                "couleurs unies",
+                                "imprimés diffus"
+                            ],
+                            "a_eviter": [
+                                "gros motifs placés sur les hanches",
+                                "contrastes forts",
+                                "imprimés trop chargés"
+                            ]
+                        },
+                        "robes": {
+                            "recommandes": [
+                                "motifs verticaux",
+                                "imprimés fluides",
+                                "détails centrés sur la taille"
+                            ],
+                            "a_eviter": [
+                                "motifs horizontaux",
+                                "imprimés massifs",
+                                "ruptures visuelles à la taille"
+                            ]
+                        },
+                        "vestes": {
+                            "recommandes": [
+                                "structures nettes",
+                                "lignes verticales",
+                                "détails au niveau des épaules"
+                            ],
+                            "a_eviter": [
+                                "poches trop larges",
+                                "détails sur les hanches",
+                                "formes informes"
+                            ]
+                        },
+                        "maillot_lingerie": {
+                            "recommandes": [
+                                "détails structurants",
+                                "matières gainantes",
+                                "jeux de découpes équilibrés"
+                            ],
+                            "a_eviter": [
+                                "motifs trop contrastés",
+                                "détails mal placés",
+                                "volumes excessifs"
+                            ]
+                        },
+                        "chaussures": {
+                            "recommandes": [
+                                "formes épurées",
+                                "lignes allongeantes",
+                                "détails discrets"
+                            ],
+                            "a_eviter": [
+                                "brides épaisses",
+                                "contrastes trop marqués",
+                                "formes trop massives"
+                            ]
+                        },
+                        "accessoires": {
+                            "recommandes": [
+                                "accessoires proportionnés",
+                                "lignes cohérentes avec la silhouette",
+                                "détails verticaux"
+                            ],
+                            "a_eviter": [
+                                "accessoires surdimensionnés",
+                                "accumulation excessive",
+                                "ruptures visuelles fortes"
+                            ]
+                        }
+                    }
+
+                    cat_fallback = fallback_motifs.get(category, {})
+                    motifs_text = []
+
+                    if cat_fallback.get("recommandes"):
+                        motifs_text.append(
+                            "À privilégier :\n• " + "\n• ".join(cat_fallback["recommandes"])
+                        )
+
+                    if cat_fallback.get("a_eviter"):
+                        motifs_text.append(
+                            "À éviter :\n• " + "\n• ".join(cat_fallback["a_eviter"])
+                        )
+
+                    merged["motifs"] = "\n\n".join(motifs_text)
+
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
                 print(f"   • {category}: {pieges_count} pièges")
