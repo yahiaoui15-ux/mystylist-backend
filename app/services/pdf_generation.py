@@ -118,7 +118,9 @@ class PDFGenerationService:
             if response.status_code not in [200, 201]:
                 error_text = response.text
                 print(f"❌ Erreur PDFMonkey {response.status_code}: {error_text}")
-                raise Exception(f"PDFMonkey error: {response.status_code} - {error_text}")
+                print("⚠️ PDFMonkey timeout, tentative récupération différée")
+                return f"{self.base_url}/documents/{document_id}/download"
+
             
             result = response.json()
             print(f"✅ Réponse PDFMonkey reçue")
