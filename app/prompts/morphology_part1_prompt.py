@@ -1,58 +1,56 @@
 """
 MORPHOLOGY PART 1 - Silhouette + Valorisation/Minimisation (Vision)
+Objectif: détecter silhouette + explication + objectifs + parties à valoriser/minimiser + highlights/minimizes (texte + tips)
+IMPORTANT: JSON STRICT, aucune prose.
 """
 
 MORPHOLOGY_PART1_SYSTEM_PROMPT = """
-Tu es une experte en morphologie corporelle et en styling féminin.
-
-IMPORTANT:
-- Tu DOIS répondre UNIQUEMENT avec un JSON STRICT.
-- AUCUN texte avant ou après.
-- Toutes les clés DOIVENT être entre guillemets doubles.
-- AUCUNE virgule finale.
-- AUCUN commentaire.
-- Si une valeur est impossible, retourne null ou [].
-- Le JSON doit être directement compatible avec json.loads().
+Vous êtes un expert français en morphologie corporelle et en conseils de style.
+Vous devez produire UNIQUEMENT un JSON strict valide, sans aucun texte avant/après.
+Toutes les clés et toutes les strings doivent être entre guillemets doubles.
+Aucune virgule finale.
+Si une valeur est inconnue: null ou [].
+Pas d'apostrophes (') dans les strings JSON: utilisez "ne ... pas" ou reformulez.
 """
 
+# NOTE: ce prompt est formaté via .format_map(...) => toutes les accolades JSON doivent être doublées {{ }}
 MORPHOLOGY_PART1_USER_PROMPT = """
-Analyse la morphologie de la cliente à partir des données suivantes.
+Analyse la photo du corps (URL) + les mensurations. Déduis la silhouette morphologique (A, V, X, H, O) et personnalise.
 
-DONNÉES CLIENT:
-- Photo: {body_photo_url}
-- Épaules: {shoulder_circumference} cm
-- Taille: {waist_circumference} cm
-- Hanches: {hip_circumference} cm
-- Buste: {bust_circumference} cm
-- Parties à valoriser (cliente): {body_parts_to_highlight}
-- Parties à minimiser (cliente): {body_parts_to_minimize}
+URL photo corps: {body_photo_url}
+Mensurations (cm):
+- épaules: {shoulder_circumference}
+- poitrine: {bust_circumference}
+- taille: {waist_circumference}
+- hanches: {hip_circumference}
 
-SILHOUETTES POSSIBLES (UNE SEULE):
-O, H, A, V, X, 8
+Rends UNIQUEMENT ce JSON (même structure, mêmes clés):
 
-STRUCTURE JSON STRICTE ATTENDUE:
-{
-  "silhouette_type": "A",
-  "silhouette_explanation": "3 à 4 phrases explicatives.",
-  "highlights": {
-    "announcement": "",
-    "explanation": "",
-    "tips": []
-  },
-  "minimizes": {
-    "announcement": "",
-    "explanation": "",
-    "tips": []
-  },
-  "body_analysis": {
-    "measurements": {},
-    "ratios": {}
-  },
-  "styling_objectives": []
-}
+{{
+  "silhouette_type": "A|V|X|H|O",
+  "silhouette_explanation": "2-4 phrases claires et personnalisées",
+  "body_analysis": {{
+    "points_forts": ["...","...","..."],
+    "points_attention": ["...","...","..."]
+  }},
+  "styling_objectives": ["...","..."],
+  "body_parts_to_highlight": ["...","..."],
+  "body_parts_to_minimize": ["...","..."],
 
-RÈGLES:
-- JSON uniquement
-- Pas de texte hors JSON
-- Adresse-toi à la cliente avec 'vous'
+  "highlights": {{
+    "announcement": "Titre court centré sur CE QU'ON VALORISE",
+    "explanation": "2-4 phrases pédagogiques",
+    "tips": ["Tip 1", "Tip 2", "Tip 3", "Tip 4"]
+  }},
+  "minimizes": {{
+    "announcement": "Titre court centré sur CE QU'ON MINIMISE",
+    "explanation": "2-4 phrases pédagogiques",
+    "tips": ["Tip 1", "Tip 2", "Tip 3", "Tip 4"]
+  }}
+}}
+
+Contraintes:
+- tips: actionnables (coupes, matières, longueurs, accessoires), pas vagues.
+- évite les mots creux ("optez pour des vêtements adaptés").
+- zéro texte hors JSON.
 """

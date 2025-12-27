@@ -287,6 +287,40 @@ class MorphologyService:
                     print("   ❌ Correction échouée → fallback")
                     part3_result = {"details": {}}
 
+                # ============================
+                # NORMALISATION PART 3 (ANTI-VIDE)
+                # ============================
+                expected_cats = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
+
+                # Cas 1: le modèle a renvoyé directement les catégories à la racine (au lieu de details)
+                if isinstance(part3_result, dict) and "details" not in part3_result:
+                    if any(k in part3_result for k in expected_cats):
+                        part3_result = {"details": {k: part3_result.get(k, {}) for k in expected_cats}}
+
+                    # Cas 2: le modèle a renvoyé un bloc générique (matieres/motifs/pieges) à la racine
+                    elif any(k in part3_result for k in ["matieres", "motifs", "pieges"]):
+                        generic_block = {
+                            "matieres": part3_result.get("matieres", []),
+                            "motifs": part3_result.get("motifs", {}),
+                            "pieges": part3_result.get("pieges", [])
+                        }
+                        part3_result = {"details": {k: generic_block for k in expected_cats}}
+
+                # Sécuriser la présence des clés attendues dans chaque catégorie
+                if not isinstance(part3_result, dict):
+                    part3_result = {"details": {}}
+
+                if "details" not in part3_result or not isinstance(part3_result["details"], dict):
+                    part3_result["details"] = {}
+
+                for cat in expected_cats:
+                    if cat not in part3_result["details"] or not isinstance(part3_result["details"][cat], dict):
+                        part3_result["details"][cat] = {}
+                    part3_result["details"][cat].setdefault("matieres", [])
+                    part3_result["details"][cat].setdefault("motifs", {"recommandes": [], "a_eviter": []})
+                    part3_result["details"][cat].setdefault("pieges", [])
+
+                
             # ========================================================================
             # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
             # ========================================================================
