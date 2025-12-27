@@ -469,6 +469,42 @@ class MorphologyService:
                         "Éviter les volumes excessifs qui cassent l’équilibre naturel de la silhouette."
                     ]
 
+                # ======================================================
+                # FORMATAGE TEXTE LISIBLE - MATIERES & MOTIFS (PATCH A)
+                # ======================================================
+
+                # MATIERES
+                matieres = merged.get("matieres", "")
+                if isinstance(matieres, list):
+                    merged["matieres"] = "• " + "\n• ".join(matieres)
+                elif isinstance(matieres, str) and matieres.strip():
+                    merged["matieres"] = matieres.strip()
+                else:
+                    merged["matieres"] = "• Matières adaptées à votre silhouette."
+
+                # MOTIFS
+                motifs = merged.get("motifs", {})
+
+                if isinstance(motifs, dict):
+                    motifs_text = []
+
+                    recommandés = motifs.get("recommandes", [])
+                    a_eviter = motifs.get("a_eviter", [])
+
+                    if isinstance(recommandés, list) and recommandés:
+                        motifs_text.append(
+                            "À privilégier :\n• " + "\n• ".join(recommandés)
+                        )
+
+                    if isinstance(a_eviter, list) and a_eviter:
+                        motifs_text.append(
+                            "À éviter :\n• " + "\n• ".join(a_eviter)
+                        )
+
+                    merged["motifs"] = "\n\n".join(motifs_text) if motifs_text else "Motifs adaptés à votre morphologie."
+                else:
+                    merged["motifs"] = "Motifs adaptés à votre morphologie."
+
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
                 print(f"   • {category}: {pieges_count} pièges")
