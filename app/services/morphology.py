@@ -548,6 +548,82 @@ class MorphologyService:
                         "a_eviter": cat_fallback.get("a_eviter", [])
                     }
 
+                # ===========================
+                # AJOUT DANS LA BOUCLE DE FUSION
+                # juste AVANT merged_recommendations[category] = merged
+                # ===========================
+
+                # ======================================================
+                # PATCH A — FORMATAGE MOTIFS EN BULLETS (LECTURE PDF)
+                # ======================================================
+
+                motifs = merged.get("motifs", {})
+
+                motifs_lines = []
+
+                if isinstance(motifs, dict):
+                    rec = motifs.get("recommandes", []) or []
+                    avoid = motifs.get("a_eviter", []) or []
+
+                    if rec:
+                        motifs_lines.append("• À privilégier :")
+                        motifs_lines.extend([f"  – {m}" for m in rec])
+
+                    if avoid:
+                        motifs_lines.append("• À éviter :")
+                        motifs_lines.extend([f"  – {m}" for m in avoid])
+
+                merged["motifs"] = "\n".join(motifs_lines) if motifs_lines else "• Motifs adaptés à votre morphologie."
+
+                # ======================================================
+                # PATCH B — DENSIFICATION RECOMMANDATIONS / A ÉVITER
+                # ======================================================
+
+                def enrich_list(items, category, mode):
+                    fallback = {
+                        "hauts": {
+                            "recommandes": [
+                                {"cut_display": "Haut structuré", "why": "Structure le haut du corps"},
+                                {"cut_display": "Détails verticaux", "why": "Allonge visuellement la silhouette"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Haut trop ample", "why": "Alourdit la carrure"},
+                            ],
+                        },
+                        "robes": {
+                            "recommandes": [
+                                {"cut_display": "Robe fluide structurée", "why": "Suit les lignes naturelles"},
+                                {"cut_display": "Taille marquée", "why": "Rééquilibre les volumes"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Robe droite rigide", "why": "Efface la silhouette"},
+                            ],
+                        },
+                        "vestes": {
+                            "recommandes": [
+                                {"cut_display": "Veste cintrée", "why": "Structure le buste"},
+                                {"cut_display": "Épaule définie", "why": "Renforce l’équilibre visuel"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Veste informe", "why": "Manque de structure"},
+                            ],
+                        },
+                    }
+
+                    if len(items) >= 4:
+                        return items
+
+                    extra = fallback.get(category, {}).get(mode, [])
+                    return items + extra[: max(0, 4 - len(items))]
+
+
+                merged["recommandes"] = enrich_list(
+                    merged["recommandes"], category, "recommandes"
+                )
+
+                merged["a_eviter"] = enrich_list(
+                    merged["a_eviter"], category, "a_eviter"
+                )
 
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
