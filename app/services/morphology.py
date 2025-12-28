@@ -470,117 +470,6 @@ class MorphologyService:
                     ]
 
                 # ======================================================
-                # FORMATAGE TEXTE LISIBLE - MATIERES & MOTIFS (PATCH A)
-                # ======================================================
-
-                # MATIERES
-                matieres = merged.get("matieres", "")
-                if isinstance(matieres, list):
-                    merged["matieres"] = "• " + "\n• ".join(matieres)
-                elif isinstance(matieres, str) and matieres.strip():
-                    merged["matieres"] = matieres.strip()
-                else:
-                    merged["matieres"] = "• Matières adaptées à votre silhouette."
-
-                # MOTIFS (NORMALISATION - NE PAS CONVERTIR EN STRING)
-                motifs = merged.get("motifs", {})
-
-                # Cas 1 : format dict attendu
-                if isinstance(motifs, dict):
-                    rec = motifs.get("recommandes", []) or []
-                    avoid = motifs.get("a_eviter", []) or []
-
-                # Cas 2 : format liste → on l'interprète comme "recommandes"
-                elif isinstance(motifs, list):
-                    rec = motifs
-                    avoid = []
-
-                # Cas 3 : format inattendu
-                else:
-                    rec = []
-                    avoid = []
-
-                # Toujours normaliser en dict pour le template PDF
-                merged["motifs"] = {
-                    "recommandes": rec,
-                    "a_eviter": avoid
-                }
-
-                # ======================================================
-                # PATCH B — FALLBACK MOTIFS & DÉTAILS PAR CATÉGORIE
-                # (uniquement si vide)
-                # ======================================================
-                if not merged["motifs"]["recommandes"] and not merged["motifs"]["a_eviter"]:
-                    fallback_motifs = {
-                        "hauts": {
-                            "recommandes": ["détails verticaux", "rayures fines", "encolures structurées", "petits imprimés centrés"],
-                            "a_eviter": ["rayures horizontales larges", "motifs très imposants", "imprimés sur zones à minimiser"]
-                        },
-                        "bas": {
-                            "recommandes": ["motifs discrets", "couleurs unies", "imprimés diffus"],
-                            "a_eviter": ["gros motifs sur les hanches", "contrastes forts", "imprimés trop chargés"]
-                        },
-                        "robes": {
-                            "recommandes": ["motifs verticaux", "imprimés fluides", "détails centrés sur la taille"],
-                            "a_eviter": ["motifs horizontaux", "imprimés massifs", "ruptures visuelles à la taille"]
-                        },
-                        "vestes": {
-                            "recommandes": ["structures nettes", "lignes verticales", "détails au niveau des épaules"],
-                            "a_eviter": ["poches trop larges", "détails sur les hanches", "formes informes"]
-                        },
-                        "maillot_lingerie": {
-                            "recommandes": ["détails structurants", "matières gainantes", "jeux de découpes équilibrés"],
-                            "a_eviter": ["motifs trop contrastés", "détails mal placés", "volumes excessifs"]
-                        },
-                        "chaussures": {
-                            "recommandes": ["formes épurées", "lignes allongeantes", "détails discrets"],
-                            "a_eviter": ["brides épaisses", "contrastes trop marqués", "formes trop massives"]
-                        },
-                        "accessoires": {
-                            "recommandes": ["accessoires proportionnés", "lignes cohérentes avec la silhouette", "détails verticaux"],
-                            "a_eviter": ["accessoires surdimensionnés", "accumulation excessive", "ruptures visuelles fortes"]
-                        }
-                    }
-
-                    cat_fallback = fallback_motifs.get(category, {"recommandes": [], "a_eviter": []})
-                    merged["motifs"] = {
-                        "recommandes": cat_fallback.get("recommandes", []),
-                        "a_eviter": cat_fallback.get("a_eviter", [])
-                    }
-
-                # ======================================================
-                # PATCH C-1 — MOTIFS TOUJOURS REMPLIS (LECTURE PDF)
-                # ======================================================
-
-                motifs = merged.get("motifs", {})
-                motifs_lines = []
-
-                if isinstance(motifs, dict):
-                    rec = motifs.get("recommandes", []) or []
-                    avoid = motifs.get("a_eviter", []) or []
-
-                    if rec:
-                        motifs_lines.append("• À privilégier :")
-                        motifs_lines.extend([f"  – {m}" for m in rec])
-
-                    if avoid:
-                        motifs_lines.append("• À éviter :")
-                        motifs_lines.extend([f"  – {m}" for m in avoid])
-
-                # 🔒 FALLBACK MÉTIER ABSOLU (zéro page vide possible)
-                if not motifs_lines:
-                    motifs_lines = [
-                        "• À privilégier :",
-                        "  – motifs équilibrés et proportionnés à la silhouette",
-                        "  – lignes visuelles cohérentes avec la morphologie",
-                        "• À éviter :",
-                        "  – motifs trop contrastés ou trop massifs",
-                        "  – ruptures visuelles mal placées",
-                    ]
-
-                merged["motifs"] = "\n".join(motifs_lines)
-
-                # ======================================================
                 # PATCH C-2 — DENSITÉ MINIMALE LISTES (ANTI-PAGES PAUVRES)
                 # ======================================================
 
@@ -689,6 +578,44 @@ class MorphologyService:
                 merged["a_eviter"] = enrich_list(
                     merged["a_eviter"], category, "a_eviter"
                 )
+
+                # ======================================================
+                # PATCH C2 — FORMAT CONTRACTUEL POUR PDFMONKEY (FINAL)
+                # ======================================================
+
+                motifs = merged.get("motifs", {})
+
+                # Sécurisation des sources
+                if isinstance(motifs, dict):
+                    rec_list = motifs.get("recommandes", []) or []
+                    avoid_list = motifs.get("a_eviter", []) or []
+                elif isinstance(motifs, list):
+                    rec_list = motifs
+                    avoid_list = []
+                else:
+                    rec_list = []
+                    avoid_list = []
+
+                # Fallback métier si vide (ZÉRO trou possible)
+                if not rec_list:
+                    rec_list = [
+                        "motifs équilibrés et proportionnés à la silhouette",
+                        "lignes visuelles cohérentes avec la morphologie",
+                        "détails placés sur les zones à valoriser"
+                    ]
+
+                if not avoid_list:
+                    avoid_list = [
+                        "motifs trop massifs ou trop contrastés",
+                        "ruptures visuelles mal positionnées",
+                        "détails attirant l’attention sur les zones à minimiser"
+                    ]
+
+                # 🚨 FORMAT FINAL ATTENDU PAR PDFMONKEY (STRING)
+                merged["motifs"] = {
+                    "recommandes": " • ".join(rec_list),
+                    "a_eviter": " • ".join(avoid_list)
+                }
 
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
