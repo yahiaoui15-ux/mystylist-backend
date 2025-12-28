@@ -283,6 +283,26 @@ JSON À CORRIGER :
             # Capsule wardrobe
             result.setdefault("capsule_wardrobe", {})
 
+            # ======================================================
+            # PATCH ANTI-CRASH: capsule_wardrobe peut être une LIST
+            # ======================================================
+            capsule = result.get("capsule_wardrobe")
+
+            # Cas 1: OpenAI renvoie une LIST → normaliser en dict
+            if isinstance(capsule, list):
+                result["capsule_wardrobe"] = {
+                    "basics": capsule,
+                    "statements": [],
+                }
+
+            # Cas 2: valeur absente ou type invalide → dict safe
+            elif not isinstance(capsule, dict):
+                result["capsule_wardrobe"] = {
+                    "basics": [],
+                    "statements": [],
+                }
+
+            # Ensuite seulement, tu peux appeler .get()
             if not isinstance(result["capsule_wardrobe"].get("basics"), list) or len(result["capsule_wardrobe"]["basics"]) == 0:
                 result["capsule_wardrobe"]["basics"] = [
                     {
@@ -301,6 +321,16 @@ JSON À CORRIGER :
                         "price_range": "80–120€"
                     }
                 ]
+
+            if not isinstance(result["capsule_wardrobe"].get("statements"), list) or len(result["capsule_wardrobe"]["statements"]) == 0:
+                result["capsule_wardrobe"]["statements"] = [
+                    {
+                        "name": "Chemise colorée",
+                        "description": "Apporte du caractère à une tenue neutre.",
+                        "price_range": "40–70€"
+                    }
+                ]
+
 
             if not isinstance(result["capsule_wardrobe"].get("statements"), list) or len(result["capsule_wardrobe"]["statements"]) == 0:
                 result["capsule_wardrobe"]["statements"] = [
