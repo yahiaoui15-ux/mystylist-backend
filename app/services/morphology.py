@@ -548,17 +548,11 @@ class MorphologyService:
                         "a_eviter": cat_fallback.get("a_eviter", [])
                     }
 
-                # ===========================
-                # AJOUT DANS LA BOUCLE DE FUSION
-                # juste AVANT merged_recommendations[category] = merged
-                # ===========================
-
                 # ======================================================
-                # PATCH A — FORMATAGE MOTIFS EN BULLETS (LECTURE PDF)
+                # PATCH C-1 — MOTIFS TOUJOURS REMPLIS (LECTURE PDF)
                 # ======================================================
 
                 motifs = merged.get("motifs", {})
-
                 motifs_lines = []
 
                 if isinstance(motifs, dict):
@@ -573,7 +567,78 @@ class MorphologyService:
                         motifs_lines.append("• À éviter :")
                         motifs_lines.extend([f"  – {m}" for m in avoid])
 
-                merged["motifs"] = "\n".join(motifs_lines) if motifs_lines else "• Motifs adaptés à votre morphologie."
+                # 🔒 FALLBACK MÉTIER ABSOLU (zéro page vide possible)
+                if not motifs_lines:
+                    motifs_lines = [
+                        "• À privilégier :",
+                        "  – motifs équilibrés et proportionnés à la silhouette",
+                        "  – lignes visuelles cohérentes avec la morphologie",
+                        "• À éviter :",
+                        "  – motifs trop contrastés ou trop massifs",
+                        "  – ruptures visuelles mal placées",
+                    ]
+
+                merged["motifs"] = "\n".join(motifs_lines)
+
+                # ======================================================
+                # PATCH C-2 — DENSITÉ MINIMALE LISTES (ANTI-PAGES PAUVRES)
+                # ======================================================
+
+                def ensure_min_items(items, category, mode, min_items=4):
+                    if len(items) >= min_items:
+                        return items
+
+                    fallback = {
+                        "hauts": {
+                            "recommandes": [
+                                {"cut_display": "Haut structuré", "why": "Structure le haut du corps"},
+                                {"cut_display": "Détails verticaux", "why": "Allonge visuellement la silhouette"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Haut trop ample", "why": "Déséquilibre la carrure"},
+                            ],
+                        },
+                        "bas": {
+                            "recommandes": [
+                                {"cut_display": "Coupe droite", "why": "Équilibre les volumes"},
+                                {"cut_display": "Taille bien positionnée", "why": "Structure la silhouette"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Coupe trop moulante", "why": "Accentue les déséquilibres"},
+                            ],
+                        },
+                        "robes": {
+                            "recommandes": [
+                                {"cut_display": "Robe structurée", "why": "Soutient les lignes naturelles"},
+                                {"cut_display": "Taille marquée", "why": "Rééquilibre les proportions"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Robe informe", "why": "Efface la silhouette"},
+                            ],
+                        },
+                        "vestes": {
+                            "recommandes": [
+                                {"cut_display": "Veste cintrée", "why": "Structure le buste"},
+                                {"cut_display": "Épaules définies", "why": "Renforcent l’équilibre visuel"},
+                            ],
+                            "a_eviter": [
+                                {"cut_display": "Veste trop large", "why": "Manque de tenue"},
+                            ],
+                        },
+                    }
+
+                    extras = fallback.get(category, {}).get(mode, [])
+                    needed = max(0, min_items - len(items))
+                    return items + extras[:needed]
+
+
+                merged["recommandes"] = ensure_min_items(
+                    merged["recommandes"], category, "recommandes"
+                )
+
+                merged["a_eviter"] = ensure_min_items(
+                    merged["a_eviter"], category, "a_eviter"
+                )
 
                 # ======================================================
                 # PATCH B — DENSIFICATION RECOMMANDATIONS / A ÉVITER
