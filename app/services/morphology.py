@@ -445,6 +445,23 @@ class MorphologyService:
                 }
                 
                 # ======================================================
+                # PATCH D — INTRODUCTION MÉTIER PAR CATÉGORIE (ANTI-VIDE)
+                # ======================================================
+
+                default_intros = {
+                    "vestes": "Les vestes jouent un rôle clé dans la structuration de votre silhouette. Bien choisies, elles apportent de l’équilibre et de l’allure.",
+                    "maillot_lingerie": "Les sous-vêtements et maillots constituent la base invisible de votre silhouette. Leur coupe influence directement le rendu des vêtements.",
+                    "chaussures": "Les chaussures complètent la silhouette et influencent la perception des proportions. Leur forme et leur structure sont déterminantes.",
+                    "accessoires": "Les accessoires finalisent une tenue et orientent le regard. Bien proportionnés, ils renforcent l’harmonie globale."
+                }
+
+                if not merged.get("introduction") or len(merged["introduction"].strip()) < 40:
+                    merged["introduction"] = default_intros.get(
+                        category,
+                        "Ces recommandations sont adaptées à votre morphologie afin de créer un ensemble cohérent."
+                    )
+
+                # ======================================================
                 # FALLBACK ANTI-SECTIONS VIDES (MORPHOLOGY)
                 # ======================================================
 
@@ -616,6 +633,20 @@ class MorphologyService:
                     "recommandes": " • ".join(rec_list),
                     "a_eviter": " • ".join(avoid_list)
                 }
+
+                # ======================================================
+                # FORMAT FINAL MATIÈRES — LISIBLE POUR PDF (FINAL)
+                # ======================================================
+
+                matieres = merged.get("matieres", [])
+
+                if isinstance(matieres, list):
+                    merged["matieres"] = " • ".join(matieres)
+                elif isinstance(matieres, str):
+                    # Séparer intelligemment si OpenAI a collé les mots
+                    merged["matieres"] = re.sub(r'(?<!•)([a-zA-Zéèêàùîôç])(?=[A-Z])', r'\1 • ', matieres)
+                else:
+                    merged["matieres"] = "matières adaptées à votre silhouette"
 
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
