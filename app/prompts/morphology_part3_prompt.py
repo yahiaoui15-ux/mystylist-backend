@@ -15,76 +15,68 @@ Chaque catégorie doit contenir EXACTEMENT 7 pièges.
 # NOTE: formaté via .format_map(...) => accolades JSON doublées {{ }}
 MORPHOLOGY_PART3_USER_PROMPT = """
 Silhouette: {silhouette_type}
-Objectifs: {styling_objectives}
-A valoriser: {body_parts_to_highlight}
-A minimiser: {body_parts_to_minimize}
+Objectifs morphologiques: {styling_objectives}
+Zones à valoriser: {body_parts_to_highlight}
+Zones à minimiser: {body_parts_to_minimize}
 
-Retourne UNIQUEMENT ce JSON:
+Tu es une styliste professionnelle et une conseillère en image expérimentée.
 
-{{
-  "details": {{
-    "hauts": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "bas": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "robes": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "vestes": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "maillot_lingerie": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "chaussures": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }},
-    "accessoires": {{
-      "matieres": ["...","...","...","..."],
-      "motifs": {{
-        "recommandes": ["...","...","..."],
-        "a_eviter": ["...","...","..."]
-      }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
-    }}
-  }}
-}}
+Pour CHAQUE catégorie (hauts, bas, robes, vestes, maillot_lingerie, chaussures, accessoires),
+tu dois expliquer tes recommandations comme tu le ferais à une cliente réelle.
 
-Contraintes:
-- Matieres: 4 à 6 éléments, spécifiques (ex: "crêpe", "viscose structurée", "maille fine", etc.)
-- Motifs: 3 recommandés + 3 à éviter, spécifiques.
+⚠️ RÈGLES IMPORTANTES :
+- Chaque élément de "matieres" doit être UNE PHRASE COMPLÈTE explicative.
+- Chaque élément de "motifs.recommandes" et "motifs.a_eviter" doit être UNE PHRASE COMPLÈTE.
+- Chaque phrase doit :
+  • expliquer POURQUOI ce choix est pertinent,
+  • faire le lien avec la silhouette et les objectifs morphologiques,
+  • mentionner l’effet visuel recherché (allonger, structurer, équilibrer, adoucir, etc.).
+- Le ton doit être pédagogique, professionnel et personnalisé.
+- Pas de phrases génériques ou vagues.
+
+Retourne UNIQUEMENT ce JSON strict valide :
+
+{
+  "details": {
+    "hauts": {
+      "matieres": [
+        "Phrase explicative complète orientée morphologie...",
+        "Phrase explicative complète orientée morphologie...",
+        "Phrase explicative complète orientée morphologie...",
+        "Phrase explicative complète orientée morphologie..."
+      ],
+      "motifs": {
+        "recommandes": [
+          "Phrase explicative complète sur un motif recommandé...",
+          "Phrase explicative complète sur un motif recommandé...",
+          "Phrase explicative complète sur un motif recommandé..."
+        ],
+        "a_eviter": [
+          "Phrase explicative complète sur un motif à éviter...",
+          "Phrase explicative complète sur un motif à éviter...",
+          "Phrase explicative complète sur un motif à éviter..."
+        ]
+      },
+      "pieges": [
+        "Piège 1: ...",
+        "Piège 2: ...",
+        "Piège 3: ...",
+        "Piège 4: ...",
+        "Piège 5: ...",
+        "Piège 6: ...",
+        "Piège 7: ..."
+      ]
+    },
+
+    (même structure pour bas, robes, vestes, maillot_lingerie, chaussures, accessoires)
+  }
+}
+
+Contraintes strictes :
+- Matieres: 4 à 6 phrases complètes.
+- Motifs: 3 phrases recommandées + 3 phrases à éviter.
 - Pièges: EXACTEMENT 7, chacun commence par "Piège X: ..."
-- Zéro texte hors JSON.
+- ZÉRO texte hors JSON.
+- Guillemets doubles uniquement.
+- Pas d’apostrophes (').
 """
