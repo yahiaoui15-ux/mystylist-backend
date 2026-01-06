@@ -598,6 +598,81 @@ class MorphologyService:
 
                 # ======================================================
                 # PATCH C2 — FORMAT CONTRACTUEL POUR PDFMONKEY (FINAL)
+                # + ENRICHISSEMENT "VENDEUR" (SANS RISQUE JSON)
+                # ======================================================
+
+                # Petit helper pour fabriquer une phrase "styliste" à partir d'un item court
+                def _explain_item(label: str, kind: str, category: str) -> str:
+                    """
+                    kind: "matieres" | "motifs_rec" | "motifs_avoid"
+                    Retourne: "Label : phrase explicative orientée morphologie"
+                    """
+                    if not label:
+                        return ""
+
+                    l = label.lower().strip()
+
+                    # Objectifs simples (si disponibles dans le scope)
+                    try:
+                        focus_plus = ", ".join(merged_highlight_parts[:2]) if merged_highlight_parts else ""
+                        focus_minus = ", ".join(merged_minimize_parts[:2]) if merged_minimize_parts else ""
+                    except Exception:
+                        focus_plus = ""
+                        focus_minus = ""
+
+                    # Bonus de personnalisation léger (sans surcharger)
+                    focus_hint = ""
+                    if focus_plus and kind in ("matieres", "motifs_rec"):
+                        focus_hint = f" (utile pour mettre en valeur {focus_plus})"
+                    elif focus_minus and kind in ("matieres", "motifs_avoid"):
+                        focus_hint = f" (à éviter surtout si tu veux minimiser {focus_minus})"
+
+                    # --------- MATIERES ----------
+                    if kind == "matieres":
+                        if any(k in l for k in ["soie", "mousseline", "chiffon", "viscose", "crêpe", "crepe", "fluide"]):
+                            return f"{label} : apporte un tombé souple, allonge la ligne et évite de marquer les volumes{focus_hint}."
+                        if any(k in l for k in ["jersey", "maille", "stretch", "elasth", "élast"]):
+                            return f"{label} : suit les formes avec confort sans compresser, idéal pour garder une silhouette harmonieuse{focus_hint}."
+                        if any(k in l for k in ["tweed", "sergé", "twill", "denim", "coton épais", "structur"]):
+                            return f"{label} : donne de la tenue et structure visuellement, parfait pour apporter de l'équilibre et du maintien{focus_hint}."
+                        if any(k in l for k in ["lin", "laine fine", "laine", "gabardine"]):
+                            return f"{label} : offre une belle tenue et une texture élégante, avec un rendu net qui affine visuellement{focus_hint}."
+                        if any(k in l for k in ["satin", "brillant", "lamé", "lame"]):
+                            return f"{label} : à doser avec soin car il réfléchit la lumière et peut amplifier les volumes (à privilégier en touches maîtrisées)."
+                        if category in ("maillot_lingerie",):
+                            return f"{label} : améliore le confort et la tenue sous les vêtements, pour un rendu plus lisse et plus net au porté{focus_hint}."
+                        if category in ("chaussures", "accessoires"):
+                            return f"{label} : renforce l'impression de qualité et d'équilibre dans la tenue, sans surcharger la silhouette{focus_hint}."
+                        return f"{label} : matière cohérente avec l'objectif d'équilibre et de mise en valeur de ta morphologie{focus_hint}."
+
+                    # --------- MOTIFS RECOMMANDES ----------
+                    if kind == "motifs_rec":
+                        if "uni" in l:
+                            return f"{label} : crée une ligne plus lisible et plus élégante, ce qui affine et structure la silhouette{focus_hint}."
+                        if "vertical" in l or "linéaire" in l or "rayures vertical" in l:
+                            return f"{label} : allonge visuellement et guide le regard dans le sens de la hauteur, idéal pour élancer{focus_hint}."
+                        if any(k in l for k in ["petit", "micro", "discret", "fins", "fine", "géométrique petit", "geometrique petit"]):
+                            return f"{label} : apporte du style sans élargir, en gardant une lecture légère et proportionnée{focus_hint}."
+                        if any(k in l for k in ["texturé", "texture", "ton sur ton", "relief"]):
+                            return f"{label} : ajoute du relief subtil sans créer de rupture trop forte, pour un rendu chic et équilibré{focus_hint}."
+                        return f"{label} : motif intéressant tant qu'il reste proportionné et placé loin des zones à minimiser{focus_hint}."
+
+                    # --------- MOTIFS A EVITER ----------
+                    if kind == "motifs_avoid":
+                        if any(k in l for k in ["horizontal", "rayures horizont"]):
+                            return f"{label} : élargit visuellement et coupe la silhouette, ce qui peut accentuer le contraste des volumes{focus_hint}."
+                        if any(k in l for k in ["gros", "large", "massif", "tropic", "patchwork"]):
+                            return f"{label} : attire fortement l'attention et amplifie la zone où il se place, donc à éviter sur les zones à minimiser{focus_hint}."
+                        if any(k in l for k in ["animal", "léopard", "leopard", "zèbre", "zebre"]):
+                            return f"{label} : très contrasté, il devient un point focal immédiat et peut déséquilibrer l'ensemble{focus_hint}."
+                        if any(k in l for k in ["carreaux", "écossais", "ecossais"]):
+                            return f"{label} : crée un quadrillage visuel qui densifie et élargit, surtout si le motif est grand{focus_hint}."
+                        return f"{label} : risque de créer du volume visuel ou une rupture trop marquée, donc à limiter{focus_hint}."
+
+                    return label
+
+                # ======================================================
+                # MOTIFS — NORMALISATION + ENRICHISSEMENT + FORMAT STRING
                 # ======================================================
 
                 motifs = merged.get("motifs", {})
@@ -616,37 +691,56 @@ class MorphologyService:
                 # Fallback métier si vide (ZÉRO trou possible)
                 if not rec_list:
                     rec_list = [
-                        "motifs équilibrés et proportionnés à la silhouette",
-                        "lignes visuelles cohérentes avec la morphologie",
-                        "détails placés sur les zones à valoriser"
+                        "motifs équilibrés et proportionnés",
+                        "lignes verticales discrètes",
+                        "détails placés en haut"
                     ]
 
                 if not avoid_list:
                     avoid_list = [
-                        "motifs trop massifs ou trop contrastés",
-                        "ruptures visuelles mal positionnées",
-                        "détails attirant l’attention sur les zones à minimiser"
+                        "motifs massifs très contrastés",
+                        "rayures horizontales larges",
+                        "détails sur zones à minimiser"
                     ]
 
-                # 🚨 FORMAT FINAL ATTENDU PAR PDFMONKEY (STRING)
+                # Enrichir en phrases "Label : explication..."
+                rec_rich = [_explain_item(x, "motifs_rec", category) for x in rec_list if isinstance(x, str)]
+                avoid_rich = [_explain_item(x, "motifs_avoid", category) for x in avoid_list if isinstance(x, str)]
+
+                # Nettoyage (au cas où)
+                rec_rich = [s for s in rec_rich if s]
+                avoid_rich = [s for s in avoid_rich if s]
+
                 merged["motifs"] = {
-                    "recommandes": " • ".join(rec_list),
-                    "a_eviter": " • ".join(avoid_list)
+                    "recommandes": " • ".join(rec_rich),
+                    "a_eviter": " • ".join(avoid_rich)
                 }
 
                 # ======================================================
-                # FORMAT FINAL MATIÈRES — LISIBLE POUR PDF (FINAL)
+                # MATIERES — NORMALISATION + ENRICHISSEMENT + FORMAT STRING
                 # ======================================================
 
                 matieres = merged.get("matieres", [])
 
-                if isinstance(matieres, list):
-                    merged["matieres"] = " • ".join(matieres)
-                elif isinstance(matieres, str):
-                    # Séparer intelligemment si OpenAI a collé les mots
-                    merged["matieres"] = re.sub(r'(?<!•)([a-zA-Zéèêàùîôç])(?=[A-Z])', r'\1 • ', matieres)
+                # Normaliser en liste de strings courtes
+                if isinstance(matieres, str):
+                    # Split intelligent sur séparateurs usuels
+                    raw = matieres.replace("•", ",").replace(";", ",")
+                    mat_list = [m.strip() for m in raw.split(",") if m.strip()]
+                elif isinstance(matieres, list):
+                    mat_list = [m.strip() for m in matieres if isinstance(m, str) and m.strip()]
                 else:
-                    merged["matieres"] = "matières adaptées à votre silhouette"
+                    mat_list = []
+
+                # Fallback si vide
+                if not mat_list:
+                    mat_list = ["matières adaptées", "tissus équilibrés", "textures harmonieuses", "finis mats"]
+
+                # Enrichir en phrases "Matière : explication..."
+                mat_rich = [_explain_item(x, "matieres", category) for x in mat_list]
+                mat_rich = [s for s in mat_rich if s]
+
+                merged["matieres"] = " • ".join(mat_rich)
 
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
