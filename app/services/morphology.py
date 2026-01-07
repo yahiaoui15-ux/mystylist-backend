@@ -42,7 +42,48 @@ class MorphologyService:
         content = content.replace('\x00', '')
         content = re.sub(r'\\([éèêëàâäùûüôöîïœæ])', r'\1', content)
         return content
-    
+    @staticmethod
+    def sanitize_json_multiline_strings(raw: str) -> str:
+        """
+        Rend un JSON beaucoup plus parseable en supprimant les retours à la ligne
+        ET tabulations à l'intérieur des strings JSON (entre guillemets).
+        Objectif: éviter les JSON invalides quand OpenAI casse une string sur 2 lignes.
+        """
+        if not raw:
+            return raw
+
+        out = []
+        in_string = False
+        escape = False
+
+        for ch in raw:
+            if in_string:
+                if escape:
+                    escape = False
+                    out.append(ch)
+                    continue
+
+                if ch == "\\":
+                    escape = True
+                    out.append(ch)
+                    continue
+
+                # Interdire retours ligne / tabs DANS une string JSON
+                if ch in ("\n", "\r", "\t"):
+                    out.append(" ")
+                    continue
+
+                if ch == '"':
+                    in_string = False
+
+                out.append(ch)
+            else:
+                if ch == '"':
+                    in_string = True
+                out.append(ch)
+
+        return "".join(out)
+ 
     @staticmethod
     def merge_body_parts(onboarding_parts: list, openai_parts: list) -> list:
         """Fusionne les parties du corps en déduplicant"""
@@ -266,59 +307,84 @@ class MorphologyService:
             # PARSING PART 3
             print("\n🔍 PARSING JSON PART 3:")
             content_part3_clean = self.clean_json_string(content_part3)
+            content_part3_clean = self.sanitize_json_multiline_strings(content_part3_clean)
 
             try:
+                # 1) Tentative parsing direct
                 part3_result = json.loads(content_part3_clean)
                 print("   ✅ Parsing réussi!")
-                details = part3_result.get("details", {})
-                print("      • Catégories trouvées: {}".format(list(details.keys())))
-                
+
             except json.JSONDecodeError:
-                print("   ⚠️ JSON invalide → tentative correction OpenAI")
+                print("   ⚠️ JSON invalide → tentative extraction brute")
 
-                try:
-                    part3_result = await self.force_valid_json(
-                        content_part3_clean,
-                        context="Morphology Part 3"
-                    )
-                    print("   ✅ JSON corrigé par OpenAI")
+                # 2) Tentative extraction brute du JSON entre première { et dernière }
+                start = content_part3_clean.find("{")
+                end = content_part3_clean.rfind("}") + 1
 
-                except Exception:
-                    print("   ❌ Correction échouée → fallback")
-                    part3_result = {"details": {}}
+                if start != -1 and end > start:
+                    extracted = content_part3_clean[start:end]
+                    extracted = self.sanitize_json_multiline_strings(extracted)
+                    try:
+                        part3_result = json.loads(extracted)
+                        print("   ✅ Extraction JSON réussie!")
+                    except json.JSONDecodeError:
+                        print("   ⚠️ Extraction échouée → tentative correction OpenAI")
+                        try:
+                            part3_result = await self.force_valid_json(
+                                extracted,
+                                context="Morphology Part 3"
+                            )
+                            print("   ✅ JSON corrigé par OpenAI")
+                        except Exception:
+                            print("   ❌ Correction échouée → fallback")
+                            part3_result = {"details": {}}
+                else:
+                    print("   ⚠️ Aucun bloc JSON détecté → tentative correction OpenAI")
+                    try:
+                        part3_result = await self.force_valid_json(
+                            content_part3_clean,
+                            context="Morphology Part 3"
+                        )
+                        print("   ✅ JSON corrigé par OpenAI")
+                    except Exception:
+                        print("   ❌ Correction échouée → fallback")
+                        part3_result = {"details": {}}
 
-                # ============================
-                # NORMALISATION PART 3 (ANTI-VIDE)
-                # ============================
-                expected_cats = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
+            # ============================
+            # NORMALISATION PART 3 (ANTI-VIDE)
+            # ============================
+            expected_cats = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
 
-                # Cas 1: le modèle a renvoyé directement les catégories à la racine (au lieu de details)
-                if isinstance(part3_result, dict) and "details" not in part3_result:
-                    if any(k in part3_result for k in expected_cats):
-                        part3_result = {"details": {k: part3_result.get(k, {}) for k in expected_cats}}
+            # Cas 1: catégories à la racine
+            if isinstance(part3_result, dict) and "details" not in part3_result:
+                if any(k in part3_result for k in expected_cats):
+                    part3_result = {"details": {k: part3_result.get(k, {}) for k in expected_cats}}
 
-                    # Cas 2: le modèle a renvoyé un bloc générique (matieres/motifs/pieges) à la racine
-                    elif any(k in part3_result for k in ["matieres", "motifs", "pieges"]):
-                        generic_block = {
-                            "matieres": part3_result.get("matieres", []),
-                            "motifs": part3_result.get("motifs", {}),
-                            "pieges": part3_result.get("pieges", [])
-                        }
-                        part3_result = {"details": {k: generic_block for k in expected_cats}}
+                # Cas 2: bloc générique à la racine
+                elif any(k in part3_result for k in ["matieres", "motifs", "pieges"]):
+                    generic_block = {
+                        "matieres": part3_result.get("matieres", []),
+                        "motifs": part3_result.get("motifs", {}),
+                        "pieges": part3_result.get("pieges", [])
+                    }
+                    part3_result = {"details": {k: generic_block for k in expected_cats}}
 
-                # Sécuriser la présence des clés attendues dans chaque catégorie
-                if not isinstance(part3_result, dict):
-                    part3_result = {"details": {}}
+            # Sécuriser la structure
+            if not isinstance(part3_result, dict):
+                part3_result = {"details": {}}
 
-                if "details" not in part3_result or not isinstance(part3_result["details"], dict):
-                    part3_result["details"] = {}
+            if "details" not in part3_result or not isinstance(part3_result["details"], dict):
+                part3_result["details"] = {}
 
-                for cat in expected_cats:
-                    if cat not in part3_result["details"] or not isinstance(part3_result["details"][cat], dict):
-                        part3_result["details"][cat] = {}
-                    part3_result["details"][cat].setdefault("matieres", [])
-                    part3_result["details"][cat].setdefault("motifs", {"recommandes": [], "a_eviter": []})
-                    part3_result["details"][cat].setdefault("pieges", [])
+            for cat in expected_cats:
+                if cat not in part3_result["details"] or not isinstance(part3_result["details"][cat], dict):
+                    part3_result["details"][cat] = {}
+                part3_result["details"][cat].setdefault("matieres", [])
+                part3_result["details"][cat].setdefault("motifs", {"recommandes": [], "a_eviter": []})
+                part3_result["details"][cat].setdefault("pieges", [])
+
+            details = part3_result.get("details", {})
+            print("      • Catégories trouvées: {}".format(list(details.keys())))
 
                 
             # ========================================================================
@@ -597,87 +663,100 @@ class MorphologyService:
                 )
 
                 # ======================================================
-                # PATCH C2 — FORMAT CONTRACTUEL POUR PDFMONKEY (FINAL)
-                # + ENRICHISSEMENT "VENDEUR" (SANS RISQUE JSON)
+                # PATCH C2 — FORMAT PDFMONKEY (RICH + STABLE)
+                # Objectif:
+                # - garder un JSON Part 3 "court" (listes de mots)
+                # - enrichir en phrases côté Python (zéro risque de JSON invalide dû aux longues phrases)
+                # - rendre lisible: retours ligne + item en gras
                 # ======================================================
 
-                # Petit helper pour fabriquer une phrase "styliste" à partir d'un item court
-                def _explain_item(label: str, kind: str, category: str) -> str:
+                def _clean_txt(s: str) -> str:
+                    if not isinstance(s, str):
+                        return ""
+                    return (
+                        s.replace("\n", " ")
+                         .replace("\r", " ")
+                         .replace("\t", " ")
+                         .replace("•", "")
+                         .strip()
+                    )
+
+                def _dedupe_keep_order(items):
+                    seen = set()
+                    out = []
+                    for it in items:
+                        key = _clean_txt(str(it)).lower()
+                        if not key or key in seen:
+                            continue
+                        seen.add(key)
+                        out.append(_clean_txt(str(it)))
+                    return out
+
+                # Données morpho utiles pour contextualiser les phrases
+                objectives_ctx = styling_objectives_str if isinstance(styling_objectives_str, str) else ""
+                highlight_ctx = highlight_str if isinstance(highlight_str, str) else ""
+                minimize_ctx = minimize_str if isinstance(minimize_str, str) else ""
+
+                def _explain_material(mat: str, cat: str) -> str:
                     """
-                    kind: "matieres" | "motifs_rec" | "motifs_avoid"
-                    Retourne: "Label : phrase explicative orientée morphologie"
+                    Phrase courte, orientée 'objectif morpho', sans dépendre d'OpenAI.
                     """
-                    if not label:
+                    mat_l = mat.lower()
+                    # heuristiques simples (suffisamment bonnes + stables)
+                    if any(k in mat_l for k in ["crêpe", "viscose", "soie", "mousseline", "chiffon", "jersey", "fluide"]):
+                        return f"apporte un tombé souple qui allonge visuellement et évite d’ajouter du volume sur les zones à minimiser ({minimize_ctx})."
+                    if any(k in mat_l for k in ["tweed", "sergé", "gabardine", "denim", "coton épais", "laine"]):
+                        return f"donne de la tenue et structure la silhouette, utile pour soutenir les zones à valoriser ({highlight_ctx}) et atteindre l’objectif ({objectives_ctx})."
+                    if any(k in mat_l for k in ["stretch", "élasthanne", "extensible"]):
+                        return f"offre du confort tout en gardant une ligne nette, idéal pour épouser sans comprimer et rester cohérent avec l’objectif ({objectives_ctx})."
+                    if any(k in mat_l for k in ["cuir", "suédine", "velours"]):
+                        return f"ajoute de la matière et du caractère sans épaissir si la coupe reste structurée, ce qui aide à équilibrer les proportions."
+                    return f"reste cohérent avec l’objectif morphologique ({objectives_ctx}) tout en gardant une silhouette lisible et harmonieuse."
+
+                def _explain_pattern(pat: str, cat: str, mode: str) -> str:
+                    pat_l = pat.lower()
+                    if mode == "recommandes":
+                        if any(k in pat_l for k in ["vertical", "rayure verticale", "lignes verticales"]):
+                            return f"crée une illusion d’allongement et guide le regard dans le sens de la hauteur, utile pour équilibrer la silhouette ({objectives_ctx})."
+                        if any(k in pat_l for k in ["uni", "ton sur ton", "monochrome"]):
+                            return f"rend la ligne plus lisible et plus élégante, ce qui affine visuellement et évite les ruptures sur les zones à minimiser ({minimize_ctx})."
+                        if any(k in pat_l for k in ["petit", "discret", "micro", "pois", "géométrique petit"]):
+                            return f"apporte du style sans élargir, en gardant une lecture légère et proportionnée à la morphologie."
+                        if any(k in pat_l for k in ["texturé", "relief", "subtil"]):
+                            return f"ajoute du relief sans créer de rupture forte, ce qui renforce l’équilibre global de la silhouette."
+                        return f"reste proportionné à la morphologie et aide à mettre en valeur ({highlight_ctx}) sans surcharger ({minimize_ctx})."
+                    else:
+                        if any(k in pat_l for k in ["horizontal", "rayure horizontale", "bandes"]):
+                            return f"élargit visuellement et coupe la silhouette, ce qui peut accentuer les contrastes de volumes (à éviter sur {minimize_ctx})."
+                        if any(k in pat_l for k in ["grand", "large", "oversize", "massif"]):
+                            return f"attire fortement l’attention et amplifie la zone où il se place, donc à éviter sur les zones à minimiser ({minimize_ctx})."
+                        if any(k in pat_l for k in ["contrasté", "flashy", "vif"]):
+                            return f"crée une rupture très marquée et peut déséquilibrer l’ensemble; mieux vaut limiter pour garder une silhouette harmonieuse."
+                        return f"risque de créer du volume visuel ou une rupture trop marquée; à limiter surtout si tu veux minimiser ({minimize_ctx})."
+
+                def _to_html_lines(label: str, items: list, explain_fn, cat: str, mode: str = "") -> str:
+                    """
+                    Retourne un HTML compact (safe pour PDFMonkey) :
+                    <strong>item</strong> : explication<br>
+                    """
+                    if not items:
                         return ""
 
-                    l = label.lower().strip()
+                    items = _dedupe_keep_order(items)
+                    lines = []
+                    for it in items:
+                        if not it:
+                            continue
+                        expl = explain_fn(it, cat) if mode == "" else explain_fn(it, cat, mode)
+                        expl = _clean_txt(expl)
+                        # IMPORTANT: éviter les guillemets doubles dans l'HTML injecté
+                        lines.append(f"<strong>{it}</strong> : {expl}")
+                    return "<br>".join(lines)
 
-                    # Objectifs simples (si disponibles dans le scope)
-                    try:
-                        focus_plus = ", ".join(merged_highlight_parts[:2]) if merged_highlight_parts else ""
-                        focus_minus = ", ".join(merged_minimize_parts[:2]) if merged_minimize_parts else ""
-                    except Exception:
-                        focus_plus = ""
-                        focus_minus = ""
-
-                    # Bonus de personnalisation léger (sans surcharger)
-                    focus_hint = ""
-                    if focus_plus and kind in ("matieres", "motifs_rec"):
-                        focus_hint = f" (utile pour mettre en valeur {focus_plus})"
-                    elif focus_minus and kind in ("matieres", "motifs_avoid"):
-                        focus_hint = f" (à éviter surtout si tu veux minimiser {focus_minus})"
-
-                    # --------- MATIERES ----------
-                    if kind == "matieres":
-                        if any(k in l for k in ["soie", "mousseline", "chiffon", "viscose", "crêpe", "crepe", "fluide"]):
-                            return f"{label} : apporte un tombé souple, allonge la ligne et évite de marquer les volumes{focus_hint}."
-                        if any(k in l for k in ["jersey", "maille", "stretch", "elasth", "élast"]):
-                            return f"{label} : suit les formes avec confort sans compresser, idéal pour garder une silhouette harmonieuse{focus_hint}."
-                        if any(k in l for k in ["tweed", "sergé", "twill", "denim", "coton épais", "structur"]):
-                            return f"{label} : donne de la tenue et structure visuellement, parfait pour apporter de l'équilibre et du maintien{focus_hint}."
-                        if any(k in l for k in ["lin", "laine fine", "laine", "gabardine"]):
-                            return f"{label} : offre une belle tenue et une texture élégante, avec un rendu net qui affine visuellement{focus_hint}."
-                        if any(k in l for k in ["satin", "brillant", "lamé", "lame"]):
-                            return f"{label} : à doser avec soin car il réfléchit la lumière et peut amplifier les volumes (à privilégier en touches maîtrisées)."
-                        if category in ("maillot_lingerie",):
-                            return f"{label} : améliore le confort et la tenue sous les vêtements, pour un rendu plus lisse et plus net au porté{focus_hint}."
-                        if category in ("chaussures", "accessoires"):
-                            return f"{label} : renforce l'impression de qualité et d'équilibre dans la tenue, sans surcharger la silhouette{focus_hint}."
-                        return f"{label} : matière cohérente avec l'objectif d'équilibre et de mise en valeur de ta morphologie{focus_hint}."
-
-                    # --------- MOTIFS RECOMMANDES ----------
-                    if kind == "motifs_rec":
-                        if "uni" in l:
-                            return f"{label} : crée une ligne plus lisible et plus élégante, ce qui affine et structure la silhouette{focus_hint}."
-                        if "vertical" in l or "linéaire" in l or "rayures vertical" in l:
-                            return f"{label} : allonge visuellement et guide le regard dans le sens de la hauteur, idéal pour élancer{focus_hint}."
-                        if any(k in l for k in ["petit", "micro", "discret", "fins", "fine", "géométrique petit", "geometrique petit"]):
-                            return f"{label} : apporte du style sans élargir, en gardant une lecture légère et proportionnée{focus_hint}."
-                        if any(k in l for k in ["texturé", "texture", "ton sur ton", "relief"]):
-                            return f"{label} : ajoute du relief subtil sans créer de rupture trop forte, pour un rendu chic et équilibré{focus_hint}."
-                        return f"{label} : motif intéressant tant qu'il reste proportionné et placé loin des zones à minimiser{focus_hint}."
-
-                    # --------- MOTIFS A EVITER ----------
-                    if kind == "motifs_avoid":
-                        if any(k in l for k in ["horizontal", "rayures horizont"]):
-                            return f"{label} : élargit visuellement et coupe la silhouette, ce qui peut accentuer le contraste des volumes{focus_hint}."
-                        if any(k in l for k in ["gros", "large", "massif", "tropic", "patchwork"]):
-                            return f"{label} : attire fortement l'attention et amplifie la zone où il se place, donc à éviter sur les zones à minimiser{focus_hint}."
-                        if any(k in l for k in ["animal", "léopard", "leopard", "zèbre", "zebre"]):
-                            return f"{label} : très contrasté, il devient un point focal immédiat et peut déséquilibrer l'ensemble{focus_hint}."
-                        if any(k in l for k in ["carreaux", "écossais", "ecossais"]):
-                            return f"{label} : crée un quadrillage visuel qui densifie et élargit, surtout si le motif est grand{focus_hint}."
-                        return f"{label} : risque de créer du volume visuel ou une rupture trop marquée, donc à limiter{focus_hint}."
-
-                    return label
-
-                # ======================================================
-                # MOTIFS — NORMALISATION + ENRICHISSEMENT + FORMAT STRING
-                # ======================================================
-
+                # ---------------------------
+                # MOTIFS: sources + fallback
+                # ---------------------------
                 motifs = merged.get("motifs", {})
-
-                # Sécurisation des sources
                 if isinstance(motifs, dict):
                     rec_list = motifs.get("recommandes", []) or []
                     avoid_list = motifs.get("a_eviter", []) or []
@@ -688,59 +767,41 @@ class MorphologyService:
                     rec_list = []
                     avoid_list = []
 
-                # Fallback métier si vide (ZÉRO trou possible)
+                # fallback métier si vide
                 if not rec_list:
                     rec_list = [
-                        "motifs équilibrés et proportionnés",
-                        "lignes verticales discrètes",
-                        "détails placés en haut"
+                        "rayures verticales fines",
+                        "uni",
+                        "motifs discrets proportionnés"
                     ]
-
                 if not avoid_list:
                     avoid_list = [
-                        "motifs massifs très contrastés",
                         "rayures horizontales larges",
-                        "détails sur zones à minimiser"
+                        "motifs trop massifs",
+                        "contrastes trop vifs"
                     ]
 
-                # Enrichir en phrases "Label : explication..."
-                rec_rich = [_explain_item(x, "motifs_rec", category) for x in rec_list if isinstance(x, str)]
-                avoid_rich = [_explain_item(x, "motifs_avoid", category) for x in avoid_list if isinstance(x, str)]
-
-                # Nettoyage (au cas où)
-                rec_rich = [s for s in rec_rich if s]
-                avoid_rich = [s for s in avoid_rich if s]
-
+                # HTML final (avec explications)
                 merged["motifs"] = {
-                    "recommandes": " • ".join(rec_rich),
-                    "a_eviter": " • ".join(avoid_rich)
+                    "recommandes": _to_html_lines("recommandes", rec_list, _explain_pattern, category, mode="recommandes"),
+                    "a_eviter": _to_html_lines("a_eviter", avoid_list, _explain_pattern, category, mode="a_eviter"),
                 }
 
-                # ======================================================
-                # MATIERES — NORMALISATION + ENRICHISSEMENT + FORMAT STRING
-                # ======================================================
-
+                # ---------------------------
+                # MATIERES: sources + fallback
+                # ---------------------------
                 matieres = merged.get("matieres", [])
-
-                # Normaliser en liste de strings courtes
                 if isinstance(matieres, str):
-                    # Split intelligent sur séparateurs usuels
-                    raw = matieres.replace("•", ",").replace(";", ",")
-                    mat_list = [m.strip() for m in raw.split(",") if m.strip()]
-                elif isinstance(matieres, list):
-                    mat_list = [m.strip() for m in matieres if isinstance(m, str) and m.strip()]
-                else:
-                    mat_list = []
+                    # si une string arrive malgré tout, on tente de la splitter grossièrement
+                    matieres = [m.strip(" -•") for m in re.split(r"[•,\|;/]+", matieres) if m.strip()]
+                elif not isinstance(matieres, list):
+                    matieres = []
 
-                # Fallback si vide
-                if not mat_list:
-                    mat_list = ["matières adaptées", "tissus équilibrés", "textures harmonieuses", "finis mats"]
+                if not matieres:
+                    matieres = ["maille fine", "viscose fluide", "coton structuré", "jersey doux"]
 
-                # Enrichir en phrases "Matière : explication..."
-                mat_rich = [_explain_item(x, "matieres", category) for x in mat_list]
-                mat_rich = [s for s in mat_rich if s]
+                merged["matieres"] = _to_html_lines("matieres", matieres, _explain_material, category)
 
-                merged["matieres"] = " • ".join(mat_rich)
 
                 merged_recommendations[category] = merged
                 pieges_count = len(merged.get('pieges', []))
@@ -853,50 +914,93 @@ EXPLICATION: {explanation}"""
             "full_text": full_text
         }
 
-
     @staticmethod
     def _repair_broken_json(json_str: str) -> str:
-        """Répare les JSON partiellement cassés"""
-        # Fermer les strings ouvertes
-        json_str = re.sub(r'"([^"]*?)$', r'"\1"', json_str, flags=re.MULTILINE)
-        
-        # Ajouter accolades fermantes manquantes
-        open_count = json_str.count('{')
-        close_count = json_str.count('}')
+        """Répare les JSON partiellement cassés (best-effort)."""
+        if not isinstance(json_str, str):
+            return ""
+
+        # Enlever guillemets typographiques
+        json_str = json_str.replace("“", '"').replace("”", '"').replace("’", "'")
+
+        # Supprimer virgules finales avant } ou ]
+        json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
+
+        # Fermer accolades manquantes
+        open_count = json_str.count("{")
+        close_count = json_str.count("}")
         if open_count > close_count:
-            json_str += '}' * (open_count - close_count)
-        
+            json_str += "}" * (open_count - close_count)
+
+        open_count = json_str.count("[")
+        close_count = json_str.count("]")
+        if open_count > close_count:
+            json_str += "]" * (open_count - close_count)
+
         return json_str
+
     
     async def force_valid_json(self, raw_content: str, context: str) -> dict:
-        """
-        Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
-        """
-        repair_prompt = f"""
-    Tu as généré le JSON suivant, mais il est INVALIDE.
-
-    Corrige-le pour qu’il soit :
-    - strictement valide JSON
-    - sans rien ajouter
-    - sans texte hors JSON
-
-    JSON À CORRIGER :
-    {raw_content}
     """
+    Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
+    Version durcie: nettoyage + extraction + re-sanitize + parsing robuste.
+    """
+    # 1) Pré-nettoyage local (enlever fences, NUL, accents échappés, etc.)
+    cleaned = self.clean_json_string(raw_content)
 
-        self.openai.set_context(f"{context} - JSON FIX", "")
-        self.openai.set_system_prompt(
-            "Tu es un validateur JSON strict. Tu ne produis QUE du JSON valide."
-        )
+    # 2) Tenter extraction brute du plus gros bloc JSON (évite le texte parasite)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}") + 1
+    if start != -1 and end > start:
+        cleaned = cleaned[start:end]
 
-        response = await self.openai.call_chat(
-            prompt=repair_prompt,
-            model="gpt-4-turbo",
-            max_tokens=2000
-        )
+    # 3) Réparation locale minimale (accolades manquantes, etc.)
+    cleaned = self._repair_broken_json(cleaned)
 
-        content = response.get("content", "").strip()
-        return json.loads(content)
+    # 4) Patch anti-retours-ligne dans strings (si tu as ajouté sanitize_json_multiline_strings)
+    if hasattr(self, "sanitize_json_multiline_strings"):
+        cleaned = self.sanitize_json_multiline_strings(cleaned)
+
+    repair_prompt = f"""
+        Tu vas recevoir un JSON invalide. Tu dois renvoyer UNIQUEMENT un JSON strict valide.
+
+        Règles:
+        - Réponds uniquement par un objet JSON qui commence par {{ et se termine par }}.
+        - Aucun texte avant ou après. Aucun Markdown. Aucun ```json.
+        - Guillemets doubles uniquement.
+        - Aucune virgule finale.
+        - Si une valeur contient des retours à la ligne, remplace-les par un espace.
+        - Conserve exactement la structure et les clés, ne supprime pas de sections.
+
+        JSON À CORRIGER:
+        {cleaned}
+        """.strip()
+
+    self.openai.set_context(f"{context} - JSON FIX", "")
+    self.openai.set_system_prompt(
+        "Tu es un validateur JSON strict. Tu renvoies uniquement un JSON strict valide, sans Markdown, sans commentaire."
+    )
+
+    response = await self.openai.call_chat(
+        prompt=repair_prompt,
+        model="gpt-4-turbo",
+        max_tokens=2000
+    )
+
+    content = (response.get("content", "") or "").strip()
+
+    # 5) Re-nettoyage + re-extraction + re-sanitize avant parsing
+    content = self.clean_json_string(content)
+    s = content.find("{")
+    e = content.rfind("}") + 1
+    if s != -1 and e > s:
+        content = content[s:e]
+
+    if hasattr(self, "sanitize_json_multiline_strings"):
+        content = self.sanitize_json_multiline_strings(content)
+
+    # 6) Parsing final
+    return json.loads(content)
 
     def _generate_default_recommendations(self, silhouette: str) -> dict:
         """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
