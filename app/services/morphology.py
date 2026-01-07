@@ -941,66 +941,66 @@ EXPLICATION: {explanation}"""
 
     
     async def force_valid_json(self, raw_content: str, context: str) -> dict:
-    """
-    Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
-    Version durcie: nettoyage + extraction + re-sanitize + parsing robuste.
-    """
-    # 1) Pré-nettoyage local (enlever fences, NUL, accents échappés, etc.)
-    cleaned = self.clean_json_string(raw_content)
+        """
+        Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
+        Version durcie: nettoyage + extraction + re-sanitize + parsing robuste.
+        """
+        # 1) Pré-nettoyage local (enlever fences, NUL, accents échappés, etc.)
+        cleaned = self.clean_json_string(raw_content)
 
-    # 2) Tenter extraction brute du plus gros bloc JSON (évite le texte parasite)
-    start = cleaned.find("{")
-    end = cleaned.rfind("}") + 1
-    if start != -1 and end > start:
-        cleaned = cleaned[start:end]
+        # 2) Tenter extraction brute du plus gros bloc JSON (évite le texte parasite)
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+        if start != -1 and end > start:
+            cleaned = cleaned[start:end]
 
-    # 3) Réparation locale minimale (accolades manquantes, etc.)
-    cleaned = self._repair_broken_json(cleaned)
+        # 3) Réparation locale minimale (accolades manquantes, etc.)
+        cleaned = self._repair_broken_json(cleaned)
 
-    # 4) Patch anti-retours-ligne dans strings (si tu as ajouté sanitize_json_multiline_strings)
-    if hasattr(self, "sanitize_json_multiline_strings"):
-        cleaned = self.sanitize_json_multiline_strings(cleaned)
+        # 4) Patch anti-retours-ligne dans strings (si tu as ajouté sanitize_json_multiline_strings)
+        if hasattr(self, "sanitize_json_multiline_strings"):
+            cleaned = self.sanitize_json_multiline_strings(cleaned)
 
-    repair_prompt = f"""
-        Tu vas recevoir un JSON invalide. Tu dois renvoyer UNIQUEMENT un JSON strict valide.
+        repair_prompt = f"""
+            Tu vas recevoir un JSON invalide. Tu dois renvoyer UNIQUEMENT un JSON strict valide.
 
-        Règles:
-        - Réponds uniquement par un objet JSON qui commence par {{ et se termine par }}.
-        - Aucun texte avant ou après. Aucun Markdown. Aucun ```json.
-        - Guillemets doubles uniquement.
-        - Aucune virgule finale.
-        - Si une valeur contient des retours à la ligne, remplace-les par un espace.
-        - Conserve exactement la structure et les clés, ne supprime pas de sections.
+            Règles:
+            - Réponds uniquement par un objet JSON qui commence par {{ et se termine par }}.
+            - Aucun texte avant ou après. Aucun Markdown. Aucun ```json.
+            - Guillemets doubles uniquement.
+            - Aucune virgule finale.
+            - Si une valeur contient des retours à la ligne, remplace-les par un espace.
+            - Conserve exactement la structure et les clés, ne supprime pas de sections.
 
-        JSON À CORRIGER:
-        {cleaned}
-        """.strip()
+            JSON À CORRIGER:
+            {cleaned}
+            """.strip()
 
-    self.openai.set_context(f"{context} - JSON FIX", "")
-    self.openai.set_system_prompt(
-        "Tu es un validateur JSON strict. Tu renvoies uniquement un JSON strict valide, sans Markdown, sans commentaire."
-    )
+        self.openai.set_context(f"{context} - JSON FIX", "")
+        self.openai.set_system_prompt(
+            "Tu es un validateur JSON strict. Tu renvoies uniquement un JSON strict valide, sans Markdown, sans commentaire."
+        )
 
-    response = await self.openai.call_chat(
-        prompt=repair_prompt,
-        model="gpt-4-turbo",
-        max_tokens=2000
-    )
+        response = await self.openai.call_chat(
+            prompt=repair_prompt,
+            model="gpt-4-turbo",
+            max_tokens=2000
+        )
 
-    content = (response.get("content", "") or "").strip()
+        content = (response.get("content", "") or "").strip()
 
-    # 5) Re-nettoyage + re-extraction + re-sanitize avant parsing
-    content = self.clean_json_string(content)
-    s = content.find("{")
-    e = content.rfind("}") + 1
-    if s != -1 and e > s:
-        content = content[s:e]
+        # 5) Re-nettoyage + re-extraction + re-sanitize avant parsing
+        content = self.clean_json_string(content)
+        s = content.find("{")
+        e = content.rfind("}") + 1
+        if s != -1 and e > s:
+            content = content[s:e]
 
-    if hasattr(self, "sanitize_json_multiline_strings"):
-        content = self.sanitize_json_multiline_strings(content)
+        if hasattr(self, "sanitize_json_multiline_strings"):
+            content = self.sanitize_json_multiline_strings(content)
 
-    # 6) Parsing final
-    return json.loads(content)
+        # 6) Parsing final
+        return json.loads(content)
 
     def _generate_default_recommendations(self, silhouette: str) -> dict:
         """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
