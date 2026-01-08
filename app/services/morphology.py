@@ -237,42 +237,61 @@ class MorphologyService:
             print(content_part2[:1000] if len(content_part2) > 1000 else content_part2)
             print("="*80)
             
-            # PARSING PART 2 - ULTRA-ROBUSTE
-            # PARSING PART 2 - ULTRA-ROBUSTE + LOGS
+            # PARSING PART 2 - ULTRA-ROBUSTE (ANTI NEWLINES + EXTRACTION + LOGS)
             print("\n🔍 PARSING JSON PART 2:")
             content_part2_clean = self.clean_json_string(content_part2)
+
+            # 1) Anti-retours ligne DANS les strings JSON (cause #1 de tes JSONDecodeError)
             content_part2_clean = self.sanitize_json_multiline_strings(content_part2_clean)
 
+            # 2) Extraction brute du JSON (évite texte parasite si le modèle dérape)
+            s = content_part2_clean.find("{")
+            e = content_part2_clean.rfind("}") + 1
+            if s != -1 and e > s:
+                content_part2_clean_extracted = content_part2_clean[s:e]
+            else:
+                content_part2_clean_extracted = content_part2_clean
+
+            # 3) Best-effort repair local (virgules finales, accolades manquantes)
+            content_part2_clean_extracted = self._repair_broken_json(content_part2_clean_extracted)
+
+            print(f"   • Longueur réponse (clean): {len(content_part2_clean_extracted)} chars")
+            print(f"   • Fin de réponse (200 derniers chars): {content_part2_clean_extracted[-200:]}")
+
             try:
-                part2_result = json.loads(content_part2_clean)
+                part2_result = json.loads(content_part2_clean_extracted)
                 print("   ✅ Parsing réussi!")
 
             except json.JSONDecodeError as e:
                 print("   ⚠️ JSON invalide → tentative correction OpenAI")
                 print(f"   ❌ JSONDecodeError: line={e.lineno} col={e.colno} pos={e.pos}")
-                excerpt = content_part2_clean[max(0, e.pos-180): e.pos+180]
-                print(f"   🔎 Extrait autour erreur: {excerpt}")
-                print(f"   📏 Longueur réponse (clean): {len(content_part2_clean)} chars")
-                print(f"   🧩 Fin de réponse (200 derniers chars): {content_part2_clean[-200:]}")
+
+                excerpt = content_part2_clean_extracted[max(0, e.pos-200): e.pos+200]
+                # rendre visibles les retours ligne éventuels
+                excerpt_visible = excerpt.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+                print(f"   🔎 Extrait autour erreur (visible): {excerpt_visible}")
 
                 try:
                     part2_result = await self.force_valid_json(
-                        content_part2_clean,
+                        content_part2_clean_extracted,
                         context="Morphology Part 2"
                     )
                     print("   ✅ JSON corrigé par OpenAI")
 
-                except Exception as fix_e:
-                    print(f"   ❌ Correction échouée → fallback ({str(fix_e)})")
+                except Exception as fix_err:
+                    print(f"   ❌ Correction échouée → fallback (err={fix_err})")
+                    part2_result = self._generate_default_recommendations(silhouette)
 
-                    fallback_fn = getattr(self, "_generate_default_recommendations", None)
-                    if callable(fallback_fn):
-                        part2_result = fallback_fn(silhouette)
-                    else:
-                        print("   ❌ Fallback impossible: _generate_default_recommendations introuvable → fallback minimal")
-                        part2_result = {"recommendations": {}}
-
-
+            # LOG POST-PARSING: vérifier la structure (évite les trous silencieux)
+            rec = (part2_result or {}).get("recommendations", {})
+            if isinstance(rec, dict):
+                for cat in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
+                    c = rec.get(cat, {}) if isinstance(rec.get(cat, {}), dict) else {}
+                    n_rec = len(c.get("recommandes", []) or [])
+                    n_avoid = len(c.get("pieces_a_eviter", c.get("a_eviter", [])) or [])
+                    print(f"   • PART2[{cat}] recommendés={n_rec} / a_eviter={n_avoid}")
+            else:
+                print("   ⚠️ PART2: recommendations n'est pas un dict → risque de trous")
 
             # ========================================================================
             # MORPHOLOGY PART 3 - DÉTAILS DE STYLING (MATIERES + MOTIFS + PIÈGES)
