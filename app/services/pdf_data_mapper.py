@@ -513,23 +513,130 @@ class PDFDataMapper:
         categories_data = {}
         category_names = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
         
+# Remplace intégralement le bloc "for category_name in category_names:" dans
+# PDFDataMapper._generate_morphology_categories() (fichier pdf_data_mapper.py)
+# par ce bloc-ci, SANS aucune ligne de diff.
+
         for category_name in category_names:
-            # Récupérer depuis OpenAI s'il existe
-            openai_cat_data = openai_recommendations.get(category_name, {})
-            
-            # ✅ Créer la structure pour le template
+            # Récupérer depuis OpenAI s'il existe (safe)
+            openai_cat_data = PDFDataMapper._safe_dict(openai_recommendations.get(category_name, {}))
+
+            # ------------------------------------------------------------------
+            # NORMALISATION ULTRA-ROBUSTE (types + clés alternatives)
+            # ------------------------------------------------------------------
+            def _list_to_html(items):
+                """Convertit liste(str|dict) -> HTML léger (compatible | raw)."""
+                if not items:
+                    return ""
+                out = []
+                for x in items:
+                    if isinstance(x, str):
+                        out.append(x.strip())
+                    elif isinstance(x, dict):
+                        # tolérance: {"title": "...", "text": "..."} ou {"label": "..."}
+                        title = (x.get("title") or x.get("label") or x.get("name") or "").strip()
+                        text = (x.get("text") or x.get("why") or x.get("desc") or "").strip()
+                        if title and text:
+                            out.append(f"<strong>{title}</strong> : {text}")
+                        elif title:
+                            out.append(f"<strong>{title}</strong>")
+                        elif text:
+                            out.append(text)
+                # rendu simple (PDF friendly)
+                return "<br>".join([s for s in out if s])
+
+            # Recommandés / À éviter : accepter plusieurs noms de clés selon versions
+            recommandes_raw = (
+                openai_cat_data.get("recommandes")
+                or openai_cat_data.get("a_privilegier")
+                or openai_cat_data.get("pieces_recommandees")
+                or []
+            )
+            a_eviter_raw = (
+                openai_cat_data.get("a_eviter")
+                or openai_cat_data.get("pieces_a_eviter")
+                or []
+            )
+
+            # Matières : peut arriver en str OU list => on force str HTML
+            matieres_raw = openai_cat_data.get("matieres", "")
+            if isinstance(matieres_raw, list):
+                matieres_str = _list_to_html(matieres_raw)
+            elif isinstance(matieres_raw, dict):
+                # rare: dict de listes/strings
+                matieres_str = _list_to_html(matieres_raw.get("items") or []) or str(matieres_raw)
+            else:
+                matieres_str = str(matieres_raw or "")
+
+            if not matieres_str.strip():
+                matieres_str = "Privilégier les matières de qualité."
+
+            # Motifs : peut être dict(str), dict(list), list, str => on force dict(str,str)
+            motifs_raw = openai_cat_data.get("motifs", {})
+            motifs_obj = {"recommandes": "", "a_eviter": ""}
+
+            if isinstance(motifs_raw, dict):
+                rec = motifs_raw.get("recommandes", motifs_raw.get("a_privilegier", ""))
+                avoid = motifs_raw.get("a_eviter", "")
+                if isinstance(rec, list):
+                    motifs_obj["recommandes"] = _list_to_html(rec)
+                else:
+                    motifs_obj["recommandes"] = str(rec or "")
+                if isinstance(avoid, list):
+                    motifs_obj["a_eviter"] = _list_to_html(avoid)
+                else:
+                    motifs_obj["a_eviter"] = str(avoid or "")
+            elif isinstance(motifs_raw, list):
+                # si on reçoit une liste unique, on la met côté "recommandes"
+                motifs_obj["recommandes"] = _list_to_html(motifs_raw)
+                motifs_obj["a_eviter"] = ""
+            else:
+                # string brute
+                motifs_obj["recommandes"] = str(motifs_raw or "")
+                motifs_obj["a_eviter"] = ""
+
+            if not motifs_obj["recommandes"].strip():
+                motifs_obj["recommandes"] = "Motifs discrets, rayures verticales, petits imprimés, dégradés"
+            if not motifs_obj["a_eviter"].strip():
+                motifs_obj["a_eviter"] = "Gros motifs, rayures horizontales, imprimés trop clairs"
+
+            # Pièges : normaliser list
+            pieges_list = PDFDataMapper._safe_list(
+                openai_cat_data.get("pieges", openai_cat_data.get("traps", []))
+            )
+
+            # Introduction
+            intro = openai_cat_data.get(
+                "introduction",
+                f"Pour votre silhouette {silhouette_type}, découvrez les pièces recommandées."
+            )
+
+            # ✅ Créer la structure pour le template (types garantis)
             categories_data[category_name] = {
-                "introduction": openai_cat_data.get("introduction", f"Pour votre silhouette {silhouette_type}, découvrez les pièces recommandées."),
-                "recommandes": PDFDataMapper._safe_list(openai_cat_data.get("recommandes", openai_cat_data.get("a_privilegier", []))),
-                "a_eviter": PDFDataMapper._safe_list(openai_cat_data.get("a_eviter", [])),
-                "matieres": openai_cat_data.get("matieres", "Privilégier les matières de qualité."),
-                "motifs": openai_cat_data.get("motifs", {
-                    "recommandes": "Motifs discrets, rayures verticales, petits imprimés, dégradés",
-                    "a_eviter": "Gros motifs, rayures horizontales, imprimés trop clairs"
-                }),
-                "pieges": PDFDataMapper._safe_list(openai_cat_data.get("pieges", [])),
+                "introduction": str(intro or ""),
+                "recommandes": PDFDataMapper._safe_list(recommandes_raw),
+                "a_eviter": PDFDataMapper._safe_list(a_eviter_raw),
+                "matieres": matieres_str,
+                "motifs": motifs_obj,
+                "pieges": pieges_list,
                 "visuels": []
             }
+
+            # ✅ Enrichir avec visuels si disponibles
+            recommandes = categories_data[category_name]["recommandes"]
+            a_eviter = categories_data[category_name]["a_eviter"]
+
+            if recommandes:
+                print(f"\n   📌 {category_name}:")
+                print(f"      • {len(recommandes)} recommandés à enrichir")
+                enriched_recommandes = visuals_service.fetch_visuals_for_category(category_name, recommandes)
+                categories_data[category_name]["recommandes"] = enriched_recommandes
+
+            if a_eviter:
+                print(f"      • {len(a_eviter)} à éviter à enrichir")
+                enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)
+                categories_data[category_name]["a_eviter"] = enriched_a_eviter
+
             
             # ✅ Enrichir avec visuels si disponibles
             recommandes = categories_data[category_name]["recommandes"]
