@@ -18,6 +18,8 @@ from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, 
 class MorphologyService:
     def __init__(self):
         self.openai = openai_client
+        print(f"✅ MorphologyService loaded. Has _generate_default_recommendations: {hasattr(self, '_generate_default_recommendations')}")
+
     
     @staticmethod
     def safe_format(template: str, **kwargs) -> str:
@@ -236,8 +238,10 @@ class MorphologyService:
             print("="*80)
             
             # PARSING PART 2 - ULTRA-ROBUSTE
+            # PARSING PART 2 - ULTRA-ROBUSTE + LOGS
             print("\n🔍 PARSING JSON PART 2:")
             content_part2_clean = self.clean_json_string(content_part2)
+            content_part2_clean = self.sanitize_json_multiline_strings(content_part2_clean)
 
             try:
                 part2_result = json.loads(content_part2_clean)
@@ -246,8 +250,10 @@ class MorphologyService:
             except json.JSONDecodeError as e:
                 print("   ⚠️ JSON invalide → tentative correction OpenAI")
                 print(f"   ❌ JSONDecodeError: line={e.lineno} col={e.colno} pos={e.pos}")
-                excerpt = content_part2_clean[max(0, e.pos-120): e.pos+120]
+                excerpt = content_part2_clean[max(0, e.pos-180): e.pos+180]
                 print(f"   🔎 Extrait autour erreur: {excerpt}")
+                print(f"   📏 Longueur réponse (clean): {len(content_part2_clean)} chars")
+                print(f"   🧩 Fin de réponse (200 derniers chars): {content_part2_clean[-200:]}")
 
                 try:
                     part2_result = await self.force_valid_json(
@@ -256,9 +262,17 @@ class MorphologyService:
                     )
                     print("   ✅ JSON corrigé par OpenAI")
 
-                except Exception as fix_err:
-                    print(f"   ❌ Correction échouée → fallback ({str(fix_err)})")
-                    part2_result = self._generate_default_recommendations(silhouette)
+                except Exception as fix_e:
+                    print(f"   ❌ Correction échouée → fallback ({str(fix_e)})")
+
+                    fallback_fn = getattr(self, "_generate_default_recommendations", None)
+                    if callable(fallback_fn):
+                        part2_result = fallback_fn(silhouette)
+                    else:
+                        print("   ❌ Fallback impossible: _generate_default_recommendations introuvable → fallback minimal")
+                        part2_result = {"recommendations": {}}
+
+
 
             # ========================================================================
             # MORPHOLOGY PART 3 - DÉTAILS DE STYLING (MATIERES + MOTIFS + PIÈGES)
