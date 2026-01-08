@@ -131,7 +131,8 @@ class MorphologyService:
         
         part1_result = {}
         part2_result = {}
-        
+        merged_recommendations = {}
+
         try:
             # ========================================================================
             # APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE (VISION)
@@ -280,7 +281,11 @@ class MorphologyService:
 
                 except Exception as fix_err:
                     print(f"   ❌ Correction échouée → fallback (err={fix_err})")
-                    part2_result = self._generate_default_recommendations(silhouette)
+                    try:
+                        part2_result = self._generate_default_recommendations(silhouette)
+                    except Exception as fallback_err:
+                        print(f"   ❌ Fallback impossible (_generate_default_recommendations): {fallback_err}")
+                        part2_result = {"recommendations": {}}
 
             # LOG POST-PARSING: vérifier la structure (évite les trous silencieux)
             rec = (part2_result or {}).get("recommendations", {})
@@ -980,67 +985,30 @@ EXPLICATION: {explanation}"""
 
         return json_str
 
-    
-async def force_valid_json(self, raw_content: str, context: str) -> dict:
-    """
-    Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
-    Version durcie: nettoyage + extraction + réparation locale + truncate anti-OVER.
-    """
-    def _extract_main_json_block(s: str) -> str:
-        if not isinstance(s, str) or not s.strip():
-            return ""
-        s = self.clean_json_string(s)
-        start = s.find("{")
-        end = s.rfind("}") + 1
-        if start != -1 and end > start:
-            return s[start:end]
-        return s
-
-    def _log_json_error(prefix: str, err: Exception, payload: str):
-        if not isinstance(payload, str):
-            payload = str(payload)
-        if isinstance(err, json.JSONDecodeError):
-            pos = err.pos
-            excerpt = payload[max(0, pos - 120): pos + 120]
-            print(f"   ❌ {prefix} JSONDecodeError: line={err.lineno} col={err.colno} pos={err.pos}")
-            print(f"   🔎 Extrait autour erreur: {excerpt}")
-        else:
-            print(f"   ❌ {prefix} error: {str(err)}")
-
-    def _truncate_for_fix(s: str, max_chars: int = 6000) -> str:
+    async def force_valid_json(self, raw_content: str, context: str) -> dict:
         """
-        Empêche le prompt de réparation de dépasser le budget.
-        On conserve début + fin, ce qui garde souvent la structure.
+        Redemande à OpenAI de corriger STRICTEMENT un JSON invalide.
+        Version durcie: nettoyage + extraction + réparation légère + sanitize multiline + parsing robuste.
         """
-        if not isinstance(s, str):
-            return ""
-        s = s.strip()
-        if len(s) <= max_chars:
-            return s
-        head = s[: int(max_chars * 0.55)]
-        tail = s[-int(max_chars * 0.45):]
-        return head + "\n...\n" + tail
+        # 0) Sécurité
+        raw_content = raw_content or ""
 
-    # 1) Extraction bloc JSON
-    cleaned = _extract_main_json_block(raw_content)
+        # 1) Pré-nettoyage local (enlever fences, NUL, accents échappés, etc.)
+        cleaned = self.clean_json_string(raw_content)
 
-    # 2) Sanitize retours ligne DANS les strings (ton helper)
-    if hasattr(self, "sanitize_json_multiline_strings"):
+        # 2) Extraire le plus gros bloc JSON (évite le texte parasite)
+        s = cleaned.find("{")
+        e = cleaned.rfind("}") + 1
+        if s != -1 and e > s:
+            cleaned = cleaned[s:e]
+
+        # 3) Réparation locale minimale (virgules finales, guillemets typographiques, crochets/accolades manquants)
+        cleaned = self._repair_broken_json(cleaned)
+
+        # 4) Patch anti-retours-ligne dans strings JSON
         cleaned = self.sanitize_json_multiline_strings(cleaned)
 
-    # 3) Réparation locale best-effort
-    cleaned = self._repair_broken_json(cleaned)
-
-    # 4) Tentative parsing local
-    try:
-        return json.loads(cleaned)
-    except Exception as e:
-        _log_json_error("Local-parse", e, cleaned)
-
-    # 5) Si c’est trop gros, on tronque AVANT d’envoyer au fixeur
-    cleaned_for_fix = _truncate_for_fix(cleaned, max_chars=6000)
-
-    repair_prompt = f"""
+        repair_prompt = f"""
         Tu vas recevoir un JSON invalide. Tu dois renvoyer UNIQUEMENT un JSON strict valide.
 
         Règles:
@@ -1052,40 +1020,37 @@ async def force_valid_json(self, raw_content: str, context: str) -> dict:
         - Conserve exactement la structure et les clés, ne supprime pas de sections.
 
         JSON À CORRIGER:
-        {cleaned_for_fix}
+        {cleaned}
         """.strip()
 
-    self.openai.set_context(f"{context} - JSON FIX", "")
-    self.openai.set_system_prompt(
-        "Tu es un validateur JSON strict. Tu renvoies uniquement un JSON strict valide, sans Markdown, sans commentaire."
-    )
+        self.openai.set_context(f"{context} - JSON FIX", "")
+        self.openai.set_system_prompt(
+            "Tu es un validateur JSON strict. Tu renvoies uniquement un JSON strict valide, sans Markdown, sans commentaire."
+        )
 
-    response = await self.openai.call_chat(
-        prompt=repair_prompt,
-        model="gpt-4-turbo",
-        max_tokens=1200
-    )
+        response = await self.openai.call_chat(
+            prompt=repair_prompt,
+            model="gpt-4-turbo",
+            max_tokens=2000
+        )
 
-    content = (response.get("content", "") or "").strip()
-    content = _extract_main_json_block(content)
+        content = (response.get("content", "") or "").strip()
 
-    if hasattr(self, "sanitize_json_multiline_strings"):
+        # 5) Re-nettoyage + re-extraction + re-sanitize avant parsing final
+        content = self.clean_json_string(content)
+        s = content.find("{")
+        e = content.rfind("}") + 1
+        if s != -1 and e > s:
+            content = content[s:e]
+        content = self._repair_broken_json(content)
         content = self.sanitize_json_multiline_strings(content)
 
-    content = self._repair_broken_json(content)
-
-    try:
         return json.loads(content)
-    except Exception as e:
-        _log_json_error("OpenAI-fix-parse", e, content)
-        raise
-
 
     def _generate_default_recommendations(self, silhouette: str) -> dict:
         """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
         print("   ✅ Génération recommandations par défaut")
 
-        # --- Base fallback minimal mais complet, compatible template + fusion ---
         base_category = lambda label: {
             "introduction": f"Recommandations générales pour les {label}.",
             "recommandes": [
@@ -1148,20 +1113,15 @@ async def force_valid_json(self, raw_content: str, context: str) -> dict:
             }
         }
 
-        # Si silhouette inconnue → fallback sur A
         result = defaults.get(silhouette, defaults["A"])
 
-        # Sécurité : s’assurer que toutes les catégories existent
         for category in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
             if category not in result:
                 result[category] = base_category(category)
-
-            # Sécurité : clés attendues
             result[category].setdefault("introduction", "")
             result[category].setdefault("recommandes", [])
             result[category].setdefault("a_eviter", [])
 
         return {"recommendations": result}
-
 
 morphology_service = MorphologyService()
