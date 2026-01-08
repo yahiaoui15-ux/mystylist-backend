@@ -1,24 +1,22 @@
-"""
-MORPHOLOGY PART 3 - Détails (matières + motifs + pièges) par catégorie
-Objectif: alimenter pages 9-15 (matières/motifs/pièges) avec JSON ULTRA STABLE.
-IMPORTANT: JSON STRICT, structure stable: details -> categories.
-"""
-
 MORPHOLOGY_PART3_SYSTEM_PROMPT = """
-Vous êtes un expert français en styling morphologique.
-Vous devez produire UNIQUEMENT un JSON strict valide, sans texte avant/après.
-Toutes les clés/strings entre guillemets doubles. Pas de virgule finale.
+Vous etes un moteur de generation JSON strict pour une API.
+Vous devez produire UNIQUEMENT un JSON strict valide, sans texte avant/apres.
 
-IMPORTANT (stabilité JSON):
-- AUCUN saut de ligne dans les valeurs (une seule ligne par string).
-- AUCUN caractère de puce (pas de "•", pas de tirets, pas de listes formatées).
-- Ne mettez JAMAIS de guillemets doubles (") à l'intérieur des strings.
-- Pas d’emojis, pas de tabulations, pas de caractères spéciaux.
-- Les éléments "matieres" et "motifs" doivent être COURTS (2 à 5 mots), pas de phrases.
-- Chaque catégorie doit contenir EXACTEMENT 7 pièges.
+REGLES JSON ABSOLUES:
+- Guillemets doubles uniquement.
+- Aucune virgule finale.
+- Aucune valeur null.
+- Aucune cle supplementaire.
+- Aucune apostrophe (') dans les strings.
+- AUCUN saut de ligne dans les strings.
+- Pas de Markdown, pas de HTML, pas de puces, pas d emojis.
+
+IMPORTANT:
+PART 3 = DETAILS UNIQUEMENT (matieres + motifs + pieges).
+Aucune liste recommandes / a_eviter de pieces (c est en PART 2).
+- Matieres et motifs: elements courts (2 a 5 mots), pas de phrases.
+- Pieges: EXACTEMENT 7, format exact "Piege X: ...", X de 1 a 7.
 """
-
-
 MORPHOLOGY_PART3_USER_PROMPT = """
 Silhouette: {silhouette_type}
 Objectifs: {styling_objectives}
@@ -35,7 +33,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "bas": {{
       "matieres": ["...","...","...","..."],
@@ -43,7 +41,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "robes": {{
       "matieres": ["...","...","...","..."],
@@ -51,7 +49,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "vestes": {{
       "matieres": ["...","...","...","..."],
@@ -59,7 +57,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "maillot_lingerie": {{
       "matieres": ["...","...","...","..."],
@@ -67,7 +65,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "chaussures": {{
       "matieres": ["...","...","...","..."],
@@ -75,7 +73,7 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }},
     "accessoires": {{
       "matieres": ["...","...","...","..."],
@@ -83,14 +81,14 @@ Retourne UNIQUEMENT ce JSON:
         "recommandes": ["...","...","..."],
         "a_eviter": ["...","...","..."]
       }},
-      "pieges": ["Piège 1: ...","Piège 2: ...","Piège 3: ...","Piège 4: ...","Piège 5: ...","Piège 6: ...","Piège 7: ..."]
+      "pieges": ["Piege 1: ...","Piege 2: ...","Piege 3: ...","Piege 4: ...","Piege 5: ...","Piege 6: ...","Piege 7: ..."]
     }}
   }}
 }}
 
 Contraintes:
-- Matieres: 4 à 6 éléments COURTS et spécifiques (ex: "crêpe fluide", "maille fine", "viscose structurée").
-- Motifs: 3 recommandés + 3 à éviter, COURTS et spécifiques (ex: "rayures verticales fines").
-- Pièges: EXACTEMENT 7, chacun commence par "Piège X: ..."
-- Zéro texte hors JSON.
+- "matieres": EXACTEMENT 4 elements (2 a 5 mots), pas de phrases.
+- "motifs": 3 recommandes + 3 a eviter (2 a 5 mots), pas de phrases.
+- "pieges": EXACTEMENT 7, format strict "Piege X: ...".
+- Zero texte hors JSON.
 """
