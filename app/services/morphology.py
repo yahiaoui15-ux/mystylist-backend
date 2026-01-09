@@ -227,9 +227,12 @@ class MorphologyService:
             print("\n" + "=" * 80)
             print("DEBUG MORPHOLOGY PART 2 - PROMPT ENVOYÉ À OPENAI")
             print("- SYSTEM (preview 200 chars) ----------------------------")
-            print(system_prompt[:200])
+            try:
+                print(MORPHOLOGY_PART2_SYSTEM_PROMPT[:200])
+            except Exception:
+                print("⚠️ Impossible d'afficher le system prompt Part 2")
             print("- USER (preview 400 chars) ------------------------------")
-            print(user_prompt[:400])
+            print(user_prompt_part2[:400])
             print("=" * 80 + "\n")
 
             response_part2 = await self.openai.call_chat(
@@ -347,10 +350,14 @@ class MorphologyService:
             print("\n" + "=" * 80)
             print("DEBUG MORPHOLOGY PART 3 - PROMPT ENVOYÉ À OPENAI")
             print("- SYSTEM (preview 200 chars) ----------------------------")
-            print(system_prompt[:200])
+            try:
+                print(MORPHOLOGY_PART3_SYSTEM_PROMPT[:200])
+            except Exception:
+                print("⚠️ Impossible d'afficher le system prompt Part 3")
             print("- USER (preview 400 chars) ------------------------------")
-            print(user_prompt[:400])
+            print(user_prompt_part3[:400])
             print("=" * 80 + "\n")
+
 
             response_part3 = await self.openai.call_chat(
                 prompt=user_prompt_part3,
