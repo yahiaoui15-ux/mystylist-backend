@@ -224,6 +224,14 @@ class MorphologyService:
             )
             
             print("\n🤖 APPEL OPENAI EN COURS...")
+            print("\n" + "=" * 80)
+            print("DEBUG MORPHOLOGY PART 2 - PROMPT ENVOYÉ À OPENAI")
+            print("- SYSTEM (preview 200 chars) ----------------------------")
+            print(system_prompt[:200])
+            print("- USER (preview 400 chars) ------------------------------")
+            print(user_prompt[:400])
+            print("=" * 80 + "\n")
+
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
@@ -263,7 +271,13 @@ class MorphologyService:
                 part2_result = json.loads(content_part2_clean_extracted)
                 print("   ✅ Parsing réussi!")
 
+                # ✅ NORMALISATION PART 2: si pas de wrapper "recommendations", on l'ajoute
+                if isinstance(part2_result, dict) and "recommendations" not in part2_result:
+                    if any(k in part2_result for k in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]):
+                        part2_result = {"recommendations": part2_result}
+
             except json.JSONDecodeError as e:
+                ...
                 print("   ⚠️ JSON invalide → tentative correction OpenAI")
                 print(f"   ❌ JSONDecodeError: line={e.lineno} col={e.colno} pos={e.pos}")
 
@@ -330,6 +344,14 @@ class MorphologyService:
             )
 
             print("\n🤖 APPEL OPENAI EN COURS...")
+            print("\n" + "=" * 80)
+            print("DEBUG MORPHOLOGY PART 3 - PROMPT ENVOYÉ À OPENAI")
+            print("- SYSTEM (preview 200 chars) ----------------------------")
+            print(system_prompt[:200])
+            print("- USER (preview 400 chars) ------------------------------")
+            print(user_prompt[:400])
+            print("=" * 80 + "\n")
+
             response_part3 = await self.openai.call_chat(
                 prompt=user_prompt_part3,
                 model="gpt-4-turbo",
