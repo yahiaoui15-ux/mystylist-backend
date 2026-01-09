@@ -15,6 +15,52 @@ from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, 
 from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
 
 
+def normalize_french(text: str) -> str:
+    """Corrige quelques coquilles FR courantes sans modifier la casse globale."""
+    if not isinstance(text, str) or not text:
+        return text
+
+    t = re.sub(r"\s+", " ", text).strip()
+
+    # 1) Corrections d'expressions exactes (multi-mots)
+    phrase_fixes = {
+        "detail delicat": "détail délicat",
+        "ligne fluid": "ligne fluide",
+        "a privilegier": "à privilégier",
+        "a eviter": "à éviter",
+    }
+    for bad, good in phrase_fixes.items():
+        t = re.sub(rf"\b{re.escape(bad)}\b", good, t, flags=re.IGNORECASE)
+
+    # 2) Corrections de mots (avec frontières \b)
+    word_fixes = {
+        "details": "détails",
+        "detail": "détail",
+        "delicat": "délicat",
+        "elegant": "élégant",
+        "epuree": "épurée",
+        "equilibre": "équilibre",
+        "ajoutee": "ajoutée",
+        "eviter": "éviter",
+        "disproportionnee": "disproportionnée",
+    }
+    for bad, good in word_fixes.items():
+        t = re.sub(rf"\b{re.escape(bad)}\b", good, t, flags=re.IGNORECASE)
+
+    return t
+
+
+def deep_normalize_strings(obj):
+    """Applique normalize_french() à toutes les valeurs string d’un dict/list."""
+    if isinstance(obj, dict):
+        return {k: deep_normalize_strings(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [deep_normalize_strings(x) for x in obj]
+    if isinstance(obj, str):
+        return normalize_french(obj)
+    return obj
+
+
 class MorphologyService:
     def __init__(self):
         self.openai = openai_client
@@ -280,7 +326,7 @@ class MorphologyService:
                         part2_result = {"recommendations": part2_result}
 
             except json.JSONDecodeError as e:
-                ...
+
                 print("   ⚠️ JSON invalide → tentative correction OpenAI")
                 print(f"   ❌ JSONDecodeError: line={e.lineno} col={e.colno} pos={e.pos}")
 
@@ -905,10 +951,14 @@ class MorphologyService:
                 "minimizes": minimizes_data,
             }
             
+            # Normalisation FR (anti coquilles)
+            final_result["recommendations"] = deep_normalize_strings(final_result.get("recommendations", {}))
+
             print("✅ Morphologie v5.2 générée avec succès!")
             print("\n" + "="*80 + "\n")
-            
+
             return final_result
+
             
         except Exception as e:
             print(f"\n❌ EXCEPTION: {str(e)}")
