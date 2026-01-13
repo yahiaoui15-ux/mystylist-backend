@@ -167,19 +167,21 @@ JSON À CORRIGER :
             personality_data = user_data.get("personality_data", {}) or {}
             morphology_goals = user_data.get("morphology_goals", {}) or {}
 
-            # Data map to support {a.b.c}
             prompt_data = {
                 "season": season,
                 "sous_ton": sous_ton,
                 "palette": palette_str,
                 "silhouette_type": silhouette_type,
                 "recommendations": recommendations_simple,
+
+                # champs "plats" (OK)
                 "style_preferences": ", ".join(style_preferences[:6]) if style_preferences else "Non précisé",
-                "brand_preferences": brand_preferences_str,
+
+                # ✅ IMPORTANT : ici il faut le dict complet, pas une string
+                "brand_preferences": brand_preferences,
 
                 # Full nested dicts for dotted placeholders
                 "personality_data": personality_data,
-                "brand_preferences_obj": brand_preferences,
                 "color_preferences": color_preferences,
                 "pattern_preferences": pattern_preferences,
                 "morphology_goals": morphology_goals,

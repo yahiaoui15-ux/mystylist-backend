@@ -218,7 +218,9 @@ class PDFDataMapper:
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
+        # ✅ Styling = schéma V2 (source of truth)
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling", {}))
+
         
         # Page 8 & Pages 9-15
         morphology_page1 = PDFDataMapper._transform_morphology_service_data(morphology_raw, user_data)
@@ -390,33 +392,28 @@ class PDFDataMapper:
                 "tips": []
             }),
             
-            "style": {
-                "archetypes": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", [])),
-                "primaryArchetype": PDFDataMapper._safe_list(styling_raw.get("style_archetypes", []))[0] if styling_raw.get("style_archetypes") else {},
-                "essenceShort": styling_raw.get("style_essence", ""),
+            "styling": {
+                "stylistic_identity": PDFDataMapper._safe_dict(styling_raw.get("stylistic_identity", {})),
+                "psycho_stylistic_profile": PDFDataMapper._safe_dict(styling_raw.get("psycho_stylistic_profile", {})),
+                "contextual_style_logic": PDFDataMapper._safe_dict(styling_raw.get("contextual_style_logic", {})),
+                "style_dna": PDFDataMapper._safe_dict(styling_raw.get("style_dna", {})),
+                "style_within_constraints": PDFDataMapper._safe_dict(styling_raw.get("style_within_constraints", {})),
+                "capsule_wardrobe": PDFDataMapper._safe_dict(styling_raw.get("capsule_wardrobe", {})),
+                "mix_and_match_rules": PDFDataMapper._safe_dict(styling_raw.get("mix_and_match_rules", {})),
+                "signature_outfits": PDFDataMapper._safe_dict(styling_raw.get("signature_outfits", {})),
+                "style_evolution_plan": PDFDataMapper._safe_dict(styling_raw.get("style_evolution_plan", {})),
             },
-            
-            "capsule": {
-                "basics": PDFDataMapper._safe_list(styling_raw.get("capsule_basics", [])),
-                "statement": PDFDataMapper._safe_list(styling_raw.get("capsule_statement_pieces", [])),
-                "totalBudget": styling_raw.get("capsule_total_budget", 0),
-                "totalPieces": len(PDFDataMapper._safe_list(styling_raw.get("capsule_basics", []))) + len(PDFDataMapper._safe_list(styling_raw.get("capsule_statement_pieces", []))),
+            "styling_products": {
+                "enabled": False,
+                "selection": {
+                    "everyday": [],
+                    "academic_or_professional": [],
+                    "events": [],
+                    "capsule_essentials": [],
+                    "capsule_hero_pieces": [],
+                }
             },
-            
-            "outfits": PDFDataMapper._safe_list(styling_raw.get("mix_and_match_outfits", [])),
-            "brands": PDFDataMapper._safe_list(styling_raw.get("shopping_brands", [])),
-            "occasions": PDFDataMapper._safe_list(styling_raw.get("special_occasions", [])),
-            
-            "nextSteps": {
-                "weeklyChecklist": [
-                    "Imprimez ou enregistrez ce rapport sur votre téléphone",
-                    "Prenez un café avec cette palette - testez les couleurs en personne",
-                    "Explorez les marques recommandées et créez votre liste de souhaits",
-                    "Essayez au moins une pièce phare cette semaine",
-                    "Prenez des photos de vos meilleures tenues et notez ce qui marche",
-                ]
-            },
-            
+
             "currentDate": datetime.now().strftime("%d %b %Y"),
         }
         
@@ -636,12 +633,7 @@ class PDFDataMapper:
                 print(f"      • {len(a_eviter)} à éviter à enrichir")
                 enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)
                 categories_data[category_name]["a_eviter"] = enriched_a_eviter
-
-            
-            # ✅ Enrichir avec visuels si disponibles
-            recommandes = categories_data[category_name]["recommandes"]
-            a_eviter = categories_data[category_name]["a_eviter"]
-            
+           
             if recommandes:
                 print(f"\n   📌 {category_name}:")
                 print(f"      • {len(recommandes)} recommandés à enrichir")
