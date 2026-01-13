@@ -80,6 +80,39 @@ CONTRAINTES OBLIGATOIRES :
   personnalité ↔ style ↔ morphologie ↔ colorimétrie ↔ contextes de vie.
 - Le contenu doit être suffisamment riche pour remplir plusieurs pages PDF.
 - Évite toute phrase applicable à “toutes les femmes”.
+CONTRAINTES SPÉCIALES POUR LA PAGE 16 (OBLIGATOIRES) :
+
+1) Le bloc "Votre signature personnelle (vue par l’IA)" sera porté par :
+   - stylistic_identity.personality_translation
+   Exigences :
+   - au moins 120 mots
+   - mentionner explicitement AU MOINS 5 éléments des données cliente (exemples : traits de personnalité, messages, contextes, styles préférés, marques, couleurs/motifs refusés, morphologie, colorimétrie)
+   - inclure les douleurs / difficultés actuelles sous forme de constats concrets (ex : difficulté à se projeter, incohérence, manque de repères, etc.)
+   - pas de psychologie vague : chaque idée doit être reliée à une info fournie.
+
+2) Le bloc "Vos styles dominants (et pourquoi)" sera porté par :
+   - stylistic_identity.style_positioning
+   Exigences :
+   - au moins 120 mots
+   - expliquer un diagnostic de styles dominants AVEC POURCENTAGES (3 styles max).
+   - Les pourcentages doivent aussi être copiés dans stylistic_identity.signature_keywords sous forme de 3 items texte,
+     format EXACT : "<Style> — <XX>%"
+     Exemple : "Romantique — 60%"
+   - Justifier chaque style par des éléments de l’onboarding (styles cochés, messages, contextes, marques, refus).
+
+3) Le bloc "Description de votre style (et son impact sur vos tenues)" sera porté par :
+   - style_dna.what_defines_the_style
+   Exigences :
+   - au moins 140 mots
+   - expliquer ce que signifie concrètement chacun des styles dominants (matières, coupes, détails, ambiance)
+   - expliquer l’impact concret sur les tenues : silhouettes types, équilibre confort/élégance, logique couleurs (saison + couleurs refusées), et adaptation morphologique (zones à valoriser/minimiser).
+   - interdiction de phrases génériques applicables à toutes les femmes.
+
+FORMAT / PARSING :
+- pas de puces dans ces 3 blocs (texte continu, phrases courtes possibles, mais pas de listes)
+- pas de guillemets spéciaux, pas d’emojis dans les paragraphes
+- pas de retour à la ligne dans les strings (une seule chaîne par champ)
+
 
 IMPORTANT :
 Respecte STRICTEMENT la structure et les noms de clés ci-dessous,

@@ -30,6 +30,30 @@ class StylingService:
         content = re.sub(r'\s*```$', '', content.strip())
         content = content.replace('\x00', '')
         return content.strip()
+    def _join_list(self, x, maxn=6):
+        if isinstance(x, list):
+            return ", ".join([str(i) for i in x if str(i).strip()][:maxn])
+        return ""
+
+    def _dynamic_personality_translation(self, prompt_data: Dict[str, Any]) -> str:
+        traits = self._join_list(prompt_data.get("personality_data", {}).get("selected_personality", []), 4)
+        msgs = self._join_list(prompt_data.get("personality_data", {}).get("selected_message", []), 4)
+        ctx = self._join_list(prompt_data.get("personality_data", {}).get("selected_situations", []), 4)
+        styles = prompt_data.get("style_preferences", "")
+        brands = prompt_data.get("brand_preferences", {}).get("selected_brands", [])
+        brands = ", ".join(brands[:4]) if isinstance(brands, list) and brands else "vos marques habituelles"
+        disliked_colors = self._join_list(prompt_data.get("color_preferences", {}).get("disliked_colors", []), 4)
+        disliked_patterns = self._join_list(prompt_data.get("pattern_preferences", {}).get("disliked_patterns", []), 4)
+        season = prompt_data.get("season", "")
+        sil = prompt_data.get("silhouette_type", "")
+        hi = self._join_list(prompt_data.get("morphology_goals", {}).get("body_parts_to_highlight", []), 3)
+        mi = self._join_list(prompt_data.get("morphology_goals", {}).get("body_parts_to_minimize", []), 3)
+
+        return (
+            f"D’après vos réponses, vous avez une personnalité {traits} et vous cherchez à faire passer "
+            f"des messages très clairs par vos tenues : {msgs}. Votre quotidien ({ctx}) vous oblige à trouver "
+            f"des looks rapides à composer, mais suffisamment structurés pour inspirer {msgs.split(',')[0] if msgs else 'confiance'}. "
+            f"Le fait que vous a
 
     @staticmethod
     def _resolve_path(data: Dict[str, Any], path: str) -> Any:
