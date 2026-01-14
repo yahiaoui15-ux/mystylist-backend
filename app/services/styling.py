@@ -8,7 +8,7 @@ Styling Service v4.0 - Compatible prompt premium + personnalité
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
@@ -36,8 +36,6 @@ class StylingService:
             return ", ".join([str(i) for i in x if str(i).strip()][:maxn])
         return ""
 
-    from typing import Tuple
-
     # ---------------------------------------------------------------------
     # Helpers: normalization / safe text
     # ---------------------------------------------------------------------
@@ -50,10 +48,17 @@ class StylingService:
         return isinstance(text, str) and len(text.split()) >= min_words
 
     def _one_line(self, text: str) -> str:
-        # parse-safe: no newlines, no tabs; collapse spaces
         if not isinstance(text, str):
             return ""
         t = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        # normalisation guillemets typographiques
+        t = (
+            t.replace("’", "'")
+            .replace("“", '"')
+            .replace("”", '"')
+            .replace("«", '"')
+            .replace("»", '"')
+        )
         t = re.sub(r"\s{2,}", " ", t).strip()
         return t
 
@@ -615,6 +620,12 @@ JSON À CORRIGER :
 
             personality_data = user_data.get("personality_data", {}) or {}
             morphology_goals = user_data.get("morphology_goals", {}) or {}
+            personal_info = user_data.get("personal_info", {}) or {}    
+            style_preferences_raw = style_preferences  # ici style_preferences est déjà ta liste issue de user_data
+
+            print("DEBUG styling.py loaded from:", __file__)
+            print("DEBUG has personal_info:", "personal_info" in locals())
+            print("DEBUG personal_info value:", personal_info)
 
             prompt_data = {
                 "season": season,
@@ -775,9 +786,14 @@ JSON À CORRIGER :
         # 2) personality_translation : 150+ mots, archétypes + justifications
         pt = self._ensure_str(si.get("personality_translation"), "")
         if not self._ensure_min_words(pt, 150):
-            si["personality_translation"] = self._dynamic_personality_translation_v2(prompt_data, ar_main, ar_secondary)
+            generated = self._dynamic_personality_translation_v2(prompt_data, ar_main, ar_secondary)
+            # fallback si encore trop court
+            if not self._ensure_min_words(generated, 150):
+                generated = generated + " L’objectif est de vous donner des repères concrets, cohérents avec votre personnalité, vos contraintes et votre quotidien, afin que vous puissiez vous habiller plus vite, avec plus de confiance, et obtenir un rendu féminin et crédible sans effort."
+            si["personality_translation"] = self._one_line(generated)
         else:
             si["personality_translation"] = self._one_line(pt)
+
 
         # 3) style_positioning : 150+ mots, styles + justifications
         sp = self._ensure_str(si.get("style_positioning"), "")
