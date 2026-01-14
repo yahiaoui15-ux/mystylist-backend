@@ -80,6 +80,36 @@ class ColorimetryJSONParser:
         
         return None
     
+    def parse_part3_json_safely(self, content: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+        """
+        ✅ Parse Part 3 avec retry + logique 'meaningful' spécifique Part 3
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                result = self.robust_parser.parse_json_with_fallback(content)
+
+                if result and self._is_meaningful_part3_result(result):
+                    print(f"   ✅ JSON Part 3 parsé avec succès (attempt {attempt})")
+                    return result
+
+                if attempt < max_retries:
+                    print(f"   ⚠️  Tentative {attempt}: Part 3 vide/minimal, retry...")
+                    time.sleep(0.5 * attempt)
+                    continue
+
+                # dernière tentative : retourner ce qu'on a (même minimal) pour ne pas crasher
+                print(f"   ⚠️  Tentative {attempt}: Part 3 minimal utilisé")
+                return result
+
+            except Exception as e:
+                print(f"   ⚠️  Tentative {attempt} (Part 3): {str(e)[:60]}")
+                if attempt < max_retries:
+                    time.sleep(0.5 * attempt)
+                    continue
+                return None
+
+        return None
+
     def validate_part2_structure(self, data: Dict[str, Any]) -> bool:
         """
         ✅ Valide que la structure Part 2 est complète
@@ -105,6 +135,66 @@ class ColorimetryJSONParser:
         
         return True
     
+    def validate_part3_structure(self, data: Dict[str, Any]) -> bool:
+        """
+        ✅ Valide que la structure Part 3 est exploitable
+
+        Vérifie:
+        - guide_maquillage: dict (même si partiellement rempli)
+        - nailColors: list
+        - unwanted_colors: list (peut être vide)
+        - notes_compatibilite: dict (peut être vide)
+        """
+        if not isinstance(data, dict):
+            return False
+
+        guide = data.get("guide_maquillage", None)
+        if guide is None or not isinstance(guide, dict):
+            print("   ⚠️  Part 3 invalide: guide_maquillage manquant ou non dict")
+            return False
+
+        nail_colors = data.get("nailColors", None)
+        if nail_colors is None or not isinstance(nail_colors, list):
+            print("   ⚠️  Part 3 invalide: nailColors manquant ou non list")
+            return False
+
+        unwanted = data.get("unwanted_colors", None)
+        if unwanted is None or not isinstance(unwanted, list):
+            print("   ⚠️  Part 3 invalide: unwanted_colors manquant ou non list")
+            return False
+
+        notes = data.get("notes_compatibilite", None)
+        if notes is None or not isinstance(notes, dict):
+            print("   ⚠️  Part 3 invalide: notes_compatibilite manquant ou non dict")
+            return False
+
+        return True
+
+    @staticmethod
+    def _is_meaningful_part3_result(result: dict) -> bool:
+        """
+        ✅ Vérifie si le résultat Part 3 est meaningful
+
+        Un Part 3 meaningful a au moins:
+        - 1 champ non vide dans guide_maquillage, OU
+        - >= 2 nailColors, OU
+        - >= 8 notes_compatibilite (ou autre seuil selon ton prompt)
+        """
+        guide = result.get("guide_maquillage", {})
+        nail_colors = result.get("nailColors", [])
+        notes = result.get("notes_compatibilite", {})
+
+        # compter champs non vides du guide
+        guide_filled = 0
+        if isinstance(guide, dict):
+            guide_filled = sum(1 for v in guide.values() if isinstance(v, str) and v.strip())
+
+        has_guide = guide_filled >= 2
+        has_nails = isinstance(nail_colors, list) and len(nail_colors) >= 2
+        has_notes = isinstance(notes, dict) and len(notes.keys()) >= 8
+
+        return has_guide or has_nails or has_notes
+
     @staticmethod
     def _is_meaningful_result(result: dict) -> bool:
         """
@@ -146,3 +236,28 @@ def analyze_colorimetry_part2(content: str) -> Dict[str, Any]:
     
     # Fallback
     return FALLBACK_PART2_DATA.copy()
+
+def analyze_colorimetry_part3(content: str) -> Dict[str, Any]:
+    """
+    ✅ Wrapper pour utilisation facile dans colorimetry.py (Part 3)
+    """
+    parser = ColorimetryJSONParser()
+
+    # Nettoyer
+    content_cleaned = parser.clean_gpt_response(content)
+
+    # Parser avec retry spécifique Part 3
+    result = parser.parse_part3_json_safely(content_cleaned, max_retries=3)
+
+    # Valider structure
+    if result and parser.validate_part3_structure(result):
+        return result
+
+    # Fallback minimal Part 3
+    return {
+        "notes_compatibilite": {},
+        "guide_maquillage": {},
+        "nailColors": [],
+        "unwanted_colors": [],
+        "alternatives_couleurs_refusees": {},
+    }

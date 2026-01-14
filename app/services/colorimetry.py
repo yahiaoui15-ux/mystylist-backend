@@ -16,12 +16,13 @@ from app.prompts.colorimetry_part1_prompt import COLORIMETRY_PART1_SYSTEM_PROMPT
 from app.prompts.colorimetry_part2_prompt import (
     COLORIMETRY_PART2_SYSTEM_PROMPT,
     COLORIMETRY_PART2_USER_PROMPT_TEMPLATE,
-    FALLBACK_PART2_DATA
+    get_fallback_part2
 )
 from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT, COLORIMETRY_PART3_USER_PROMPT_TEMPLATE
 from app.services.robust_json_parser import RobustJSONParser
 from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
 from app.services.color_image_matcher import ColorImageMatcher
+from app.services.colorimetry_parsing_utilities import analyze_colorimetry_part3
 
 
 class ColorimetryService:
@@ -80,7 +81,7 @@ class ColorimetryService:
                 result_part1.get("hair_color", hair_color)
             )
             if not result_part2:
-                result_part2 = FALLBACK_PART2_DATA.copy()
+                result_part2 = get_fallback_part2(saison)
             
             palette = result_part2.get("palette_personnalisee", [])
             associations = result_part2.get("associations_gagnantes", [])
@@ -445,7 +446,9 @@ class ColorimetryService:
                 print(f"      • Associations: {len(associations)} occasions")
             else:
                 print(f"   ⚠️  Parsing échoué → FALLBACK")
-                result = FALLBACK_PART2_DATA.copy()
+                from app.prompts.colorimetry_part2_prompt import get_fallback_part2
+                result = get_fallback_part2(saison)
+
             
             print("\n" + "="*80 + "\n")
             return result
@@ -454,7 +457,8 @@ class ColorimetryService:
             print(f"\n❌ ERREUR PART 2: {e}")
             import traceback
             traceback.print_exc()
-            return FALLBACK_PART2_DATA.copy()
+            result = get_fallback_part2(saison)
+
     
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
         """PART 3 - Texte pur"""
@@ -503,8 +507,9 @@ class ColorimetryService:
             print(f"   {content[:400]}...")
             
             print(f"\n🔍 PARSING JSON:")
-            content_cleaned = self._fix_json_for_parsing(content)
-            result = RobustJSONParser.parse_json_with_fallback(content_cleaned)
+            print(f"\n🔍 PARSING JSON (Part 3 robuste):")
+            result = analyze_colorimetry_part3(content)
+
             
             if result:
                 print(f"   ✅ Succès")
