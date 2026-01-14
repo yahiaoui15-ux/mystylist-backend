@@ -69,7 +69,6 @@ DONNÉES PHYSIQUES & STRUCTURELLES :
   - Zones à minimiser : {morphology_goals.body_parts_to_minimize}
 
 MISSION STYLISTIQUE :
-
 Tu dois construire un PROFIL STYLISTIQUE PREMIUM,
 comme si tu t’adressais directement à cette cliente.
 

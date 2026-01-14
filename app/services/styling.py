@@ -30,6 +30,7 @@ class StylingService:
         content = re.sub(r'\s*```$', '', content.strip())
         content = content.replace('\x00', '')
         return content.strip()
+        
     def _join_list(self, x, maxn=6):
         if isinstance(x, list):
             return ", ".join([str(i) for i in x if str(i).strip()][:maxn])
@@ -39,21 +40,36 @@ class StylingService:
         traits = self._join_list(prompt_data.get("personality_data", {}).get("selected_personality", []), 4)
         msgs = self._join_list(prompt_data.get("personality_data", {}).get("selected_message", []), 4)
         ctx = self._join_list(prompt_data.get("personality_data", {}).get("selected_situations", []), 4)
+
         styles = prompt_data.get("style_preferences", "")
-        brands = prompt_data.get("brand_preferences", {}).get("selected_brands", [])
-        brands = ", ".join(brands[:4]) if isinstance(brands, list) and brands else "vos marques habituelles"
+        brands_list = prompt_data.get("brand_preferences", {}).get("selected_brands", [])
+        brands = ", ".join(brands_list[:4]) if isinstance(brands_list, list) and brands_list else "vos marques habituelles"
+
         disliked_colors = self._join_list(prompt_data.get("color_preferences", {}).get("disliked_colors", []), 4)
         disliked_patterns = self._join_list(prompt_data.get("pattern_preferences", {}).get("disliked_patterns", []), 4)
+
         season = prompt_data.get("season", "")
         sil = prompt_data.get("silhouette_type", "")
+
         hi = self._join_list(prompt_data.get("morphology_goals", {}).get("body_parts_to_highlight", []), 3)
         mi = self._join_list(prompt_data.get("morphology_goals", {}).get("body_parts_to_minimize", []), 3)
 
-        return (
-            f"D’après vos réponses, vous avez une personnalité {traits} et vous cherchez à faire passer "
-            f"des messages très clairs par vos tenues : {msgs}. Votre quotidien ({ctx}) vous oblige à trouver "
-            f"des looks rapides à composer, mais suffisamment structurés pour inspirer {msgs.split(',')[0] if msgs else 'confiance'}. "
-            f"Le fait que vous a
+        # On construit un texte "riche" mais en une seule string (parse-safe)
+        text = (
+            f"D’après vos réponses, vous avez une personnalité {traits} et vous cherchez à faire passer des messages "
+            f"très clairs par vos tenues : {msgs}. Vos contextes de vie ({ctx}) vous demandent donc un style qui soit à la fois "
+            f"simple à porter, cohérent et immédiatement lisible : vous ne voulez pas “réfléchir 20 minutes” devant le dressing, "
+            f"mais vous souhaitez que la tenue produise l’effet attendu. Le fait que vous ayez cité {brands} et que vous ayez "
+            f"indiqué une préférence de style ({styles}) montre que vous aimez quand c’est accessible et pratique, mais vous avez "
+            f"besoin d’un niveau de finition supérieur dans l’allure pour exprimer {msgs}. "
+            f"Nous allons aussi respecter vos limites : couleurs à éviter ({disliked_colors}) et motifs à éviter ({disliked_patterns}), "
+            f"pour que vous vous sentiez sûre de vous sans vous forcer. Enfin, votre colorimétrie ({season}) et votre silhouette ({sil}) "
+            f"seront des repères concrets : nous mettrons en avant {hi} et nous adoucirons {mi} grâce aux coupes, aux volumes et aux "
+            f"contrastes bien placés. L’objectif est que vous vous reconnaissiez dans votre style, et que chaque tenue renforce votre image "
+            f"avec naturel et intention."
+        )
+
+        return text
 
     @staticmethod
     def _resolve_path(data: Dict[str, Any], path: str) -> Any:
