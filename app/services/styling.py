@@ -30,11 +30,420 @@ class StylingService:
         content = re.sub(r'\s*```$', '', content.strip())
         content = content.replace('\x00', '')
         return content.strip()
-        
+
     def _join_list(self, x, maxn=6):
         if isinstance(x, list):
             return ", ".join([str(i) for i in x if str(i).strip()][:maxn])
         return ""
+
+    from typing import Tuple
+
+    # ---------------------------------------------------------------------
+    # Helpers: normalization / safe text
+    # ---------------------------------------------------------------------
+    def _lower_list(self, xs) -> List[str]:
+        if not isinstance(xs, list):
+            return []
+        return [str(x).strip().lower() for x in xs if str(x).strip()]
+
+    def _ensure_min_words(self, text: str, min_words: int) -> bool:
+        return isinstance(text, str) and len(text.split()) >= min_words
+
+    def _one_line(self, text: str) -> str:
+        # parse-safe: no newlines, no tabs; collapse spaces
+        if not isinstance(text, str):
+            return ""
+        t = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        t = re.sub(r"\s{2,}", " ", t).strip()
+        return t
+
+    def _labelize_traits(self, ids: List[str]) -> List[str]:
+        # IDs exacts -> labels UI
+        mapping = {
+            "creative": "Créative",
+            "discrete": "Discrète",
+            "dynamic": "Dynamique",
+            "ambitious": "Ambitieuse",
+            "sensitive": "Sensible",
+            "bold": "Audacieuse",
+            "romantic": "Romantique",
+            "practical": "Pratique",
+            "extroverted": "Extravertie",
+            "reserved": "Réservée",
+            "natural": "Naturelle",
+            "refined": "Raffinée",
+        }
+        out = []
+        for x in ids or []:
+            k = str(x).strip().lower()
+            out.append(mapping.get(k, str(x)))
+        return out
+
+    def _labelize_messages(self, ids: List[str]) -> List[str]:
+        mapping = {
+            "natural": "se sentir naturelle et alignée",
+            "respect": "inspirer le respect et la crédibilité",
+            "creativity": "exprimer sa créativité et son originalité",
+            "feminine": "se sentir séduisante et féminine",
+            "silhouette": "mettre en valeur sa silhouette",
+            "elegance": "se démarquer avec élégance",
+            "discrete_style": "rester discrète mais stylée",
+        }
+        out = []
+        for x in ids or []:
+            k = str(x).strip().lower()
+            out.append(mapping.get(k, str(x)))
+        return out
+
+    def _labelize_situations(self, ids: List[str]) -> List[str]:
+        mapping = {
+            "work": "travail / bureau",
+            "events": "soirées / événements",
+            "weekends": "week-ends / loisirs",
+            "dating": "rendez-vous / dating",
+            "travel": "voyages",
+            "family": "vie de famille",
+            "social": "réseaux sociaux / influence",
+            "student": "étudiante",
+            "remote": "télétravail / maison",
+        }
+        out = []
+        for x in ids or []:
+            k = str(x).strip().lower()
+            out.append(mapping.get(k, str(x)))
+        return out
+
+    # ---------------------------------------------------------------------
+    # 1) Archetypes scoring (IDs exacts)
+    # ---------------------------------------------------------------------
+    def _score_archetypes(self, personality_data: Dict[str, Any]) -> Dict[str, int]:
+        traits = self._lower_list((personality_data or {}).get("selected_personality", []))
+        msgs = self._lower_list((personality_data or {}).get("selected_message", []))
+        ctx = self._lower_list((personality_data or {}).get("selected_situations", []))
+
+        scores = {
+            "Reine / Leader": 0,
+            "Guerrière / Chasseresse": 0,
+            "Romantique / Amante": 0,
+            "Sage / Mystique": 0,
+            "Visionnaire / Créative": 0,
+        }
+
+        # Traits -> archetypes
+        if "ambitious" in traits: scores["Reine / Leader"] += 3; scores["Guerrière / Chasseresse"] += 1
+        if "bold" in traits: scores["Guerrière / Chasseresse"] += 3; scores["Reine / Leader"] += 1
+        if "romantic" in traits: scores["Romantique / Amante"] += 4
+        if "dynamic" in traits: scores["Guerrière / Chasseresse"] += 2
+        if "refined" in traits: scores["Reine / Leader"] += 2; scores["Sage / Mystique"] += 1
+        if "discrete" in traits: scores["Sage / Mystique"] += 2; scores["Reine / Leader"] += 1
+        if "practical" in traits: scores["Sage / Mystique"] += 2
+        if "reserved" in traits: scores["Sage / Mystique"] += 2
+        if "natural" in traits: scores["Sage / Mystique"] += 2
+        if "sensitive" in traits: scores["Romantique / Amante"] += 2; scores["Sage / Mystique"] += 1
+        if "creative" in traits: scores["Visionnaire / Créative"] += 4
+        if "extroverted" in traits: scores["Guerrière / Chasseresse"] += 1; scores["Visionnaire / Créative"] += 1
+
+        # Messages -> archetypes
+        if "respect" in msgs: scores["Reine / Leader"] += 4; scores["Sage / Mystique"] += 1
+        if "feminine" in msgs: scores["Romantique / Amante"] += 3; scores["Reine / Leader"] += 1
+        if "elegance" in msgs: scores["Reine / Leader"] += 3; scores["Visionnaire / Créative"] += 1
+        if "discrete_style" in msgs: scores["Sage / Mystique"] += 3; scores["Reine / Leader"] += 1
+        if "natural" in msgs: scores["Sage / Mystique"] += 3
+        if "creativity" in msgs: scores["Visionnaire / Créative"] += 4
+        if "silhouette" in msgs: scores["Reine / Leader"] += 1; scores["Guerrière / Chasseresse"] += 1
+
+        # Situations -> archetypes
+        if "work" in ctx or "student" in ctx: scores["Reine / Leader"] += 2; scores["Sage / Mystique"] += 1
+        if "events" in ctx or "dating" in ctx: scores["Romantique / Amante"] += 2; scores["Reine / Leader"] += 1
+        if "remote" in ctx: scores["Sage / Mystique"] += 2
+        if "weekends" in ctx or "travel" in ctx: scores["Sage / Mystique"] += 1; scores["Guerrière / Chasseresse"] += 1
+        if "social" in ctx: scores["Visionnaire / Créative"] += 2; scores["Reine / Leader"] += 1
+        if "family" in ctx: scores["Sage / Mystique"] += 2
+
+        return scores
+
+    def _top_archetypes(self, scores: Dict[str, int]) -> Tuple[List[str], List[str]]:
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        nonzero = [a for a, s in ranked if s > 0]
+
+        main = nonzero[:2] if nonzero else ["Sage / Mystique"]
+        secondary = nonzero[2:3]  # optional 1 secondary
+        return main, secondary
+
+    # ---------------------------------------------------------------------
+    # 2) Styles scoring (IDs exacts + refus couleurs/motifs + marques)
+    # ---------------------------------------------------------------------
+    def _score_styles(
+        self,
+        style_preferences: List[str],
+        brand_preferences: Dict[str, Any],
+        color_preferences: Dict[str, Any],
+        pattern_preferences: Dict[str, Any],
+        archetypes_main: List[str],
+        archetypes_secondary: List[str],
+    ) -> Dict[str, int]:
+
+        sp = self._lower_list(style_preferences)
+        brands = self._lower_list((brand_preferences or {}).get("selected_brands", [])) + self._lower_list((brand_preferences or {}).get("custom_brands", []))
+        disliked_colors = self._lower_list((color_preferences or {}).get("disliked_colors", []))
+        disliked_patterns = self._lower_list((pattern_preferences or {}).get("disliked_patterns", []))
+
+        # Styles "produit" (liste)
+        stylescore = {
+            "Style Classique / Intemporel": 0,
+            "Style Chic / Élégant": 0,
+            "Style Minimaliste": 0,
+            "Style Casual / Décontracté": 0,
+            "Style Bohème": 0,
+            "Style Romantique": 0,
+            "Style Glamour": 0,
+            "Style Rock": 0,
+            "Style Urbain / Streetwear": 0,
+            "Style Sporty Chic": 0,
+            "Style Preppy": 0,
+            "Style Vintage": 0,
+            "Style Moderne / Contemporain": 0,
+            "Style Artistique / Créatif": 0,
+            "Style Ethnique": 0,
+            "Style Féminin Moderne": 0,
+            "Style Sexy Assumé": 0,
+            "Style Naturel / Authentique": 0,
+        }
+
+        # Archetypes -> styles (principal)
+        for a in archetypes_main:
+            if "Reine" in a:
+                stylescore["Style Chic / Élégant"] += 4
+                stylescore["Style Classique / Intemporel"] += 3
+                stylescore["Style Minimaliste"] += 2
+                stylescore["Style Féminin Moderne"] += 3
+            if "Guerrière" in a:
+                stylescore["Style Sporty Chic"] += 5
+                stylescore["Style Urbain / Streetwear"] += 4
+                stylescore["Style Moderne / Contemporain"] += 2
+                stylescore["Style Casual / Décontracté"] += 2
+            if "Romantique" in a:
+                stylescore["Style Romantique"] += 5
+                stylescore["Style Féminin Moderne"] += 3
+                stylescore["Style Bohème"] += 1
+            if "Sage" in a:
+                stylescore["Style Minimaliste"] += 3
+                stylescore["Style Naturel / Authentique"] += 4
+                stylescore["Style Casual / Décontracté"] += 2
+                stylescore["Style Classique / Intemporel"] += 1
+            if "Visionnaire" in a:
+                stylescore["Style Artistique / Créatif"] += 5
+                stylescore["Style Moderne / Contemporain"] += 3
+                stylescore["Style Vintage"] += 2
+                stylescore["Style Ethnique"] += 1
+
+        # Archetype secondaire = poids plus faible
+        for a in archetypes_secondary:
+            if "Reine" in a:
+                stylescore["Style Chic / Élégant"] += 1
+                stylescore["Style Féminin Moderne"] += 1
+            if "Guerrière" in a:
+                stylescore["Style Sporty Chic"] += 1
+                stylescore["Style Urbain / Streetwear"] += 1
+            if "Romantique" in a:
+                stylescore["Style Romantique"] += 1
+                stylescore["Style Féminin Moderne"] += 1
+            if "Sage" in a:
+                stylescore["Style Minimaliste"] += 1
+                stylescore["Style Naturel / Authentique"] += 1
+            if "Visionnaire" in a:
+                stylescore["Style Artistique / Créatif"] += 1
+                stylescore["Style Vintage"] += 1
+
+        # Style déclaré onboarding (IDs de tes cards)
+        # Tes styles possible: casual, chic, boheme, minimaliste, romantique, rock, vintage, sportswear, classique, moderne
+        if "sportswear" in sp:
+            stylescore["Style Sporty Chic"] += 7
+            stylescore["Style Urbain / Streetwear"] += 4
+            stylescore["Style Casual / Décontracté"] += 3
+        if "romantique" in sp:
+            stylescore["Style Romantique"] += 6
+            stylescore["Style Féminin Moderne"] += 2
+        if "minimaliste" in sp:
+            stylescore["Style Minimaliste"] += 6
+        if "chic" in sp:
+            stylescore["Style Chic / Élégant"] += 6
+        if "classique" in sp:
+            stylescore["Style Classique / Intemporel"] += 6
+        if "moderne" in sp:
+            stylescore["Style Moderne / Contemporain"] += 6
+        if "casual" in sp:
+            stylescore["Style Casual / Décontracté"] += 5
+        if "bohème" in sp or "boheme" in sp:
+            stylescore["Style Bohème"] += 6
+        if "rock" in sp:
+            stylescore["Style Rock"] += 6
+        if "vintage" in sp:
+            stylescore["Style Vintage"] += 6
+
+        # Marques : règle simple (tu pourras enrichir plus tard)
+        # H&M etc -> urbain/casual/féminin moderne/sporty chic
+        if any(b in ["h&m", "hm"] for b in brands):
+            stylescore["Style Féminin Moderne"] += 3
+            stylescore["Style Casual / Décontracté"] += 2
+            stylescore["Style Urbain / Streetwear"] += 2
+            stylescore["Style Sporty Chic"] += 2
+
+        # Rejets couleurs / motifs
+        if "argenté" in disliked_colors or "argente" in disliked_colors:
+            stylescore["Style Glamour"] -= 2
+            stylescore["Style Sexy Assumé"] -= 2
+            stylescore["Style Rock"] -= 1
+            stylescore["Style Minimaliste"] += 1
+            stylescore["Style Chic / Élégant"] += 1
+
+        # motifs animaux forts (léopard, zèbre, animaliers)
+        if any("léopard" in p or "leopard" in p for p in disliked_patterns) or any("zèbre" in p or "zebre" in p for p in disliked_patterns) or any("animalier" in p for p in disliked_patterns):
+            stylescore["Style Rock"] -= 2
+            stylescore["Style Glamour"] -= 2
+            stylescore["Style Sexy Assumé"] -= 2
+            stylescore["Style Minimaliste"] += 1
+            stylescore["Style Féminin Moderne"] += 1
+            stylescore["Style Romantique"] += 1
+
+        # Empêcher scores négatifs
+        for k in list(stylescore.keys()):
+            stylescore[k] = max(0, int(stylescore[k]))
+
+        return stylescore
+
+    def _pick_top_styles_with_percentages(self, stylescore: Dict[str, int], max_styles: int = 3) -> List[Dict[str, Any]]:
+        ranked = sorted(stylescore.items(), key=lambda x: x[1], reverse=True)
+        top = [r for r in ranked if r[1] > 0][:max_styles]
+        if not top:
+            top = [("Style Féminin Moderne", 1), ("Style Sporty Chic", 1), ("Style Minimaliste", 1)]
+
+        total = sum([s for _, s in top]) or 1
+        out = [{"style": st, "pct": int(round((sc / total) * 100))} for st, sc in top]
+        diff = 100 - sum(x["pct"] for x in out)
+        out[0]["pct"] += diff
+        return out
+
+    # ---------------------------------------------------------------------
+    # 3) Génération des 3 paragraphes (150+ mots, parse-safe)
+    # ---------------------------------------------------------------------
+    def _dynamic_personality_translation_v2(self, prompt_data: Dict[str, Any], archetypes_main: List[str], archetypes_secondary: List[str]) -> str:
+        pers = prompt_data.get("personality_data", {}) or {}
+        traits_ids = pers.get("selected_personality", []) or []
+        msgs_ids = pers.get("selected_message", []) or []
+        ctx_ids = pers.get("selected_situations", []) or []
+
+        traits_lbl = ", ".join(self._labelize_traits(traits_ids)[:4]) if traits_ids else "—"
+        msgs_lbl = ", ".join(self._labelize_messages(msgs_ids)[:4]) if msgs_ids else "—"
+        ctx_lbl = ", ".join(self._labelize_situations(ctx_ids)[:4]) if ctx_ids else "—"
+
+        brands_list = (prompt_data.get("brand_preferences", {}) or {}).get("selected_brands", []) or []
+        brands = ", ".join(brands_list[:4]) if isinstance(brands_list, list) and brands_list else "vos marques habituelles"
+
+        disliked_colors = self._join_list((prompt_data.get("color_preferences", {}) or {}).get("disliked_colors", []), 4) or "—"
+        disliked_patterns = self._join_list((prompt_data.get("pattern_preferences", {}) or {}).get("disliked_patterns", []), 4) or "—"
+
+        age = (prompt_data.get("personal_info", {}) or {}).get("age", "")
+        hi = self._join_list((prompt_data.get("morphology_goals", {}) or {}).get("body_parts_to_highlight", []), 3) or "vos atouts"
+        mi = self._join_list((prompt_data.get("morphology_goals", {}) or {}).get("body_parts_to_minimize", []), 3) or "vos zones à adoucir"
+
+        main = " et ".join(archetypes_main[:2])
+        sec = archetypes_secondary[0] if archetypes_secondary else ""
+
+        text = (
+            f"À partir de vos réponses, l’IA identifie une signature de personnalité portée par {main}"
+            f"{f', avec une nuance {sec}' if sec else ''}. Cela se voit dans vos adjectifs ({traits_lbl}) et dans les messages que vous "
+            f"voulez faire passer ({msgs_lbl}) : vous cherchez à être perçue comme féminine, mais avec une présence nette et crédible, "
+            f"ce qui demande un équilibre très précis entre douceur et affirmation. Vos situations clés ({ctx_lbl}) indiquent un quotidien "
+            f"où vous devez être bien habillée sans y passer trop de temps : vous avez besoin de repères simples et d’une cohérence immédiate, "
+            f"en particulier quand vous alternez des moments détente et des moments où l’image compte. Le fait que vous citiez {brands} "
+            f"montre que vous aimez des pièces accessibles et modernes, mais que votre attente n’est pas de “faire de la mode” : votre besoin "
+            f"principal est de vous sentir sûre de vous, alignée, et lisible. Vos refus (couleurs : {disliked_colors}, motifs : {disliked_patterns}) "
+            f"sont aussi une information forte : vous n’avez pas envie de codes trop ostentatoires ni d’effets trop marqués, vous préférez une féminité "
+            f"maîtrisée. Enfin, vos objectifs morphologiques (mettre en valeur {hi}, minimiser {mi}) servent de boussole : on construira votre style pour "
+            f"que vos tenues travaillent pour vous, avec des détails placés au bon endroit et une silhouette harmonieuse, sans jamais vous déguiser."
+        )
+        return self._one_line(text)
+
+    def _dynamic_style_positioning_v2(
+        self,
+        prompt_data: Dict[str, Any],
+        archetypes_main: List[str],
+        styles_top: List[Dict[str, Any]],
+    ) -> str:
+        pers = prompt_data.get("personality_data", {}) or {}
+        ctx_lbl = ", ".join(self._labelize_situations(pers.get("selected_situations", []) or [])[:4]) or "votre quotidien"
+        msgs_lbl = ", ".join(self._labelize_messages(pers.get("selected_message", []) or [])[:4]) or "vos intentions"
+        brands_list = (prompt_data.get("brand_preferences", {}) or {}).get("selected_brands", []) or []
+        brands = ", ".join(brands_list[:4]) if isinstance(brands_list, list) and brands_list else "vos marques habituelles"
+
+        style_names = [x["style"] for x in styles_top]
+        style_pct = ", ".join([f'{x["style"]} — {x["pct"]}%' for x in styles_top])
+
+        disliked_colors = self._join_list((prompt_data.get("color_preferences", {}) or {}).get("disliked_colors", []), 4) or "—"
+        disliked_patterns = self._join_list((prompt_data.get("pattern_preferences", {}) or {}).get("disliked_patterns", []), 4) or "—"
+
+        main = " et ".join(archetypes_main[:2])
+
+        text = (
+            f"Votre style dominant se structure autour de {', '.join(style_names[:-1]) + ' et ' + style_names[-1] if len(style_names) > 1 else style_names[0]}. "
+            f"La répartition estimée est la suivante : {style_pct}. Cette combinaison est cohérente avec votre personnalité ({main}) et avec vos usages réels ({ctx_lbl}). "
+            f"Concrètement, votre base doit rester confortable et mobile, parce que vous vivez des contextes où vous voulez être à l’aise sans perdre en présence ; "
+            f"c’est ce qui justifie la composante Sporty Chic / Casual si elle est présente. En parallèle, votre message ({msgs_lbl}) impose une tenue qui reste maîtrisée : "
+            f"des lignes propres, des coupes qui structurent, et un rendu soigné, même dans un look simple. Vos références de marque ({brands}) indiquent aussi une affinité "
+            f"pour des pièces modernes et faciles à trouver, ce qui est un avantage pour construire une garde-robe cohérente. Enfin, vos refus (couleurs : {disliked_colors}, "
+            f"motifs : {disliked_patterns}) orientent clairement vers un style plus élégant et plus net : on évitera les effets trop brillants ou trop agressifs, et on privilégiera "
+            f"des détails féminins plus subtils, qui renforcent votre image sans la caricaturer."
+        )
+        return self._one_line(text)
+
+    def _dynamic_what_defines_style_v2(
+        self,
+        prompt_data: Dict[str, Any],
+        styles_top: List[Dict[str, Any]],
+    ) -> str:
+        pers = prompt_data.get("personality_data", {}) or {}
+        ctx_lbl = ", ".join(self._labelize_situations(pers.get("selected_situations", []) or [])[:4]) or "votre quotidien"
+
+        hi = self._join_list((prompt_data.get("morphology_goals", {}) or {}).get("body_parts_to_highlight", []), 3) or "vos atouts"
+        mi = self._join_list((prompt_data.get("morphology_goals", {}) or {}).get("body_parts_to_minimize", []), 3) or "vos zones à adoucir"
+
+        disliked_colors = self._join_list((prompt_data.get("color_preferences", {}) or {}).get("disliked_colors", []), 4) or "—"
+        disliked_patterns = self._join_list((prompt_data.get("pattern_preferences", {}) or {}).get("disliked_patterns", []), 4) or "—"
+
+        # Définition des styles (courte mais actionnable, intégrée au texte)
+        style_defs = {
+            "Style Sporty Chic": "un vestiaire confortable mais soigné, avec des pièces simples, des matières agréables, et une silhouette nette",
+            "Style Urbain / Streetwear": "des coupes modernes, parfois un peu oversize ou structurées, et une attitude plus affirmée",
+            "Style Casual / Décontracté": "des basiques faciles à associer, avec un rendu propre et des détails qui font la différence",
+            "Style Féminin Moderne": "une féminité actuelle, des lignes épurées, des détails délicats sans excès, et une allure maîtrisée",
+            "Style Romantique": "des matières plus souples, des touches délicates, des formes qui adoucissent sans faire “too much”",
+            "Style Minimaliste": "peu d’effets, des coupes nettes, des harmonies calmes, et une impression de qualité par la simplicité",
+            "Style Chic / Élégant": "des lignes structurées, des finitions propres, et une tenue qui renvoie immédiatement une image soignée",
+            "Style Classique / Intemporel": "des pièces simples mais bien coupées, durables, et faciles à porter longtemps",
+            "Style Naturel / Authentique": "des matières naturelles, un confort évident, une allure douce et vraie",
+            "Style Moderne / Contemporain": "une silhouette actuelle, des proportions maîtrisées, et des pièces qui donnent un twist moderne",
+        }
+
+        picked = [x["style"] for x in styles_top]
+        defs = []
+        for st in picked:
+            if st in style_defs:
+                defs.append(f"{st.replace('Style ', '')} : {style_defs[st]}")
+        defs_str = " ; ".join(defs) if defs else "une combinaison équilibrée entre confort, structure et féminité"
+
+        text = (
+            f"Votre style personnalisé va orienter vos tenues vers une silhouette à la fois lisible et facile à vivre, adaptée à vos contextes ({ctx_lbl}). "
+            f"Les styles qui composent votre ADN se traduisent concrètement ainsi : {defs_str}. Dans la pratique, cela veut dire que nous allons privilégier des hauts "
+            f"qui mettent en valeur {hi} (encolures travaillées, manches intéressantes, détails près du visage ou des épaules) et des bas qui harmonisent {mi} "
+            f"(coupes plus fluides, longueurs plus équilibrées, lignes verticales et volumes maîtrisés). Votre style doit aussi respecter vos limites : vous avez indiqué "
+            f"ne pas aimer {disliked_colors} et éviter {disliked_patterns}, donc nous allons construire une féminité moderne, sans brillance excessive et sans imprimés agressifs. "
+            f"L’impact attendu sur vos tenues est très clair : des looks plus cohérents, plus flatteurs, et surtout plus simples à reproduire. Vous aurez des formules fiables "
+            f"(par exemple un haut plus travaillé et féminin + un bas plus sobre et allongeant + une paire de chaussures propre et actuelle), ce qui vous permettra de garder "
+            f"le confort nécessaire tout en renvoyant l’image de respect et de féminité que vous recherchez."
+        )
+        return self._one_line(text)
+
 
     def _dynamic_personality_translation(self, prompt_data: Dict[str, Any]) -> str:
         traits = self._join_list(prompt_data.get("personality_data", {}).get("selected_personality", []), 4)
@@ -213,6 +622,8 @@ JSON À CORRIGER :
                 "palette": palette_str,
                 "silhouette_type": silhouette_type,
                 "recommendations": recommendations_simple,
+                "personal_info": personal_info,
+                "style_preferences_raw": style_preferences_raw,
 
                 # champs "plats" (OK)
                 "style_preferences": ", ".join(style_preferences[:6]) if style_preferences else "Non précisé",
@@ -334,40 +745,88 @@ JSON À CORRIGER :
 
         # --- stylistic_identity
         si = result["stylistic_identity"]
-        si["style_positioning"] = self._ensure_str(si.get("style_positioning"),
-            "Une élégance naturelle, structurée et facile à vivre, pensée pour votre quotidien réel.")
-        si["personality_translation"] = self._ensure_str(si.get("personality_translation"),
-            "Votre style doit refléter une féminité maîtrisée : naturelle, raffinée, avec une touche romantique subtile.")
-        si["signature_keywords"] = self._ensure_list(si.get("signature_keywords"),
-            ["élégance naturelle", "silhouette structurée", "minimal chic", "féminité subtile", "raffinement simple"])
-        si["style_statement"] = self._ensure_str(si.get("style_statement"),
-            "Je privilégie des pièces épurées et bien coupées, avec des détails féminins discrets, pour une allure soignée sans effort.")
 
-        # --- psycho_stylistic_profile
+        # Calculs: archetypes + styles (basés sur tes IDs)
+        personality_data = prompt_data.get("personality_data", {}) or {}
+        ar_scores = self._score_archetypes(personality_data)
+        ar_main, ar_secondary = self._top_archetypes(ar_scores)
+
+        stylescore = self._score_styles(
+            style_preferences=prompt_data.get("style_preferences_raw", []),
+            brand_preferences=prompt_data.get("brand_preferences", {}) or {},
+            color_preferences=prompt_data.get("color_preferences", {}) or {},
+            pattern_preferences=prompt_data.get("pattern_preferences", {}) or {},
+            archetypes_main=ar_main,
+            archetypes_secondary=ar_secondary,
+        )
+        styles_top = self._pick_top_styles_with_percentages(stylescore, max_styles=3)
+
+        # 1) style_statement (court mais personnalisé)
+        ss = self._ensure_str(si.get("style_statement"), "")
+        if not ss:
+            # phrase courte qui reprend le top style et l'intention
+            main_style = styles_top[0]["style"].replace("Style ", "")
+            si["style_statement"] = self._one_line(
+                f"Je construis un style {main_style.lower()}, féminin et maîtrisé, qui reste confortable mais renvoie une image structurée et crédible."
+            )
+        else:
+            si["style_statement"] = self._one_line(ss)
+
+        # 2) personality_translation : 150+ mots, archétypes + justifications
+        pt = self._ensure_str(si.get("personality_translation"), "")
+        if not self._ensure_min_words(pt, 150):
+            si["personality_translation"] = self._dynamic_personality_translation_v2(prompt_data, ar_main, ar_secondary)
+        else:
+            si["personality_translation"] = self._one_line(pt)
+
+        # 3) style_positioning : 150+ mots, styles + justifications
+        sp = self._ensure_str(si.get("style_positioning"), "")
+        if not self._ensure_min_words(sp, 150):
+            si["style_positioning"] = self._dynamic_style_positioning_v2(prompt_data, ar_main, styles_top)
+        else:
+            si["style_positioning"] = self._one_line(sp)
+
+        # 4) signature_keywords : format "Style — XX%"
+        sk = si.get("signature_keywords")
+        if not isinstance(sk, list) or len(sk) < 2:
+            si["signature_keywords"] = [f'{x["style"].replace("Style ", "")} — {x["pct"]}%' for x in styles_top]
+        else:
+            # normaliser en strings
+            si["signature_keywords"] = [self._one_line(str(x)) for x in sk if str(x).strip()]
+
+        # --- psycho_stylistic_profile (traits UI labels)
         pp = result["psycho_stylistic_profile"]
-        pp["core_personality_traits"] = self._ensure_list(pp.get("core_personality_traits"), ["romantique", "naturelle", "raffinée"])
-        pp["how_they_express_in_style"] = self._ensure_str(pp.get("how_they_express_in_style"),
-            "Des matières agréables, des lignes lisibles, et un détail délicat (encolure, bouton, bijou) qui signe la tenue.")
-        pp["balance_between_comfort_and_elegance"] = self._ensure_str(pp.get("balance_between_comfort_and_elegance"),
-            "Votre équilibre idéal : confort au toucher + structure visuelle. Une tenue simple, mais jamais négligée.")
+        traits_ids = (personality_data.get("selected_personality") or [])
+        traits_labels = self._labelize_traits(traits_ids)
+        pp["core_personality_traits"] = traits_labels[:5] if traits_labels else self._ensure_list(pp.get("core_personality_traits"), [])
 
-        # --- contextual_style_logic
-        cs = result["contextual_style_logic"]
-        cs["daily_life"] = self._ensure_str(cs.get("daily_life"),
-            "Priorité à des tenues rapides à composer, confortables, mais structurées : bases neutres + une pièce qui élève la silhouette.")
-        cs["family_and_social"] = self._ensure_str(cs.get("family_and_social"),
-            "Miser sur une féminité accessible : robes fluides structurées, ensembles ton sur ton, accessoires harmonisés.")
-        cs["events_and_special_occasions"] = self._ensure_str(cs.get("events_and_special_occasions"),
-            "Élégance affirmée : matières plus nobles, lignes verticales, détail lumineux (métal chaud, texture satinée).")
+        # how_they_express_in_style (optionnel : laisser modèle ou fallback)
+        pp_ht = self._ensure_str(pp.get("how_they_express_in_style"), "")
+        if not pp_ht:
+            pp["how_they_express_in_style"] = self._one_line(
+                "Votre style s’exprime par un équilibre entre présence et douceur : des pièces confortables mais nettes, avec un détail féminin maîtrisé (encolure, manche, texture) qui signe la tenue."
+            )
+        else:
+            pp["how_they_express_in_style"] = self._one_line(pp_ht)
+
+        # balance_between_comfort_and_elegance (optionnel)
+        pp_bal = self._ensure_str(pp.get("balance_between_comfort_and_elegance"), "")
+        if not pp_bal:
+            pp["balance_between_comfort_and_elegance"] = self._one_line(
+                "Votre équilibre idéal : une base confortable et mobile au quotidien, mais toujours structurée par une coupe nette et une finition soignée, pour rester crédible et féminine sans effort."
+            )
+        else:
+            pp["balance_between_comfort_and_elegance"] = self._one_line(pp_bal)
 
         # --- style_dna
         dna = result["style_dna"]
-        dna["core_styles"] = self._ensure_list(dna.get("core_styles"), ["classique", "minimaliste"])
-        dna["secondary_styles"] = self._ensure_list(dna.get("secondary_styles"), ["romantique discret", "décontracté chic"])
-        dna["what_defines_the_style"] = self._ensure_str(dna.get("what_defines_the_style"),
-            "Des coupes nettes, des matières qualitatives, une palette harmonieuse, et des détails féminins subtils.")
-        dna["what_is_consciously_avoided"] = self._ensure_str(dna.get("what_is_consciously_avoided"),
-            "Éviter les imprimés animaliers et les contrastes agressifs. Préférer l’élégance douce à l’effet “too much”.")
+
+        wd = self._ensure_str(dna.get("what_defines_the_style"), "")
+        if not self._ensure_min_words(wd, 150):
+            dna["what_defines_the_style"] = self._dynamic_what_defines_style_v2(prompt_data, styles_top)
+        else:
+            dna["what_defines_the_style"] = self._one_line(wd)
+
 
         # --- constraints
         sc = result["style_within_constraints"]

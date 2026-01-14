@@ -37,6 +37,25 @@ STYLE D’ÉCRITURE ATTENDU :
 - jamais générique
 - jamais “catalogue”
 
+MÉTHODE (OBLIGATOIRE) : ARCHÉTYPES → STYLES
+
+Tu dois d’abord identifier 1 à 2 archétypes dominants parmi :
+- Reine / Leader
+- Guerrière / Chasseresse
+- Romantique / Amante
+- Sage / Mystique
+- Visionnaire / Créative
+
+Puis mapper ces archétypes + l’onboarding vers 2 à 4 styles dominants parmi la liste produit :
+Classique / Intemporel, Chic / Élégant, Minimaliste, Casual, Bohème, Romantique, Glamour, Rock,
+Urbain / Streetwear, Sporty Chic, Preppy, Vintage, Moderne / Contemporain, Artistique / Créatif,
+Ethnique, Féminin Moderne, Sexy Assumé, Naturel / Authentique.
+
+RÈGLE DE JUSTIFICATION :
+Chaque archétype ET chaque style doit être justifié par des éléments explicites du JSON :
+selected_personality, selected_message, selected_situations, style_preferences, brands, disliked colors/patterns,
+morphology goals.
+
 IMPORTANT :
 - Tu DOIS répondre UNIQUEMENT avec un JSON STRICT.
 - Aucun texte avant ou après.
@@ -79,33 +98,33 @@ CONTRAINTES OBLIGATOIRES :
   personnalité ↔ style ↔ morphologie ↔ colorimétrie ↔ contextes de vie.
 - Le contenu doit être suffisamment riche pour remplir plusieurs pages PDF.
 - Évite toute phrase applicable à “toutes les femmes”.
-CONTRAINTES SPÉCIALES POUR LA PAGE 16 (OBLIGATOIRES) :
 
-1) Le bloc "Votre signature personnelle (vue par l’IA)" sera porté par :
-   - stylistic_identity.personality_translation
-   Exigences :
-   - au moins 120 mots
-   - mentionner explicitement AU MOINS 5 éléments des données cliente (exemples : traits de personnalité, messages, contextes, styles préférés, marques, couleurs/motifs refusés, morphologie, colorimétrie)
-   - inclure les douleurs / difficultés actuelles sous forme de constats concrets (ex : difficulté à se projeter, incohérence, manque de repères, etc.)
-   - pas de psychologie vague : chaque idée doit être reliée à une info fournie.
+CONTRAINTES SPÉCIALES POUR LA PAGE 16 (STRICT) :
 
-2) Le bloc "Vos styles dominants (et pourquoi)" sera porté par :
-   - stylistic_identity.style_positioning
-   Exigences :
-   - au moins 120 mots
-   - expliquer un diagnostic de styles dominants AVEC POURCENTAGES (3 styles max).
-   - Les pourcentages doivent aussi être copiés dans stylistic_identity.signature_keywords sous forme de 3 items texte,
-     format EXACT : "<Style> — <XX>%"
-     Exemple : "Romantique — 60%"
-   - Justifier chaque style par des éléments de l’onboarding (styles cochés, messages, contextes, marques, refus).
+A) stylistic_identity.personality_translation
+- Minimum 150 mots.
+- Doit contenir : 1 à 2 archétypes dominants + justification explicite basée sur les champs onboarding.
+- Ton bienveillant, valorisant, non jugeant.
+- 1 seule chaîne (pas de listes, pas de retours ligne).
 
-3) Le bloc "Description de votre style (et son impact sur vos tenues)" sera porté par :
-   - style_dna.what_defines_the_style
-   Exigences :
-   - au moins 140 mots
-   - expliquer ce que signifie concrètement chacun des styles dominants (matières, coupes, détails, ambiance)
-   - expliquer l’impact concret sur les tenues : silhouettes types, équilibre confort/élégance, logique couleurs (saison + couleurs refusées), et adaptation morphologique (zones à valoriser/minimiser).
-   - interdiction de phrases génériques applicables à toutes les femmes.
+B) stylistic_identity.style_positioning
+- Minimum 150 mots.
+- Doit contenir : 2 à 4 styles vestimentaires dominants + justification.
+- Doit mentionner les contextes (weekends, remote), les messages (respect, feminine), la marque (H&M),
+  et les rejets (argenté, imprimés léopard) comme contraintes de style.
+
+C) stylistic_identity.signature_keywords
+- Liste de 2 à 4 items.
+- Chaque item au format EXACT : "<Style> — <XX>%"
+  Exemple : "Sporty Chic — 55%"
+- Les pourcentages doivent totaliser 100.
+
+D) style_dna.what_defines_the_style
+- Minimum 150 mots.
+- Décrire concrètement les tenues vers lesquelles aller (coupes, matières, détails),
+  et expliquer pourquoi ça marche avec ses besoins (confort, image de respect, féminité),
+  et ses objectifs morpho (mettre en valeur bras, minimiser jambes).
+- 1 seule chaîne (pas de listes, pas de retours ligne).
 
 FORMAT / PARSING :
 - pas de puces dans ces 3 blocs (texte continu, phrases courtes possibles, mais pas de listes)
