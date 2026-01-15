@@ -22,7 +22,6 @@ from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT
 from app.services.robust_json_parser import RobustJSONParser
 from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
 from app.services.color_image_matcher import ColorImageMatcher
-from app.services.colorimetry_parsing_utilities import analyze_colorimetry_part3
 
 
 class ColorimetryService:
@@ -298,23 +297,6 @@ class ColorimetryService:
         
         return makeup
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
     async def _call_part1(self, user_data: dict, face_photo_url: str, eye_color: str = None, hair_color: str = None) -> dict:
         """PART 1 - Vision avec image"""
         print("\n" + "="*80)
@@ -387,14 +369,18 @@ class ColorimetryService:
 
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
         """PART 2 - Texte pur"""
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS")
-        print("="*80)
+        print("=" * 80)
+
+        # Paramètres de sortie (utilisés aussi pour détecter un tronquage)
+        max_tokens_first_call = 1800
+        max_tokens_retry = 2000
 
         try:
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
-            print(f"   • Max tokens: 1200")
+            print(f"   • Max tokens (1er call): {max_tokens_first_call}")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
 
             self.openai.set_context("Colorimetry", "Part 2")
@@ -404,34 +390,55 @@ class ColorimetryService:
                 SAISON=saison,
                 SOUS_TON=sous_ton,
                 EYE_COLOR=eye_color or "indéterminé",
-                HAIR_COLOR=hair_color or "indéterminé"
+                HAIR_COLOR=hair_color or "indéterminé",
             )
 
-            print(f"\n🤖 APPEL OPENAI EN COURS...")
+            print("\n🤖 APPEL OPENAI EN COURS...")
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4-turbo",
-                max_tokens=1200
+                max_tokens=max_tokens_first_call,
+                temperature=0.2,
             )
-            print(f"✅ RÉPONSE REÇUE")
+            print("✅ RÉPONSE REÇUE")
 
-            prompt_tokens = response.get("prompt_tokens", 0)
-            completion_tokens = response.get("completion_tokens", 0)
-            total_tokens = response.get("total_tokens", 0)
-            budget_percent = (total_tokens / 4000) * 100
+            finish_reason = response.get("finish_reason")
+            completion_tokens = int(response.get("completion_tokens", 0) or 0)
 
-            print(f"\n📊 TOKENS CONSOMMÉS:")
+            # ✅ Détection de tronquage: soit finish_reason=length, soit on est très proche du plafond demandé
+            is_truncated = (finish_reason == "length") or (completion_tokens >= int(0.98 * max_tokens_first_call))
+
+            if is_truncated:
+                print("⚠️ Part 2 tronquée (finish_reason=length ou tokens proches du max).")
+                print("   ↳ Retry avec plus de tokens + response_format json_object + température basse.")
+
+                response = await self.openai.call_chat(
+                    prompt=user_prompt,
+                    model="gpt-4-turbo",
+                    max_tokens=max_tokens_retry,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+
+            # ✅ Important: on lit content UNE SEULE FOIS après le call final
+            content = response.get("content", "") or ""
+
+            prompt_tokens = int(response.get("prompt_tokens", 0) or 0)
+            completion_tokens = int(response.get("completion_tokens", 0) or 0)
+            total_tokens = int(response.get("total_tokens", prompt_tokens + completion_tokens) or (prompt_tokens + completion_tokens))
+            budget_percent = (total_tokens / 4000) * 100 if total_tokens else 0.0
+
+            print("\n📊 TOKENS CONSOMMÉS:")
             print(f"   • Prompt: {prompt_tokens}")
             print(f"   • Completion: {completion_tokens}")
             print(f"   • Total: {total_tokens}")
             print(f"   • Budget: {budget_percent:.1f}% (vs 4000 max)")
+            print(f"   • Finish reason: {response.get('finish_reason')}")
 
-            content = response.get("content", "")
-            print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
+            print("\n📝 RÉPONSE BRUTE (premiers 400 chars):")
             print(f"   {content[:400]}...")
 
-            print(f"\n🔍 PARSING JSON (avec retry + fallback robuste):")
-
+            print("\n🔍 PARSING JSON (avec retry + fallback robuste):")
             parser = ColorimetryJSONParser()
             content_cleaned = parser.clean_gpt_response(content)
             result = parser.parse_json_safely(content_cleaned, max_retries=3)
@@ -440,13 +447,13 @@ class ColorimetryService:
                 palette = result.get("palette_personnalisee", [])
                 generiques = result.get("couleurs_generiques", [])
                 associations = result.get("associations_gagnantes", [])
-                print(f"   ✅ Succès (parsing robuste)")
+                print("   ✅ Succès (parsing robuste)")
                 print(f"      • Palette personnalisée: {len(palette)} couleurs")
                 print(f"      • Couleurs génériques: {len(generiques)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
                 return result
 
-            print(f"   ⚠️  Parsing échoué → FALLBACK")
+            print("   ⚠️  Parsing échoué → FALLBACK")
             return get_fallback_part2(saison)
 
         except Exception as e:
@@ -454,7 +461,6 @@ class ColorimetryService:
             import traceback
             traceback.print_exc()
             return get_fallback_part2(saison)
-
 
     
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
