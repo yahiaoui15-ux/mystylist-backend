@@ -125,92 +125,92 @@ class OpenAIClient:
                 )
             raise
     
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10)
-)
-async def call_chat(
-    self,
-    prompt: str,
-    model: str = "gpt-4",
-    max_tokens: int = 3000,
-    temperature: float = 0.2,
-    response_format: dict = None
-):
-    """
-    ✅ Appel OpenAI Chat avec token tracking + finish_reason + system prompt + response_format optionnel
-    """
-    try:
-        messages = []
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    async def call_chat(
+        self,
+        prompt: str,
+        model: str = "gpt-4",
+        max_tokens: int = 3000,
+        temperature: float = 0.2,
+        response_format: dict = None
+    ):
+        """
+        ✅ Appel OpenAI Chat avec token tracking + finish_reason + system prompt + response_format optionnel
+        """
+        try:
+            messages = []
 
-        # ✅ IMPORTANT: injecter réellement le system prompt si présent
-        if self._current_system_prompt:
-            messages.append({"role": "system", "content": self._current_system_prompt})
+            # ✅ IMPORTANT: injecter réellement le system prompt si présent
+            if self._current_system_prompt:
+                messages.append({"role": "system", "content": self._current_system_prompt})
 
-        messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "user", "content": prompt})
 
-        kwargs = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "messages": messages,
-        }
+            kwargs = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "messages": messages,
+            }
 
-        # ✅ Optionnel: forcer JSON valide si le modèle supporte
-        if response_format:
-            kwargs["response_format"] = response_format
+            # ✅ Optionnel: forcer JSON valide si le modèle supporte
+            if response_format:
+                kwargs["response_format"] = response_format
 
-        response = await self.client.chat.completions.create(**kwargs)
+            response = await self.client.chat.completions.create(**kwargs)
 
-        content_text = response.choices[0].message.content
-        finish_reason = getattr(response.choices[0], "finish_reason", None)
+            content_text = response.choices[0].message.content
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
 
-        prompt_tokens = response.usage.prompt_tokens if hasattr(response, "usage") else 0
-        completion_tokens = response.usage.completion_tokens if hasattr(response, "usage") else 0
-        total_tokens = prompt_tokens + completion_tokens
+            prompt_tokens = response.usage.prompt_tokens if hasattr(response, "usage") else 0
+            completion_tokens = response.usage.completion_tokens if hasattr(response, "usage") else 0
+            total_tokens = prompt_tokens + completion_tokens
 
-        if HAS_CALL_TRACKER and self._current_section:
-            call_tracker.log_api_call(
-                section=self._current_section,
-                subsection=self._current_subsection,
-                service="openai_client",
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                raw_response_preview=content_text,
-                parse_success=True
-            )
+            if HAS_CALL_TRACKER and self._current_section:
+                call_tracker.log_api_call(
+                    section=self._current_section,
+                    subsection=self._current_subsection,
+                    service="openai_client",
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    raw_response_preview=content_text,
+                    parse_success=True
+                )
 
-        return {
-            "content": content_text,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-            "finish_reason": finish_reason,  # ✅ AJOUT
-        }
+            return {
+                "content": content_text,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "finish_reason": finish_reason,
+            }
 
-    except Exception as e:
-        print(f"❌ Erreur OpenAI Chat: {e}")
-        if HAS_CALL_TRACKER:
-            call_tracker.log_error(
-                section=self._current_section or "OpenAI",
-                error_msg=f"Chat call failed: {str(e)}"
-            )
-        raise
-    
+        except Exception as e:
+            print(f"❌ Erreur OpenAI Chat: {e}")
+            if HAS_CALL_TRACKER:
+                call_tracker.log_error(
+                    section=self._current_section or "OpenAI",
+                    error_msg=f"Chat call failed: {str(e)}"
+                )
+            raise
+
     async def parse_json_response(self, response_text: str) -> dict:
         """Parser la réponse JSON d'OpenAI"""
         try:
             return json.loads(response_text)
         except json.JSONDecodeError:
             try:
-                start = response_text.find('{')
-                end = response_text.rfind('}') + 1
+                start = response_text.find("{")
+                end = response_text.rfind("}") + 1
                 if start != -1 and end > start:
                     json_str = response_text[start:end]
                     return json.loads(json_str)
-            except:
+            except Exception:
                 pass
-            
+
             print(f"❌ Erreur parsing JSON: {response_text[:100]}")
             return {}
 
