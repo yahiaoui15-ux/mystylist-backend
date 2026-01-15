@@ -384,29 +384,29 @@ class ColorimetryService:
             import traceback
             traceback.print_exc()
             return {}
-    
+
     async def _call_part2(self, saison: str, sous_ton: str, eye_color: str, hair_color: str) -> dict:
         """PART 2 - Texte pur"""
         print("\n" + "="*80)
         print("📋 APPEL 2/3: COLORIMETRY PART 2 - PALETTE + COULEURS GÉNÉRIQUES + ASSOCIATIONS")
         print("="*80)
-        
+
         try:
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Chat (gpt-4-turbo)")
             print(f"   • Max tokens: 1200")
             print(f"   • Input data: saison={saison}, sous_ton={sous_ton}")
-            
+
             self.openai.set_context("Colorimetry", "Part 2")
             self.openai.set_system_prompt(COLORIMETRY_PART2_SYSTEM_PROMPT)
-            
+
             user_prompt = COLORIMETRY_PART2_USER_PROMPT_TEMPLATE.format(
                 SAISON=saison,
                 SOUS_TON=sous_ton,
                 EYE_COLOR=eye_color or "indéterminé",
                 HAIR_COLOR=hair_color or "indéterminé"
             )
-            
+
             print(f"\n🤖 APPEL OPENAI EN COURS...")
             response = await self.openai.call_chat(
                 prompt=user_prompt,
@@ -414,28 +414,28 @@ class ColorimetryService:
                 max_tokens=1200
             )
             print(f"✅ RÉPONSE REÇUE")
-            
+
             prompt_tokens = response.get("prompt_tokens", 0)
             completion_tokens = response.get("completion_tokens", 0)
             total_tokens = response.get("total_tokens", 0)
             budget_percent = (total_tokens / 4000) * 100
-            
+
             print(f"\n📊 TOKENS CONSOMMÉS:")
             print(f"   • Prompt: {prompt_tokens}")
             print(f"   • Completion: {completion_tokens}")
             print(f"   • Total: {total_tokens}")
             print(f"   • Budget: {budget_percent:.1f}% (vs 4000 max)")
-            
+
             content = response.get("content", "")
             print(f"\n📝 RÉPONSE BRUTE (premiers 400 chars):")
             print(f"   {content[:400]}...")
-            
+
             print(f"\n🔍 PARSING JSON (avec retry + fallback robuste):")
-            
+
             parser = ColorimetryJSONParser()
             content_cleaned = parser.clean_gpt_response(content)
             result = parser.parse_json_safely(content_cleaned, max_retries=3)
-            
+
             if result and parser.validate_part2_structure(result):
                 palette = result.get("palette_personnalisee", [])
                 generiques = result.get("couleurs_generiques", [])
@@ -444,20 +444,17 @@ class ColorimetryService:
                 print(f"      • Palette personnalisée: {len(palette)} couleurs")
                 print(f"      • Couleurs génériques: {len(generiques)} couleurs")
                 print(f"      • Associations: {len(associations)} occasions")
-            else:
-                print(f"   ⚠️  Parsing échoué → FALLBACK")
-                from app.prompts.colorimetry_part2_prompt import get_fallback_part2
-                result = get_fallback_part2(saison)
+                return result
 
-            
-            print("\n" + "="*80 + "\n")
-            return result
-            
+            print(f"   ⚠️  Parsing échoué → FALLBACK")
+            return get_fallback_part2(saison)
+
         except Exception as e:
             print(f"\n❌ ERREUR PART 2: {e}")
             import traceback
             traceback.print_exc()
-            result = get_fallback_part2(saison)
+            return get_fallback_part2(saison)
+
 
     
     async def _call_part3(self, saison: str, sous_ton: str, unwanted_colors: list) -> dict:
@@ -508,7 +505,9 @@ class ColorimetryService:
             
             print(f"\n🔍 PARSING JSON:")
             print(f"\n🔍 PARSING JSON (Part 3 robuste):")
-            result = analyze_colorimetry_part3(content)
+            content_cleaned = self._fix_json_for_parsing(content)
+            result = RobustJSONParser.parse_json_with_fallback(content_cleaned)
+
 
             
             if result:

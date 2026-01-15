@@ -24,21 +24,25 @@ class ColorimetryJSONParser:
     def clean_gpt_response(self, response_text: str) -> str:
         """
         ✅ Nettoie la réponse GPT avant parsing
-        Utilise les méthodes du RobustJSONParser existant
+        Compatible avec RobustJSONParser actuel (pas de _fix_invalid_escapes/_extract_complete_json/_clean_json)
         """
         if not response_text:
             return "{}"
-        
-        # Nettoyer les contrôles et escapes invalides
-        cleaned = self.robust_parser._fix_invalid_escapes(response_text)
-        
-        # Extraire le JSON complet (compte les accolades)
-        extracted = self.robust_parser._extract_complete_json(cleaned)
-        
-        if extracted:
-            return self.robust_parser._clean_json(extracted)
-        
-        return response_text
+
+        cleaned = response_text
+
+        # 1) retirer ```json ... ```
+        cleaned = self.robust_parser._strip_code_fences(cleaned)
+
+        # 2) extraire le bloc { ... }
+        cleaned = self.robust_parser._extract_json_block(cleaned)
+
+        # 3) échapper les retours ligne dans les strings JSON
+        cleaned = self.robust_parser._escape_newlines_inside_strings(cleaned)
+
+        return cleaned
+
+
     
     def parse_json_safely(self, content: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
         """
@@ -163,12 +167,13 @@ class ColorimetryJSONParser:
             print("   ⚠️  Part 3 invalide: unwanted_colors manquant ou non list")
             return False
 
-        notes = data.get("notes_compatibilite", None)
-        if notes is None or not isinstance(notes, dict):
-            print("   ⚠️  Part 3 invalide: notes_compatibilite manquant ou non dict")
+        notes = data.get("notes_compatibilite", {})
+        if notes is None:
+            notes = {}
+        if not isinstance(notes, dict):
+            print("   ⚠️  Part 3 invalide: notes_compatibilite non dict")
             return False
 
-        return True
 
     @staticmethod
     def _is_meaningful_part3_result(result: dict) -> bool:
