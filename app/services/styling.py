@@ -120,6 +120,47 @@ class StylingService:
             k = str(x).strip().lower()
             out.append(mapping.get(k, str(x)))
         return out
+    def _is_part2_complete(self, d: Dict[str, Any]) -> bool:
+        try:
+            p18 = (d.get("page18") or {}).get("categories") or {}
+            p19 = (d.get("page19") or {}).get("categories") or {}
+            ok = (
+                isinstance(p18.get("tops"), list) and len(p18["tops"]) == 3 and
+                isinstance(p18.get("bottoms"), list) and len(p18["bottoms"]) == 3 and
+                isinstance(p18.get("dresses_playsuits"), list) and len(p18["dresses_playsuits"]) == 3 and
+                isinstance(p18.get("outerwear"), list) and len(p18["outerwear"]) == 3 and
+                isinstance(p19.get("swim_lingerie"), list) and len(p19["swim_lingerie"]) == 3 and
+                isinstance(p19.get("shoes"), list) and len(p19["shoes"]) == 3 and
+                isinstance(p19.get("accessories"), list) and len(p19["accessories"]) == 3
+            )
+            return bool(ok)
+        except Exception:
+            return False
+
+    def _is_part3_complete(self, d: Dict[str, Any]) -> bool:
+        try:
+            p20 = d.get("page20") or {}
+            formulas = p20.get("formulas") or []
+            if not (isinstance(formulas, list) and len(formulas) == 3):
+                return False
+
+            p24 = d.get("page24") or {}
+            if not (isinstance(p24.get("actions"), list) and len(p24["actions"]) == 3):
+                return False
+            if not (isinstance(p24.get("pre_outing_checklist"), list) and 6 <= len(p24["pre_outing_checklist"]) <= 10):
+                return False
+
+            p2123 = d.get("pages21_23") or {}
+            for fk in ["formula_1", "formula_2", "formula_3"]:
+                fobj = p2123.get(fk) or {}
+                for ctx in ["professional", "weekend", "evening"]:
+                    cobj = fobj.get(ctx) or {}
+                    slots = cobj.get("product_slots") or []
+                    if not (isinstance(slots, list) and 4 <= len(slots) <= 6):
+                        return False
+            return True
+        except Exception:
+            return False
 
     # ---------------------------------------------------------------------
     # 1) Archetypes scoring (IDs exacts)
@@ -671,42 +712,126 @@ JSON À CORRIGER :
             # -------------------------
             # 2) Call OpenAI (3 parts)
             # -------------------------
-            async def _call_part(name: str, system_prompt: str, user_prompt_template: str, max_tokens: int) -> Dict[str, Any]:
-                self.openai.set_context(f"Styling {name}", "")
-                self.openai.set_system_prompt(system_prompt)
 
-                user_prompt = self.safe_format(user_prompt_template, prompt_data)
+            async def _call_part(
+                name: str,
+                system_prompt: str,
+                user_prompt_template: str,
+                max_tokens: int
+            ) -> Dict[str, Any]:
 
-                resp = await self.openai.call_chat(
-                    prompt=user_prompt,
-                    model="gpt-4",
-                    max_tokens=max_tokens
-                )
+                def _pick_tokens() -> int:
+                    # On donne plus de marge aux parties longues
+                    if name == "PART2":
+                        return max(max_tokens, 3200)
+                    if name == "PART3":
+                        return max(max_tokens, 3400)
+                    return max_tokens
 
-                content = (resp.get("content", "") or "").strip()
-                content_clean = self.clean_json_string(content)
-
-                try:
-                    return json.loads(content_clean)
-                except json.JSONDecodeError:
-                    # Repair attempt
-                    try:
-                        fixed = await self.force_valid_json(content_clean)
-                        return fixed if isinstance(fixed, dict) else {}
-                    except Exception:
-                        # Raw extraction fallback
-                        try:
-                            start = content.find("{")
-                            end = content.rfind("}") + 1
-                            if start != -1 and end > start:
-                                return json.loads(content[start:end])
-                        except Exception:
-                            pass
+                def _extract_json_object(text: str) -> Dict[str, Any]:
+                    if not isinstance(text, str):
                         return {}
+                    t = self.clean_json_string(text)
+                    # parse direct
+                    try:
+                        obj = json.loads(t)
+                        return obj if isinstance(obj, dict) else {}
+                    except Exception:
+                        pass
+                    # fallback extraction
+                    try:
+                        start = t.find("{")
+                        end = t.rfind("}") + 1
+                        if start != -1 and end > start:
+                            obj = json.loads(t[start:end])
+                            return obj if isinstance(obj, dict) else {}
+                    except Exception:
+                        pass
+                    return {}
+
+                async def _single_call(extra_guard: str = "", tokens_override: int = None) -> Dict[str, Any]:
+                    self.openai.set_context(f"Styling {name}", "")
+                    self.openai.set_system_prompt(system_prompt)
+
+                    user_prompt = self.safe_format(user_prompt_template, prompt_data)
+
+                    # Guard en tête (évite d’être “ignoré” en fin de prompt)
+                    if extra_guard:
+                        user_prompt = extra_guard.strip() + "\n\n" + user_prompt
+
+                    resp = await self.openai.call_chat(
+                        prompt=user_prompt,
+                        model="gpt-4",
+                        max_tokens=tokens_override or _pick_tokens(),
+                    )
+
+                    content = (resp.get("content", "") or "").strip()
+                    return _extract_json_object(content)
+
+                # ---------------------------------------------------------
+                # 1) Essai standard
+                # ---------------------------------------------------------
+                out = await _single_call()
+
+                # ---------------------------------------------------------
+                # 2) Retry si incomplet (PART2 / PART3)
+                # ---------------------------------------------------------
+                if name == "PART2" and not self._is_part2_complete(out):
+                    guard = (
+                        "IMPORTANT — JSON COMPLET OBLIGATOIRE.\n"
+                        "- Tu dois remplir TOUTES les catégories avec EXACTEMENT 3 items.\n"
+                        "- Si tu manques de place, raccourcis UNIQUEMENT les textes (spec/why/tips/promo), "
+                        "mais NE LAISSE JAMAIS un tableau vide.\n"
+                        "- Interdiction de supprimer des clés, interdiction de renvoyer du texte hors JSON.\n"
+                        "- Si tu es proche de la limite, fais des phrases plus courtes, mais garde la quantité.\n"
+                    )
+                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
+                    if self._is_part2_complete(out2):
+                        out = out2
+
+                if name == "PART3" and not self._is_part3_complete(out):
+                    guard = (
+                        "IMPORTANT — JSON COMPLET OBLIGATOIRE.\n"
+                        "- page20.formulas = EXACTEMENT 3 items.\n"
+                        "- Chaque product_slots = 4 à 6 items (page20 + pages21_23).\n"
+                        "- page24.actions = EXACTEMENT 3.\n"
+                        "- page24.pre_outing_checklist = 6 à 10.\n"
+                        "- Si tu manques de place, raccourcis UNIQUEMENT les textes (explanations/benefits), "
+                        "mais ne réduis pas la quantité d'items.\n"
+                        "- Interdiction de supprimer des clés, interdiction de renvoyer du texte hors JSON.\n"
+                    )
+                    out2 = await _single_call(extra_guard=guard, tokens_override=3800)
+                    if self._is_part3_complete(out2):
+                        out = out2
+
+                return out
 
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
-            part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=2600)
-            part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=2600)
+            part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
+            part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
+            
+            # ✅ DEBUG COUNTS AVANT MERGE (pour confirmer que PART2/PART3 ne sont pas vides)
+            def _len_safe(x):
+                return len(x) if isinstance(x, list) else 0
+
+            p18 = (part2.get("page18", {}).get("categories", {}) if isinstance(part2, dict) else {})
+            p19 = (part2.get("page19", {}).get("categories", {}) if isinstance(part2, dict) else {})
+            p20 = (part3.get("page20", {}) if isinstance(part3, dict) else {})
+            fml = (p20.get("formulas") if isinstance(p20.get("formulas"), list) else [])
+
+            print("DEBUG PART2 counts:",
+                "tops", _len_safe(p18.get("tops")),
+                "bottoms", _len_safe(p18.get("bottoms")),
+                "dresses_playsuits", _len_safe(p18.get("dresses_playsuits")),
+                "outerwear", _len_safe(p18.get("outerwear")),
+                "swim_lingerie", _len_safe(p19.get("swim_lingerie")),
+                "shoes", _len_safe(p19.get("shoes")),
+                "accessories", _len_safe(p19.get("accessories")))
+
+            print("DEBUG PART3 counts:",
+                "page20.formulas", _len_safe(fml),
+                "p24.actions", _len_safe((part3.get("page24", {}) or {}).get("actions")),
+                "p24.checklist", _len_safe((part3.get("page24", {}) or {}).get("pre_outing_checklist")))
 
             # Merge (attention: ne pas écraser les clés)
             result: Dict[str, Any] = {}
@@ -785,8 +910,13 @@ JSON À CORRIGER :
                     out.append({
                         "piece_title": self._one_line(self._ensure_str(it.get("piece_title"), "")),
                         "spec": self._one_line(self._ensure_str(it.get("spec"), "")),
+                        "recommended_colors": self._ensure_list(it.get("recommended_colors"), []),
+                        "recommended_patterns": self._ensure_list(it.get("recommended_patterns"), []),
+                        "accessories_pairing": self._one_line(self._ensure_str(it.get("accessories_pairing"), "")),
+                        "why_for_you": self._one_line(self._ensure_str(it.get("why_for_you"), "")),
                     })
             return out
+
 
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             result["page18"]["categories"][k] = _norm_piece_list(result["page18"]["categories"].get(k))
