@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Tuple
 
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
-from app.prompts.styling_prompt import STYLING_SYSTEM_PROMPT, STYLING_USER_PROMPT
+from app.prompts.styling_prompt_part1 import STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT
+from app.prompts.styling_prompt_part2 import STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT
+from app.prompts.styling_prompt_part3 import STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT
+
 
 
 class StylingService:
@@ -571,10 +574,10 @@ JSON À CORRIGER :
     # ---------------------------------------------------------------------
     async def generate(self, colorimetry_result: dict, morphology_result: dict, user_data: dict) -> dict:
         """
-        Génère le profil stylistique (1 appel OpenAI chat) selon schéma V2
+        Génère le profil stylistique (3 appels OpenAI chat) selon schéma V2
         """
         print("\n" + "=" * 80)
-        print("📋 APPEL STYLING: PROFIL STYLISTIQUE PREMIUM (V2)")
+        print("📋 APPEL STYLING: PROFIL STYLISTIQUE PREMIUM (V3)")
         print("=" * 80)
 
         try:
@@ -621,6 +624,10 @@ JSON À CORRIGER :
             personality_data = user_data.get("personality_data", {}) or {}
             morphology_goals = user_data.get("morphology_goals", {}) or {}
             personal_info = user_data.get("personal_info", {}) or {}    
+            measurements = user_data.get("measurements", {}) or {}
+            eye_color = user_data.get("eye_color", "") or ""
+            hair_color = user_data.get("hair_color", "") or ""
+
             style_preferences_raw = style_preferences  # ici style_preferences est déjà ta liste issue de user_data
 
             print("DEBUG styling.py loaded from:", __file__)
@@ -634,7 +641,11 @@ JSON À CORRIGER :
                 "silhouette_type": silhouette_type,
                 "recommendations": recommendations_simple,
                 "personal_info": personal_info,
+                "measurements": measurements,
+                "eye_color": eye_color,
+                "hair_color": hair_color,
                 "style_preferences_raw": style_preferences_raw,
+                
 
                 # champs "plats" (OK)
                 "style_preferences": ", ".join(style_preferences[:6]) if style_preferences else "Non précisé",
@@ -658,69 +669,65 @@ JSON À CORRIGER :
             print(f"   • Marques: {brand_preferences_str}")
 
             # -------------------------
-            # 2) Call OpenAI
+            # 2) Call OpenAI (3 parts)
             # -------------------------
-            self.openai.set_context("Styling", "")
-            self.openai.set_system_prompt(STYLING_SYSTEM_PROMPT)
+            async def _call_part(name: str, system_prompt: str, user_prompt_template: str, max_tokens: int) -> Dict[str, Any]:
+                self.openai.set_context(f"Styling {name}", "")
+                self.openai.set_system_prompt(system_prompt)
 
-            user_prompt = self.safe_format(STYLING_USER_PROMPT, prompt_data)
+                user_prompt = self.safe_format(user_prompt_template, prompt_data)
 
-            response = await self.openai.call_chat(
-                prompt=user_prompt,
-                model="gpt-4",
-                max_tokens=3500
-            )
+                resp = await self.openai.call_chat(
+                    prompt=user_prompt,
+                    model="gpt-4",
+                    max_tokens=max_tokens
+                )
 
-            content = (response.get("content", "") or "").strip()
-            print("\n📝 RÉPONSE BRUTE (premiers 400 chars):")
-            print(f"   {content[:400]}...")
-
-            # -------------------------
-            # 3) Parse JSON robust
-            # -------------------------
-            result: Dict[str, Any] = {}
-            try:
+                content = (resp.get("content", "") or "").strip()
                 content_clean = self.clean_json_string(content)
-                result = json.loads(content_clean)
-                print("   ✅ Parsing direct OK")
-            except json.JSONDecodeError as e:
-                print(f"   ❌ JSON invalide (styling): {e}")
-                # Repair attempt
+
                 try:
-                    fixed = await self.force_valid_json(content)
-                    if isinstance(fixed, dict):
-                        result = fixed
-                        print("   ✅ JSON réparé via OpenAI (Styling - JSON FIX)")
-                except Exception as repair_err:
-                    print(f"   ⚠️ Réparation JSON impossible: {repair_err}")
-                    result = {}
-
-                # raw extraction fallback
-                if not result:
+                    return json.loads(content_clean)
+                except json.JSONDecodeError:
+                    # Repair attempt
                     try:
-                        start = content.find("{")
-                        end = content.rfind("}") + 1
-                        if start != -1 and end > start:
-                            json_str = content[start:end]
-                            result = json.loads(json_str)
-                            print("   ✅ Extraction JSON brute OK")
-                    except Exception as e2:
-                        print(f"   ❌ Extraction brute KO: {e2}")
-                        result = {}
+                        fixed = await self.force_valid_json(content_clean)
+                        return fixed if isinstance(fixed, dict) else {}
+                    except Exception:
+                        # Raw extraction fallback
+                        try:
+                            start = content.find("{")
+                            end = content.rfind("}") + 1
+                            if start != -1 and end > start:
+                                return json.loads(content[start:end])
+                        except Exception:
+                            pass
+                        return {}
+
+            part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
+            part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=2600)
+            part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=2600)
+
+            # Merge (attention: ne pas écraser les clés)
+            result: Dict[str, Any] = {}
+            if isinstance(part1, dict):
+                result.update(part1)
+            if isinstance(part2, dict):
+                result.update(part2)
+            if isinstance(part3, dict):
+                result.update(part3)
 
             # -------------------------
-            # 4) Normalize schema V2 + fallback safe
+            # 3) Normalize schema V3 (pages 16–24)
             # -------------------------
-            result = self._normalize_styling_schema_v2(result, prompt_data)
+            result = self._normalize_styling_schema_v3(result)
 
-            # Quick stats for logs
-            sig_kw = self._ensure_list(result.get("stylistic_identity", {}).get("signature_keywords", []))
-            hero = self._ensure_list(result.get("capsule_wardrobe", {}).get("hero_pieces", []))
-            outfits_daily = self._ensure_list(result.get("signature_outfits", {}).get("everyday", []))
-            print("\n📌 RÉSUMÉ:")
-            print(f"   • Signature keywords: {len(sig_kw)}")
-            print(f"   • Hero pieces: {len(hero)}")
-            print(f"   • Everyday outfits: {len(outfits_daily)}")
+            print("\n📌 RÉSUMÉ (V3):")
+            print("   • page16 keys:", list((result.get("page16") or {}).keys())[:8])
+            print("   • page17 keys:", list((result.get("page17") or {}).keys())[:8])
+            print("   • page18 categories:", list((((result.get("page18") or {}).get("categories")) or {}).keys()))
+            print("   • page20 formulas:", len(((result.get("page20") or {}).get("formulas")) or []))
+            print("   • pages21_23 formula_1:", list(((result.get("pages21_23") or {}).get("formula_1") or {}).keys()))
 
             print("\n" + "=" * 80 + "\n")
             return result
@@ -735,180 +742,123 @@ JSON À CORRIGER :
     # ---------------------------------------------------------------------
     # Schema normalization
     # ---------------------------------------------------------------------
-    def _normalize_styling_schema_v2(self, result: Dict[str, Any], prompt_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Assure que toutes les clés du schéma V2 existent + types corrects.
-        Ajoute des fallbacks premium si manquants.
-        """
+    def _normalize_styling_schema_v3(self, result: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(result, dict):
             result = {}
 
-        # --- Top level sections
-        result["stylistic_identity"] = self._ensure_dict(result.get("stylistic_identity"), {})
-        result["psycho_stylistic_profile"] = self._ensure_dict(result.get("psycho_stylistic_profile"), {})
-        result["contextual_style_logic"] = self._ensure_dict(result.get("contextual_style_logic"), {})
-        result["style_dna"] = self._ensure_dict(result.get("style_dna"), {})
-        result["style_within_constraints"] = self._ensure_dict(result.get("style_within_constraints"), {})
-        result["capsule_wardrobe"] = self._ensure_dict(result.get("capsule_wardrobe"), {})
-        result["mix_and_match_rules"] = self._ensure_dict(result.get("mix_and_match_rules"), {})
-        result["signature_outfits"] = self._ensure_dict(result.get("signature_outfits"), {})
-        result["style_evolution_plan"] = self._ensure_dict(result.get("style_evolution_plan"), {})
+        # Sections attendues par le template
+        result["page16"] = self._ensure_dict(result.get("page16"), {})
+        result["page17"] = self._ensure_dict(result.get("page17"), {})
+        result["page18"] = self._ensure_dict(result.get("page18"), {})
+        result["page19"] = self._ensure_dict(result.get("page19"), {})
+        result["page20"] = self._ensure_dict(result.get("page20"), {})
+        result["pages21_23"] = self._ensure_dict(result.get("pages21_23"), {})
+        result["page24"] = self._ensure_dict(result.get("page24"), {})
 
-        # --- stylistic_identity
-        si = result["stylistic_identity"]
+        # page18/page19 categories structure
+        for pkey in ["page18", "page19"]:
+            p = result[pkey]
+            p["headline"] = self._one_line(self._ensure_str(p.get("headline"), ""))
 
-        # Calculs: archetypes + styles (basés sur tes IDs)
-        personality_data = prompt_data.get("personality_data", {}) or {}
-        ar_scores = self._score_archetypes(personality_data)
-        ar_main, ar_secondary = self._top_archetypes(ar_scores)
+            cats = self._ensure_dict(p.get("categories"), {})
+            p["categories"] = cats
 
-        stylescore = self._score_styles(
-            style_preferences=prompt_data.get("style_preferences_raw", []),
-            brand_preferences=prompt_data.get("brand_preferences", {}) or {},
-            color_preferences=prompt_data.get("color_preferences", {}) or {},
-            pattern_preferences=prompt_data.get("pattern_preferences", {}) or {},
-            archetypes_main=ar_main,
-            archetypes_secondary=ar_secondary,
-        )
-        styles_top = self._pick_top_styles_with_percentages(stylescore, max_styles=3)
+        # Ensure page18 categories keys
+        p18 = result["page18"]["categories"]
+        p18.setdefault("tops", [])
+        p18.setdefault("bottoms", [])
+        p18.setdefault("dresses_playsuits", [])
+        p18.setdefault("outerwear", [])
 
-        # 1) style_statement (court mais personnalisé)
-        ss = self._ensure_str(si.get("style_statement"), "")
-        if not ss:
-            # phrase courte qui reprend le top style et l'intention
-            main_style = styles_top[0]["style"].replace("Style ", "")
-            si["style_statement"] = self._one_line(
-                f"Je construis un style {main_style.lower()}, féminin et maîtrisé, qui reste confortable mais renvoie une image structurée et crédible."
-            )
-        else:
-            si["style_statement"] = self._one_line(ss)
+        # Ensure page19 categories keys
+        p19 = result["page19"]["categories"]
+        p19.setdefault("swim_lingerie", [])
+        p19.setdefault("shoes", [])
+        p19.setdefault("accessories", [])
 
-        # 2) personality_translation : 150+ mots, archétypes + justifications
-        pt = self._ensure_str(si.get("personality_translation"), "")
-        if not self._ensure_min_words(pt, 150):
-            generated = self._dynamic_personality_translation_v2(prompt_data, ar_main, ar_secondary)
-            # fallback si encore trop court
-            if not self._ensure_min_words(generated, 150):
-                generated = generated + " L’objectif est de vous donner des repères concrets, cohérents avec votre personnalité, vos contraintes et votre quotidien, afin que vous puissiez vous habiller plus vite, avec plus de confiance, et obtenir un rendu féminin et crédible sans effort."
-            si["personality_translation"] = self._one_line(generated)
-        else:
-            si["personality_translation"] = self._one_line(pt)
+        # Normalize items shape (piece_title/spec)
+        def _norm_piece_list(items):
+            items = items if isinstance(items, list) else []
+            out = []
+            for it in items:
+                if isinstance(it, dict):
+                    out.append({
+                        "piece_title": self._one_line(self._ensure_str(it.get("piece_title"), "")),
+                        "spec": self._one_line(self._ensure_str(it.get("spec"), "")),
+                    })
+            return out
 
+        for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
+            result["page18"]["categories"][k] = _norm_piece_list(result["page18"]["categories"].get(k))
 
-        # 3) style_positioning : 150+ mots, styles + justifications
-        sp = self._ensure_str(si.get("style_positioning"), "")
-        if not self._ensure_min_words(sp, 150):
-            si["style_positioning"] = self._dynamic_style_positioning_v2(prompt_data, ar_main, styles_top)
-        else:
-            si["style_positioning"] = self._one_line(sp)
+        for k in ["swim_lingerie", "shoes", "accessories"]:
+            result["page19"]["categories"][k] = _norm_piece_list(result["page19"]["categories"].get(k))
 
-        # 4) signature_keywords : format "Style — XX%"
-        sk = si.get("signature_keywords")
-        if not isinstance(sk, list) or len(sk) < 2:
-            si["signature_keywords"] = [f'{x["style"].replace("Style ", "")} — {x["pct"]}%' for x in styles_top]
-        else:
-            # normaliser en strings
-            si["signature_keywords"] = [self._one_line(str(x)) for x in sk if str(x).strip()]
+        # page19 tips block
+        result["page19"]["tips_block"] = self._one_line(self._ensure_str(result["page19"].get("tips_block"), ""))
 
-        # --- psycho_stylistic_profile (traits UI labels)
-        pp = result["psycho_stylistic_profile"]
-        traits_ids = (personality_data.get("selected_personality") or [])
-        traits_labels = self._labelize_traits(traits_ids)
-        pp["core_personality_traits"] = traits_labels[:5] if traits_labels else self._ensure_list(pp.get("core_personality_traits"), [])
+        # page20 formulas
+        p20 = result["page20"]
+        p20["intro"] = self._one_line(self._ensure_str(p20.get("intro"), ""))
+        formulas = p20.get("formulas")
+        formulas = formulas if isinstance(formulas, list) else []
+        norm_formulas = []
+        for f in formulas:
+            if not isinstance(f, dict):
+                continue
+            ps = f.get("product_slots")
+            ps = ps if isinstance(ps, list) else []
+            norm_slots = []
+            for s in ps:
+                if isinstance(s, dict):
+                    norm_slots.append({
+                        "slot_type": self._one_line(self._ensure_str(s.get("slot_type"), "")),
+                        "slot_description": self._one_line(self._ensure_str(s.get("slot_description"), "")),
+                        "preferred_colors": self._ensure_list(s.get("preferred_colors"), []),
+                        "avoid": self._ensure_list(s.get("avoid"), []),
+                    })
+            norm_formulas.append({
+                "formula_name": self._one_line(self._ensure_str(f.get("formula_name"), "")),
+                "formula_explanation": self._one_line(self._ensure_str(f.get("formula_explanation"), "")),
+                "benefit_to_you": self._one_line(self._ensure_str(f.get("benefit_to_you"), "")),
+                "finishing_touches": self._one_line(self._ensure_str(f.get("finishing_touches"), "")),
+                "mannequin_outfit_brief": self._one_line(self._ensure_str(f.get("mannequin_outfit_brief"), "")),
+                "product_slots": norm_slots,
+            })
+        p20["formulas"] = norm_formulas
 
-        # how_they_express_in_style (optionnel : laisser modèle ou fallback)
-        pp_ht = self._ensure_str(pp.get("how_they_express_in_style"), "")
-        if not pp_ht:
-            pp["how_they_express_in_style"] = self._one_line(
-                "Votre style s’exprime par un équilibre entre présence et douceur : des pièces confortables mais nettes, avec un détail féminin maîtrisé (encolure, manche, texture) qui signe la tenue."
-            )
-        else:
-            pp["how_they_express_in_style"] = self._one_line(pp_ht)
+        # pages21_23
+        p2123 = result["pages21_23"]
+        for fk in ["formula_1", "formula_2", "formula_3"]:
+            fobj = self._ensure_dict(p2123.get(fk), {})
+            p2123[fk] = fobj
+            for ctx in ["professional", "weekend", "evening"]:
+                cobj = self._ensure_dict(fobj.get(ctx), {})
+                fobj[ctx] = cobj
+                cobj["explanation"] = self._one_line(self._ensure_str(cobj.get("explanation"), ""))
+                cobj["mannequin_outfit_brief"] = self._one_line(self._ensure_str(cobj.get("mannequin_outfit_brief"), ""))
+                slots = cobj.get("product_slots")
+                slots = slots if isinstance(slots, list) else []
+                norm_slots = []
+                for s in slots:
+                    if isinstance(s, dict):
+                        norm_slots.append({
+                            "slot_type": self._one_line(self._ensure_str(s.get("slot_type"), "")),
+                            "slot_description": self._one_line(self._ensure_str(s.get("slot_description"), "")),
+                            "preferred_colors": self._ensure_list(s.get("preferred_colors"), []),
+                            "avoid": self._ensure_list(s.get("avoid"), []),
+                        })
+                cobj["product_slots"] = norm_slots
 
-        # balance_between_comfort_and_elegance (optionnel)
-        pp_bal = self._ensure_str(pp.get("balance_between_comfort_and_elegance"), "")
-        if not pp_bal:
-            pp["balance_between_comfort_and_elegance"] = self._one_line(
-                "Votre équilibre idéal : une base confortable et mobile au quotidien, mais toujours structurée par une coupe nette et une finition soignée, pour rester crédible et féminine sans effort."
-            )
-        else:
-            pp["balance_between_comfort_and_elegance"] = self._one_line(pp_bal)
-
-        # --- style_dna
-        dna = result["style_dna"]
-
-        wd = self._ensure_str(dna.get("what_defines_the_style"), "")
-        if not self._ensure_min_words(wd, 150):
-            dna["what_defines_the_style"] = self._dynamic_what_defines_style_v2(prompt_data, styles_top)
-        else:
-            dna["what_defines_the_style"] = self._one_line(wd)
-
-
-        # --- constraints
-        sc = result["style_within_constraints"]
-        sc["morphology_guidelines"] = self._ensure_str(sc.get("morphology_guidelines"),
-            "Valoriser le haut du corps (encolures, détails, structure d’épaules) et alléger visuellement le bas (lignes simples, teintes plus sobres).")
-        sc["color_logic"] = self._ensure_str(sc.get("color_logic"),
-            f"Rester dans votre harmonie {prompt_data.get('season','')} : tons chauds et riches près du visage, éviter les teintes trop froides.")
-        sc["how_constraints_refine_the_style"] = self._ensure_str(sc.get("how_constraints_refine_the_style"),
-            "Les contraintes deviennent votre force : elles guident vers un style cohérent, flatteur et facile à décliner.")
-
-        # --- capsule
-        cap = result["capsule_wardrobe"]
-        cap["essentials"] = self._ensure_list(cap.get("essentials"), [
-            "pantalon taille haute droit",
-            "top uni de qualité (col V / col bateau)",
-            "veste structurée courte",
-            "robe ceinturée midi",
-            "jupe évasée sobre"
-        ])
-        cap["hero_pieces"] = self._ensure_list(cap.get("hero_pieces"), [
-            "blazer cintré couleur chaude",
-            "chemise avec détail féminin discret",
-            "robe patineuse élégante"
-        ])
-        cap["why_this_capsule_works"] = self._ensure_str(cap.get("why_this_capsule_works"),
-            "Peu de pièces, mais très combinables : elles respectent votre silhouette, votre colorimétrie et votre besoin d’élégance naturelle.")
-
-        # --- mix_and_match_rules
-        mm = result["mix_and_match_rules"]
-        mm["silhouette_balance"] = self._ensure_str(mm.get("silhouette_balance"),
-            "Haut plus travaillé + bas plus sobre. Jouer sur la structure en haut et la simplicité en bas.")
-        mm["color_associations"] = self._ensure_str(mm.get("color_associations"),
-            "Base neutre chaude (écru, camel, kaki) + accent (brique, terracotta, bordeaux) + métal chaud (doré/cuivre).")
-        mm["outfit_formulas"] = self._ensure_list(mm.get("outfit_formulas"), [
-            "Top clair structuré + pantalon taille haute foncé + veste courte",
-            "Robe ceinturée midi + chaussures élancées + bijou lumineux",
-            "Jean droit + chemise féminine + blazer cintré"
-        ])
-
-        # --- signature_outfits
-        so = result["signature_outfits"]
-        so["everyday"] = self._ensure_list(so.get("everyday"), [
-            "Jean droit foncé + top col V + veste courte + baskets compensées",
-            "Jupe évasée sobre + blouse à détails + bottines"
-        ])
-        so["academic_or_professional"] = self._ensure_list(so.get("academic_or_professional"), [
-            "Pantalon taille haute + top uni + blazer cintré + escarpins pointus",
-            "Robe midi ceinturée + manteau structuré + accessoires minimalistes"
-        ])
-        so["events"] = self._ensure_list(so.get("events"), [
-            "Robe élégante (brique/bordeaux) + sandales à lanières + bijoux dorés",
-            "Ensemble ton sur ton chaud + pochette + escarpins"
-        ])
-
-        # --- plan
-        plan = result["style_evolution_plan"]
-        plan["week_1_focus"] = self._ensure_str(plan.get("week_1_focus"),
-            "Clarifier vos bases : identifier les 10 pièces les plus portées et celles qui ne vous servent plus.")
-        plan["week_2_focus"] = self._ensure_str(plan.get("week_2_focus"),
-            "Structurer la silhouette : intégrer 2 pièces “structure haut” (blazer, top travaillé, encolure).")
-        plan["week_3_focus"] = self._ensure_str(plan.get("week_3_focus"),
-            "Harmoniser la palette : ajouter 2 couleurs signatures compatibles saison et faciles à associer.")
-        plan["week_4_focus"] = self._ensure_str(plan.get("week_4_focus"),
-            "Finaliser votre signature : 2 looks complets prêts pour événements + accessoires cohérents.")
+        # page24
+        p24 = result["page24"]
+        p24["actions"] = self._ensure_list(p24.get("actions"), [])
+        p24["pre_outing_checklist"] = self._ensure_list(p24.get("pre_outing_checklist"), [])
+        p24["wardrobe_advice"] = self._one_line(self._ensure_str(p24.get("wardrobe_advice"), ""))
+        p24["platform_tips_my_stylist"] = self._one_line(self._ensure_str(p24.get("platform_tips_my_stylist"), ""))
 
         return result
+
 
 
 # ✅ INSTANCE GLOBALE

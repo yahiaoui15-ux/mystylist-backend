@@ -218,8 +218,46 @@ class PDFDataMapper:
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
-        # ✅ Styling = schéma V2 (source of truth)
+        # ✅ Styling = schéma V3 (source of truth)
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling", {}))
+
+        # ✅ Safety defaults V3 pour Liquid (évite erreurs sur .size / for-loops)
+        # IMPORTANT: on FORCE les sous-blocs à être des dicts, même si la source contient None/str/etc.
+
+        # --- page18.categories.*
+        styling_raw["page18"] = PDFDataMapper._safe_dict(styling_raw.get("page18", {}))
+        styling_raw["page18"]["categories"] = PDFDataMapper._safe_dict(styling_raw["page18"].get("categories", {}))
+        styling_raw["page18"]["categories"].setdefault("tops", [])
+        styling_raw["page18"]["categories"].setdefault("bottoms", [])
+        styling_raw["page18"]["categories"].setdefault("dresses_playsuits", [])
+        styling_raw["page18"]["categories"].setdefault("outerwear", [])
+
+        # --- page19.categories.*
+        styling_raw["page19"] = PDFDataMapper._safe_dict(styling_raw.get("page19", {}))
+        styling_raw["page19"]["categories"] = PDFDataMapper._safe_dict(styling_raw["page19"].get("categories", {}))
+        styling_raw["page19"]["categories"].setdefault("swim_lingerie", [])
+        styling_raw["page19"]["categories"].setdefault("shoes", [])
+        styling_raw["page19"]["categories"].setdefault("accessories", [])
+
+        # --- page20.formulas
+        styling_raw["page20"] = PDFDataMapper._safe_dict(styling_raw.get("page20", {}))
+        # si "formulas" existe mais n'est pas une liste -> on remet []
+        styling_raw["page20"]["formulas"] = (
+            styling_raw["page20"].get("formulas") if isinstance(styling_raw["page20"].get("formulas"), list) else []
+        )
+
+        # --- pages21_23.formula_X.(professional|weekend|evening).product_slots
+        styling_raw["pages21_23"] = PDFDataMapper._safe_dict(styling_raw.get("pages21_23", {}))
+
+        for fk in ["formula_1", "formula_2", "formula_3"]:
+            styling_raw["pages21_23"][fk] = PDFDataMapper._safe_dict(styling_raw["pages21_23"].get(fk, {}))
+
+            for ctx in ["professional", "weekend", "evening"]:
+                styling_raw["pages21_23"][fk][ctx] = PDFDataMapper._safe_dict(styling_raw["pages21_23"][fk].get(ctx, {}))
+
+                # si "product_slots" existe mais n'est pas une liste -> on remet []
+                ps = styling_raw["pages21_23"][fk][ctx].get("product_slots")
+                styling_raw["pages21_23"][fk][ctx]["product_slots"] = ps if isinstance(ps, list) else []
 
         
         # Page 8 & Pages 9-15
@@ -393,16 +431,16 @@ class PDFDataMapper:
             }),
             
             "styling": {
-                "stylistic_identity": PDFDataMapper._safe_dict(styling_raw.get("stylistic_identity", {})),
-                "psycho_stylistic_profile": PDFDataMapper._safe_dict(styling_raw.get("psycho_stylistic_profile", {})),
-                "contextual_style_logic": PDFDataMapper._safe_dict(styling_raw.get("contextual_style_logic", {})),
-                "style_dna": PDFDataMapper._safe_dict(styling_raw.get("style_dna", {})),
-                "style_within_constraints": PDFDataMapper._safe_dict(styling_raw.get("style_within_constraints", {})),
-                "capsule_wardrobe": PDFDataMapper._safe_dict(styling_raw.get("capsule_wardrobe", {})),
-                "mix_and_match_rules": PDFDataMapper._safe_dict(styling_raw.get("mix_and_match_rules", {})),
-                "signature_outfits": PDFDataMapper._safe_dict(styling_raw.get("signature_outfits", {})),
-                "style_evolution_plan": PDFDataMapper._safe_dict(styling_raw.get("style_evolution_plan", {})),
+                # ✅ NOUVEAU : Styling V3 (pages 16 → 24)
+                "page16": PDFDataMapper._safe_dict(styling_raw.get("page16", {})),
+                "page17": PDFDataMapper._safe_dict(styling_raw.get("page17", {})),
+                "page18": PDFDataMapper._safe_dict(styling_raw.get("page18", {})),
+                "page19": PDFDataMapper._safe_dict(styling_raw.get("page19", {})),
+                "page20": PDFDataMapper._safe_dict(styling_raw.get("page20", {})),
+                "pages21_23": PDFDataMapper._safe_dict(styling_raw.get("pages21_23", {})),
+                "page24": PDFDataMapper._safe_dict(styling_raw.get("page24", {})),
             },
+
             "styling_products": {
                 "enabled": False,
                 "selection": {
@@ -634,17 +672,6 @@ class PDFDataMapper:
                 enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)
                 categories_data[category_name]["a_eviter"] = enriched_a_eviter
            
-            if recommandes:
-                print(f"\n   📌 {category_name}:")
-                print(f"      • {len(recommandes)} recommandés à enrichir")
-                enriched_recommandes = visuals_service.fetch_visuals_for_category(category_name, recommandes)
-                categories_data[category_name]["recommandes"] = enriched_recommandes
-            
-            if a_eviter:
-                print(f"      • {len(a_eviter)} à éviter à enrichir")
-                enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)
-                categories_data[category_name]["a_eviter"] = enriched_a_eviter
-        
         print("\n" + "="*80)
         print("✅ Morpho categories construites depuis OpenAI Part 2")
         print("="*80 + "\n")
