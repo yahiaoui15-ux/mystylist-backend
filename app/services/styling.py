@@ -870,6 +870,23 @@ JSON À CORRIGER :
     def _normalize_styling_schema_v3(self, result: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(result, dict):
             result = {}
+        # --- page16 safe defaults + one-line
+        p16 = result["page16"]
+        p16["archetype_title"] = self._one_line(self._ensure_str(p16.get("archetype_title"), ""))
+        p16["archetype_text"] = self._one_line(self._ensure_str(p16.get("archetype_text"), ""))
+        p16["traits_dominants_detectes"] = self._ensure_list(p16.get("traits_dominants_detectes"), [])
+        p16["objectifs_emotionnels_text"] = self._one_line(self._ensure_str(p16.get("objectifs_emotionnels_text"), ""))
+        p16["objectifs_pratiques_text"] = self._one_line(self._ensure_str(p16.get("objectifs_pratiques_text"), ""))
+        p16["objectifs_morphologiques_text"] = self._one_line(self._ensure_str(p16.get("objectifs_morphologiques_text"), ""))
+        p16["preferences_style_text"] = self._one_line(self._ensure_str(p16.get("preferences_style_text"), ""))
+        p16["boussole_text"] = self._one_line(self._ensure_str(p16.get("boussole_text"), ""))
+
+        # --- page17 safe defaults + one-line
+        p17 = result["page17"]
+        p17["style_name"] = self._one_line(self._ensure_str(p17.get("style_name"), ""))
+        p17["style_explained_text"] = self._one_line(self._ensure_str(p17.get("style_explained_text"), ""))
+        p17["wardrobe_impact_text"] = self._one_line(self._ensure_str(p17.get("wardrobe_impact_text"), ""))
+        p17["style_mix"] = self._ensure_list(p17.get("style_mix"), [])
 
         # Sections attendues par le template
         result["page16"] = self._ensure_dict(result.get("page16"), {})
