@@ -664,16 +664,49 @@ JSON À CORRIGER :
 
             personality_data = user_data.get("personality_data", {}) or {}
             morphology_goals = user_data.get("morphology_goals", {}) or {}
-            personal_info = user_data.get("personal_info", {}) or {}    
-            measurements = user_data.get("measurements", {}) or {}
-            eye_color = user_data.get("eye_color", "") or ""
-            hair_color = user_data.get("hair_color", "") or ""
+            
+            # Some pipelines pass onboarding as user_data["onboarding_data"] or flatten fields at root.
+            base = user_data.get("onboarding_data") if isinstance(user_data, dict) and isinstance(user_data.get("onboarding_data"), dict) else user_data
+            base = base if isinstance(base, dict) else {}
+
+            personality_data = base.get("personality_data", {}) or {}
+            morphology_goals = base.get("morphology_goals", {}) or {}
+            personal_info = base.get("personal_info", {}) or {}
+            measurements = base.get("measurements", {}) or {}
+            eye_color = base.get("eye_color", "") or ""
+            hair_color = base.get("hair_color", "") or ""
+
+            style_preferences = base.get("style_preferences", []) or []
+            brand_preferences = base.get("brand_preferences", {}) or {}
+            color_preferences = base.get("color_preferences", {}) or {}
+            pattern_preferences = base.get("pattern_preferences", {}) or {}
+
+            # Fallback if flattened
+            if not personal_info:
+                personal_info = {
+                    "age": base.get("age", base.get("user_age", "")),
+                    "height": base.get("height", base.get("user_height", "")),
+                    "weight": base.get("weight", base.get("user_weight", "")),
+                }
+            if not measurements:
+                measurements = {
+                    "clothing_size": base.get("clothing_size", base.get("clothingSize", "")),
+                    "number_size": base.get("number_size", ""),
+                    "hip_circumference": base.get("hip_circumference", ""),
+                    "waist_circumference": base.get("waist_circumference", ""),
+                    "shoulder_circumference": base.get("shoulder_circumference", ""),
+                }
 
             style_preferences_raw = style_preferences  # ici style_preferences est déjà ta liste issue de user_data
 
             print("DEBUG styling.py loaded from:", __file__)
             print("DEBUG has personal_info:", "personal_info" in locals())
             print("DEBUG personal_info value:", personal_info)
+            print("DEBUG onboarding presence:",
+                  "traits", len((personality_data or {}).get("selected_personality", []) or []),
+                  "msgs", len((personality_data or {}).get("selected_message", []) or []),
+                  "ctx", len((personality_data or {}).get("selected_situations", []) or []),
+                  "styles", len(style_preferences) if isinstance(style_preferences, list) else 0)
 
             prompt_data = {
                 "season": season,
@@ -870,25 +903,8 @@ JSON À CORRIGER :
     def _normalize_styling_schema_v3(self, result: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(result, dict):
             result = {}
-        # --- page16 safe defaults + one-line
-        p16 = result["page16"]
-        p16["archetype_title"] = self._one_line(self._ensure_str(p16.get("archetype_title"), ""))
-        p16["archetype_text"] = self._one_line(self._ensure_str(p16.get("archetype_text"), ""))
-        p16["traits_dominants_detectes"] = self._ensure_list(p16.get("traits_dominants_detectes"), [])
-        p16["objectifs_emotionnels_text"] = self._one_line(self._ensure_str(p16.get("objectifs_emotionnels_text"), ""))
-        p16["objectifs_pratiques_text"] = self._one_line(self._ensure_str(p16.get("objectifs_pratiques_text"), ""))
-        p16["objectifs_morphologiques_text"] = self._one_line(self._ensure_str(p16.get("objectifs_morphologiques_text"), ""))
-        p16["preferences_style_text"] = self._one_line(self._ensure_str(p16.get("preferences_style_text"), ""))
-        p16["boussole_text"] = self._one_line(self._ensure_str(p16.get("boussole_text"), ""))
 
-        # --- page17 safe defaults + one-line
-        p17 = result["page17"]
-        p17["style_name"] = self._one_line(self._ensure_str(p17.get("style_name"), ""))
-        p17["style_explained_text"] = self._one_line(self._ensure_str(p17.get("style_explained_text"), ""))
-        p17["wardrobe_impact_text"] = self._one_line(self._ensure_str(p17.get("wardrobe_impact_text"), ""))
-        p17["style_mix"] = self._ensure_list(p17.get("style_mix"), [])
-
-        # Sections attendues par le template
+        # Sections attendues par le template (TOUJOURS d'abord)
         result["page16"] = self._ensure_dict(result.get("page16"), {})
         result["page17"] = self._ensure_dict(result.get("page17"), {})
         result["page18"] = self._ensure_dict(result.get("page18"), {})
@@ -896,6 +912,37 @@ JSON À CORRIGER :
         result["page20"] = self._ensure_dict(result.get("page20"), {})
         result["pages21_23"] = self._ensure_dict(result.get("pages21_23"), {})
         result["page24"] = self._ensure_dict(result.get("page24"), {})
+
+        # BACKWARD/DUAL SCHEMA SUPPORT (page16): map new nested blocks -> flat keys
+        p16 = result.get("page16") or {}
+        if isinstance(p16, dict):
+            ab = p16.get("archetype_block") or {}
+            if isinstance(ab, dict):
+                if not p16.get("archetype_text"):
+                    p16["archetype_text"] = self._one_line(self._ensure_str(ab.get("text"), ""))
+                if not isinstance(p16.get("dominant_traits"), list):
+                    p16["dominant_traits"] = self._ensure_list(ab.get("traits_dominants_detectes"), [])
+
+            sgb = p16.get("style_goals_block") or {}
+            if isinstance(sgb, dict):
+                if not p16.get("objectifs_emotionnels_text"):
+                    p16["objectifs_emotionnels_text"] = self._one_line(self._ensure_str(sgb.get("emotional_goals"), ""))
+                if not p16.get("objectifs_pratiques_text"):
+                    p16["objectifs_pratiques_text"] = self._one_line(self._ensure_str(sgb.get("practical_goals"), ""))
+                if not p16.get("objectifs_morphologiques_text"):
+                    p16["objectifs_morphologiques_text"] = self._one_line(self._ensure_str(sgb.get("morphology_goals"), ""))
+
+            spb = p16.get("style_preferences_block") or {}
+            if isinstance(spb, dict) and not p16.get("preferences_style_text"):
+                p16["preferences_style_text"] = self._one_line(self._ensure_str(spb.get("text"), ""))
+
+            if not p16.get("boussole_text"):
+                p16["boussole_text"] = self._one_line(self._ensure_str(p16.get("compass_sentence"), ""))
+
+            # Ensure lists exist
+            p16["dominant_traits"] = self._ensure_list(p16.get("dominant_traits"), [])
+
+            result["page16"] = p16
 
         # page18/page19 categories structure
         for pkey in ["page18", "page19"]:
