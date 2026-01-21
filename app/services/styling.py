@@ -39,6 +39,16 @@ class StylingService:
             return ", ".join([str(i) for i in x if str(i).strip()][:maxn])
         return ""
 
+    def _as_dict(self, x) -> Dict[str, Any]:
+        if isinstance(x, dict):
+            return x
+        if isinstance(x, str) and x.strip():
+            try:
+                return json.loads(x)
+            except Exception:
+                return {}
+        return {}
+
     # ---------------------------------------------------------------------
     # Helpers: normalization / safe text
     # ---------------------------------------------------------------------
@@ -620,6 +630,7 @@ JSON À CORRIGER :
         print("\n" + "=" * 80)
         print("📋 APPEL STYLING: PROFIL STYLISTIQUE PREMIUM (V3)")
         print("=" * 80)
+        print(f"   • Marques: {brand_preferences_str}")
 
         try:
             # -------------------------
@@ -665,37 +676,52 @@ JSON À CORRIGER :
             personality_data = user_data.get("personality_data", {}) or {}
             morphology_goals = user_data.get("morphology_goals", {}) or {}
             
-            # Some pipelines pass onboarding as user_data["onboarding_data"] or flatten fields at root.
-            base = user_data.get("onboarding_data") if isinstance(user_data, dict) and isinstance(user_data.get("onboarding_data"), dict) else user_data
-            base = base if isinstance(base, dict) else {}
+            # --- Normalisation robuste user_data / onboarding_data ---
+            ud = user_data if isinstance(user_data, dict) else {}
+            onb = self._as_dict(ud.get("onboarding_data"))
 
-            personality_data = base.get("personality_data", {}) or {}
-            morphology_goals = base.get("morphology_goals", {}) or {}
-            personal_info = base.get("personal_info", {}) or {}
-            measurements = base.get("measurements", {}) or {}
-            eye_color = base.get("eye_color", "") or ""
-            hair_color = base.get("hair_color", "") or ""
+            # On prend la valeur root si elle existe (cas flatten), sinon onboarding_data
+            def pick(key, default):
+                v = ud.get(key, None)
+                if v is None or v == "" or v == [] or v == {}:
+                    v = onb.get(key, None)
+                return v if v not in [None] else default
 
-            style_preferences = base.get("style_preferences", []) or []
-            brand_preferences = base.get("brand_preferences", {}) or {}
-            color_preferences = base.get("color_preferences", {}) or {}
-            pattern_preferences = base.get("pattern_preferences", {}) or {}
+            personality_data   = pick("personality_data", {})
+            morphology_goals   = pick("morphology_goals", {})
+            personal_info      = pick("personal_info", {})
+            measurements       = pick("measurements", {})
+            eye_color          = pick("eye_color", "")
+            hair_color         = pick("hair_color", "")
+            style_preferences  = pick("style_preferences", [])
+            brand_preferences  = pick("brand_preferences", {})
+            color_preferences  = pick("color_preferences", {})
+            pattern_preferences= pick("pattern_preferences", {})
 
-            # Fallback if flattened
-            if not personal_info:
+            # fallback flattened (si jamais)
+            if not isinstance(personal_info, dict) or not personal_info:
                 personal_info = {
-                    "age": base.get("age", base.get("user_age", "")),
-                    "height": base.get("height", base.get("user_height", "")),
-                    "weight": base.get("weight", base.get("user_weight", "")),
+                    "age": ud.get("age", ud.get("user_age", "")),
+                    "height": ud.get("height", ud.get("user_height", "")),
+                    "weight": ud.get("weight", ud.get("user_weight", "")),
                 }
-            if not measurements:
+
+            if not isinstance(measurements, dict) or not measurements:
                 measurements = {
-                    "clothing_size": base.get("clothing_size", base.get("clothingSize", "")),
-                    "number_size": base.get("number_size", ""),
-                    "hip_circumference": base.get("hip_circumference", ""),
-                    "waist_circumference": base.get("waist_circumference", ""),
-                    "shoulder_circumference": base.get("shoulder_circumference", ""),
+                    "clothing_size": ud.get("clothing_size", ud.get("clothingSize", "")),
+                    "number_size": ud.get("number_size", ""),
+                    "hip_circumference": ud.get("hip_circumference", ""),
+                    "waist_circumference": ud.get("waist_circumference", ""),
+                    "shoulder_circumference": ud.get("shoulder_circumference", ""),
                 }
+
+            # types sûrs
+            style_preferences = style_preferences if isinstance(style_preferences, list) else [str(style_preferences)] if style_preferences else []
+            brand_preferences = brand_preferences if isinstance(brand_preferences, dict) else {}
+            color_preferences = color_preferences if isinstance(color_preferences, dict) else {}
+            pattern_preferences = pattern_preferences if isinstance(pattern_preferences, dict) else {}
+            personality_data = personality_data if isinstance(personality_data, dict) else {}
+            morphology_goals = morphology_goals if isinstance(morphology_goals, dict) else {}
 
             style_preferences_raw = style_preferences  # ici style_preferences est déjà ta liste issue de user_data
 
@@ -714,25 +740,24 @@ JSON À CORRIGER :
                 "palette": palette_str,
                 "silhouette_type": silhouette_type,
                 "recommendations": recommendations_simple,
+
                 "personal_info": personal_info,
                 "measurements": measurements,
                 "eye_color": eye_color,
                 "hair_color": hair_color,
-                "style_preferences_raw": style_preferences_raw,
-                
 
-                # champs "plats" (OK)
-                "style_preferences": ", ".join(style_preferences[:6]) if style_preferences else "Non précisé",
+                # IMPORTANT: garder la liste pour l’IA
+                "style_preferences": style_preferences,
+                # et une version string si tu veux l’afficher ou logger
+                "style_preferences_str": ", ".join(style_preferences[:6]) if style_preferences else "",
 
-                # ✅ IMPORTANT : ici il faut le dict complet, pas une string
                 "brand_preferences": brand_preferences,
-
-                # Full nested dicts for dotted placeholders
                 "personality_data": personality_data,
                 "color_preferences": color_preferences,
                 "pattern_preferences": pattern_preferences,
                 "morphology_goals": morphology_goals,
             }
+
 
             print("\n📌 AVANT APPEL:")
             print(f"   • Model: gpt-4")
@@ -879,6 +904,9 @@ JSON À CORRIGER :
             # 3) Normalize schema V3 (pages 16–24)
             # -------------------------
             result = self._normalize_styling_schema_v3(result)
+
+            print("DEBUG onboarding_data type:", type(ud.get("onboarding_data")).__name__)
+            print("DEBUG onboarding_data parsed keys:", list(onb.keys())[:10])
 
             print("\n📌 RÉSUMÉ (V3):")
             print("   • page16 keys:", list((result.get("page16") or {}).keys())[:8])

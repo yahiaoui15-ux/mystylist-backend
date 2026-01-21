@@ -48,7 +48,7 @@ IDENTITÉ & ASPIRATIONS :
 - Contextes de vie principaux : {personality_data.selected_situations}
 
 GOÛTS & PRÉFÉRENCES :
-- Styles préférés déclarés : {style_preferences}
+- Styles préférés déclarés : {style_preferences_str}
 - Marques affinitaires : {brand_preferences.selected_brands}
 - Couleurs non appréciées : {color_preferences.disliked_colors}
 - Motifs non appréciés : {pattern_preferences.disliked_patterns}
