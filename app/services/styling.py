@@ -49,6 +49,26 @@ class StylingService:
                 return {}
         return {}
 
+    def _as_list(self, x) -> List[Any]:
+        if isinstance(x, list):
+            return x
+        if isinstance(x, str) and x.strip():
+            try:
+                v = json.loads(x)
+                return v if isinstance(v, list) else [x]
+            except Exception:
+                return [x]
+        return []
+
+    def _as_int_str(self, x) -> str:
+        if x is None:
+            return ""
+        if isinstance(x, (int, float)):
+            return str(int(x)) if isinstance(x, float) and x.is_integer() else str(x)
+        return str(x)
+
+
+
     # ---------------------------------------------------------------------
     # Helpers: normalization / safe text
     # ---------------------------------------------------------------------
@@ -652,60 +672,46 @@ JSON À CORRIGER :
             if isinstance(recommendations, dict):
                 recommendations_simple = json.dumps(recommendations, ensure_ascii=False)[:1200]
 
-            # user_data extractions (onboarding)
-            style_preferences = user_data.get("style_preferences", [])
-            style_preferences = style_preferences if isinstance(style_preferences, list) else [str(style_preferences)]
-
-            brand_preferences = user_data.get("brand_preferences", {}) or {}
-            selected_brands = brand_preferences.get("selected_brands", []) if isinstance(brand_preferences, dict) else []
-            custom_brands = brand_preferences.get("custom_brands", []) if isinstance(brand_preferences, dict) else []
-            all_brands = []
-            if isinstance(selected_brands, list):
-                all_brands.extend(selected_brands)
-            if isinstance(custom_brands, list):
-                all_brands.extend(custom_brands)
-            all_brands = [b for b in all_brands if isinstance(b, str) and b.strip()]
-            brand_preferences_str = ", ".join(all_brands[:8]) if all_brands else "Aucune"
-
-            color_preferences = user_data.get("color_preferences", {}) or {}
-            disliked_colors = color_preferences.get("disliked_colors", []) if isinstance(color_preferences, dict) else []
-            pattern_preferences = user_data.get("pattern_preferences", {}) or {}
-            disliked_patterns = pattern_preferences.get("disliked_patterns", []) if isinstance(pattern_preferences, dict) else []
-
-            personality_data = user_data.get("personality_data", {}) or {}
-            morphology_goals = user_data.get("morphology_goals", {}) or {}
-            
             # --- Normalisation robuste user_data / onboarding_data ---
             ud = user_data if isinstance(user_data, dict) else {}
             onb = self._as_dict(ud.get("onboarding_data"))
 
-            # On prend la valeur root si elle existe (cas flatten), sinon onboarding_data
             def pick(key, default):
                 v = ud.get(key, None)
-                if v is None or v == "" or v == [] or v == {}:
+                if v in [None, "", [], {}]:
                     v = onb.get(key, None)
-                return v if v not in [None] else default
+                return default if v is None else v
 
-            personality_data   = pick("personality_data", {})
-            morphology_goals   = pick("morphology_goals", {})
-            personal_info      = pick("personal_info", {})
-            measurements       = pick("measurements", {})
-            eye_color          = pick("eye_color", "")
-            hair_color         = pick("hair_color", "")
-            style_preferences  = pick("style_preferences", [])
-            brand_preferences  = pick("brand_preferences", {})
-            color_preferences  = pick("color_preferences", {})
-            pattern_preferences= pick("pattern_preferences", {})
+            # Récupération brute
+            personality_data    = pick("personality_data", {})
+            morphology_goals    = pick("morphology_goals", {})
+            personal_info       = pick("personal_info", {})
+            measurements        = pick("measurements", {})
+            eye_color           = pick("eye_color", "")
+            hair_color          = pick("hair_color", "")
+            style_preferences   = pick("style_preferences", [])
+            brand_preferences   = pick("brand_preferences", {})
+            color_preferences   = pick("color_preferences", {})
+            pattern_preferences = pick("pattern_preferences", {})
 
-            # fallback flattened (si jamais)
-            if not isinstance(personal_info, dict) or not personal_info:
+            # ✅ Parsing robustes (gère dict/list en JSON string)
+            personality_data    = self._as_dict(personality_data)
+            morphology_goals    = self._as_dict(morphology_goals)
+            personal_info       = self._as_dict(personal_info)
+            measurements        = self._as_dict(measurements)
+            brand_preferences   = self._as_dict(brand_preferences)
+            color_preferences   = self._as_dict(color_preferences)
+            pattern_preferences = self._as_dict(pattern_preferences)
+            style_preferences   = self._as_list(style_preferences)
+
+            # ✅ fallback flattened si jamais personal_info/measurements vides
+            if not personal_info:
                 personal_info = {
                     "age": ud.get("age", ud.get("user_age", "")),
                     "height": ud.get("height", ud.get("user_height", "")),
                     "weight": ud.get("weight", ud.get("user_weight", "")),
                 }
-
-            if not isinstance(measurements, dict) or not measurements:
+            if not measurements:
                 measurements = {
                     "clothing_size": ud.get("clothing_size", ud.get("clothingSize", "")),
                     "number_size": ud.get("number_size", ""),
@@ -713,6 +719,62 @@ JSON À CORRIGER :
                     "waist_circumference": ud.get("waist_circumference", ""),
                     "shoulder_circumference": ud.get("shoulder_circumference", ""),
                 }
+
+            # ✅ Cast valeurs en string
+            personal_info = {
+                "age": self._as_int_str(personal_info.get("age", "")),
+                "height": self._as_int_str(personal_info.get("height", "")),
+                "weight": self._as_int_str(personal_info.get("weight", "")),
+            }
+            measurements = {
+                "clothing_size": self._as_int_str(measurements.get("clothing_size", "")),
+                "number_size": self._as_int_str(measurements.get("number_size", "")),
+                "hip_circumference": self._as_int_str(measurements.get("hip_circumference", "")),
+                "waist_circumference": self._as_int_str(measurements.get("waist_circumference", "")),
+                "shoulder_circumference": self._as_int_str(measurements.get("shoulder_circumference", "")),
+            }
+
+            # ✅ brands_list + brand_preferences_str
+            brands_list = []
+            sb = brand_preferences.get("selected_brands", []) or []
+            cb = brand_preferences.get("custom_brands", []) or []
+            if isinstance(sb, list): brands_list += [b for b in sb if isinstance(b, str) and b.strip()]
+            if isinstance(cb, list): brands_list += [b for b in cb if isinstance(b, str) and b.strip()]
+            brand_preferences_str = ", ".join(brands_list[:8]) if brands_list else "Aucune"
+
+            print("DEBUG types:",
+                "personality_data", type(personality_data).__name__,
+                "style_preferences", type(style_preferences).__name__,
+                "brand_preferences", type(brand_preferences).__name__)
+
+            print("DEBUG onboarding presence:",
+                "traits", len((personality_data or {}).get("selected_personality", []) or []),
+                "msgs", len((personality_data or {}).get("selected_message", []) or []),
+                "ctx", len((personality_data or {}).get("selected_situations", []) or []),
+                "styles", len(style_preferences) if isinstance(style_preferences, list) else 0)
+
+            # ✅ Construire prompt_data APRES parsing
+            prompt_data = {
+                "season": season,
+                "sous_ton": sous_ton,
+                "palette": palette_str,
+                "silhouette_type": silhouette_type,
+                "recommendations": recommendations_simple,
+
+                "personal_info": personal_info,
+                "measurements": measurements,
+                "eye_color": eye_color,
+                "hair_color": hair_color,
+
+                "style_preferences": style_preferences,
+                "style_preferences_str": ", ".join([str(s) for s in style_preferences[:6]]) if style_preferences else "",
+
+                "brand_preferences": brand_preferences,
+                "personality_data": personality_data,
+                "color_preferences": color_preferences,
+                "pattern_preferences": pattern_preferences,
+                "morphology_goals": morphology_goals,
+            }
 
             # types sûrs
             style_preferences = style_preferences if isinstance(style_preferences, list) else [str(style_preferences)] if style_preferences else []
@@ -733,40 +795,10 @@ JSON À CORRIGER :
                   "ctx", len((personality_data or {}).get("selected_situations", []) or []),
                   "styles", len(style_preferences) if isinstance(style_preferences, list) else 0)
 
-            prompt_data = {
-                "season": season,
-                "sous_ton": sous_ton,
-                "palette": palette_str,
-                "silhouette_type": silhouette_type,
-                "recommendations": recommendations_simple,
-
-                "personal_info": personal_info,
-                "measurements": measurements,
-                "eye_color": eye_color,
-                "hair_color": hair_color,
-
-                # IMPORTANT: garder la liste pour l’IA
-                "style_preferences": style_preferences,
-                # et une version string si tu veux l’afficher ou logger
-                "style_preferences_str": ", ".join(style_preferences[:6]) if style_preferences else "",
-
-                "brand_preferences": brand_preferences,
-                "personality_data": personality_data,
-                "color_preferences": color_preferences,
-                "pattern_preferences": pattern_preferences,
-                "morphology_goals": morphology_goals,
-            }
-
-            # Après normalisation (pick + types sûrs)
-            brands_list = []
-            if isinstance(brand_preferences, dict):
-                sb = brand_preferences.get("selected_brands", []) or []
-                cb = brand_preferences.get("custom_brands", []) or []
-                if isinstance(sb, list): brands_list += [b for b in sb if isinstance(b, str) and b.strip()]
-                if isinstance(cb, list): brands_list += [b for b in cb if isinstance(b, str) and b.strip()]
-
-            brand_preferences_str = ", ".join(brands_list[:8]) if brands_list else "Aucune"
-
+            print("DEBUG types:",
+                "personality_data", type(personality_data).__name__,
+                "style_preferences", type(style_preferences).__name__,
+                "brand_preferences", type(brand_preferences).__name__)
 
             print("\n📌 AVANT APPEL:")
             print(f"   • Model: gpt-4")
