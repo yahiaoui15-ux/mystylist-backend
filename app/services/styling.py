@@ -630,7 +630,6 @@ JSON À CORRIGER :
         print("\n" + "=" * 80)
         print("📋 APPEL STYLING: PROFIL STYLISTIQUE PREMIUM (V3)")
         print("=" * 80)
-        print(f"   • Marques: {brand_preferences_str}")
 
         try:
             # -------------------------
@@ -757,6 +756,16 @@ JSON À CORRIGER :
                 "pattern_preferences": pattern_preferences,
                 "morphology_goals": morphology_goals,
             }
+
+            # Après normalisation (pick + types sûrs)
+            brands_list = []
+            if isinstance(brand_preferences, dict):
+                sb = brand_preferences.get("selected_brands", []) or []
+                cb = brand_preferences.get("custom_brands", []) or []
+                if isinstance(sb, list): brands_list += [b for b in sb if isinstance(b, str) and b.strip()]
+                if isinstance(cb, list): brands_list += [b for b in cb if isinstance(b, str) and b.strip()]
+
+            brand_preferences_str = ", ".join(brands_list[:8]) if brands_list else "Aucune"
 
 
             print("\n📌 AVANT APPEL:")
