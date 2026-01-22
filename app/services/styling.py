@@ -676,6 +676,39 @@ JSON À CORRIGER :
             ud = user_data if isinstance(user_data, dict) else {}
             onb = self._as_dict(ud.get("onboarding_data"))
 
+            # =========================
+            # DEBUG PATCH 1: INPUT user_data + onboarding_data (masked)
+            # =========================
+            def _mask(x: Any) -> Any:
+                if not isinstance(x, dict):
+                    return x
+                y = dict(x)
+                if "personal_info" in y and isinstance(y["personal_info"], dict):
+                    pi = dict(y["personal_info"])
+                    for k in ["first_name", "last_name", "postal_code"]:
+                        if k in pi and pi[k]:
+                            pi[k] = "***"
+                    y["personal_info"] = pi
+                return y
+
+            print("DEBUG user_data type:", type(user_data).__name__)
+            print("DEBUG user_data top keys:", list(ud.keys()))
+            print("DEBUG onboarding_data raw type:", type(ud.get("onboarding_data")).__name__)
+            print("DEBUG onboarding_data parsed keys:", list(onb.keys()))
+            print("DEBUG ud snapshot (masked):", json.dumps(_mask({
+                "style_preferences": ud.get("style_preferences"),
+                "personality_data": ud.get("personality_data"),
+                "brand_preferences": ud.get("brand_preferences"),
+                "color_preferences": ud.get("color_preferences"),
+                "pattern_preferences": ud.get("pattern_preferences"),
+                "morphology_goals": ud.get("morphology_goals"),
+                "personal_info": ud.get("personal_info"),
+                "measurements": ud.get("measurements"),
+                "eye_color": ud.get("eye_color"),
+                "hair_color": ud.get("hair_color"),
+                "onboarding_data": ud.get("onboarding_data"),
+            }), ensure_ascii=False)[:1200])
+
             def pick(key, default):
                 v = ud.get(key, None)
                 if v in [None, "", [], {}]:
@@ -703,6 +736,25 @@ JSON À CORRIGER :
             color_preferences   = self._as_dict(color_preferences)
             pattern_preferences = self._as_dict(pattern_preferences)
             style_preferences   = self._as_list(style_preferences)
+
+            # =========================
+            # DEBUG PATCH 2: RESOLVED values (post-pick, post-parse)
+            # =========================
+            print("DEBUG resolved (post-pick, post-parse):")
+            print(" - style_preferences:", style_preferences)
+            print(" - personality_data:", personality_data)
+            print(" - brand_preferences:", brand_preferences)
+            print(" - color_preferences:", color_preferences)
+            print(" - pattern_preferences:", pattern_preferences)
+            print(" - morphology_goals:", morphology_goals)
+
+            print("DEBUG counts:",
+                  "traits", len((personality_data or {}).get("selected_personality", []) or []),
+                  "msgs", len((personality_data or {}).get("selected_message", []) or []),
+                  "ctx", len((personality_data or {}).get("selected_situations", []) or []),
+                  "styles", len(style_preferences) if isinstance(style_preferences, list) else 0,
+                  "brands",
+                  len(((brand_preferences or {}).get("selected_brands", []) or [])) + len(((brand_preferences or {}).get("custom_brands", []) or [])))
 
             # ✅ fallback flattened si jamais personal_info/measurements vides
             if not personal_info:
@@ -853,6 +905,21 @@ JSON À CORRIGER :
                     self.openai.set_system_prompt(system_prompt)
 
                     user_prompt = self.safe_format(user_prompt_template, prompt_data)
+                    
+                    # =========================
+                    # DEBUG PATCH 3: prompt_data summary actually sent
+                    # =========================
+                    print(f"DEBUG {name} prompt_data summary:",
+                          json.dumps({
+                              "style_preferences": prompt_data.get("style_preferences"),
+                              "personality_data": prompt_data.get("personality_data"),
+                              "brand_preferences": prompt_data.get("brand_preferences"),
+                              "color_preferences": prompt_data.get("color_preferences"),
+                              "pattern_preferences": prompt_data.get("pattern_preferences"),
+                              "morphology_goals": prompt_data.get("morphology_goals"),
+                              "season": prompt_data.get("season"),
+                              "silhouette_type": prompt_data.get("silhouette_type"),
+                          }, ensure_ascii=False)[:1200])
 
                     # Guard en tête (évite d’être “ignoré” en fin de prompt)
                     if extra_guard:
