@@ -670,7 +670,11 @@ JSON À CORRIGER :
             # On laisse plutôt un résumé court mais utile
             recommendations_simple = f"Silhouette {silhouette_type}"
             if isinstance(recommendations, dict):
-                recommendations_simple = json.dumps(recommendations, ensure_ascii=False)[:1200]
+                try:
+                    recommendations_simple = json.dumps(recommendations, ensure_ascii=False)[:1200] if isinstance(recommendations, dict) else str(recommendations)[:1200]
+                except Exception:
+                    recommendations_simple = f"Silhouette {silhouette_type}"
+
 
             # --- Normalisation robuste user_data / onboarding_data ---
             ud = user_data if isinstance(user_data, dict) else {}
@@ -941,6 +945,10 @@ JSON À CORRIGER :
                     if extra_guard:
                         user_prompt = extra_guard.strip() + "\n\n" + user_prompt
 
+                    if name == "PART1":
+                        print("DEBUG PART1 USER PROMPT (first 1200):", user_prompt[:1200])
+                        print("DEBUG PART1 USER PROMPT (contains morphology_goals?):", "morphology_goals" in user_prompt)
+
                     resp = await self.openai.call_chat(
                         prompt=user_prompt,
                         model="gpt-4",
@@ -948,6 +956,14 @@ JSON À CORRIGER :
                     )
 
                     content = (resp.get("content", "") or "").strip()
+                    out_obj = _extract_json_object(content)
+
+                    # ✅ LOG MINIMAL SI PARSING ÉCHOUÉ (utile quand PART1 sort un JSON tronqué / texte parasite)
+                    if name == "PART1" and (not isinstance(out_obj, dict) or not out_obj):
+                        print("DEBUG PART1 RAW (first 800):", content[:800])
+
+                    return out_obj
+
                     return _extract_json_object(content)
 
                 # ---------------------------------------------------------
@@ -992,6 +1008,22 @@ JSON À CORRIGER :
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
             
+            print("DEBUG PART1 raw keys:", list(part1.keys()) if isinstance(part1, dict) else type(part1))
+            try:
+                p16 = (part1.get("page16") or {}) if isinstance(part1, dict) else {}
+                sgb = (p16.get("style_goals_block") or {}) if isinstance(p16, dict) else {}
+                print("DEBUG PART1 page16 keys:", list(p16.keys()) if isinstance(p16, dict) else type(p16))
+                print("DEBUG PART1 objectifs_morphologiques_text:", p16.get("objectifs_morphologiques_text"))
+                print("DEBUG PART1 style_goals_block keys:", list(sgb.keys()) if isinstance(sgb, dict) else type(sgb))
+                print("DEBUG PART1 style_goals_block.morphology_goals:", sgb.get("morphology_goals"))
+                print("DEBUG PART1 style_goals_block.emotional_goals:", sgb.get("emotional_goals"))
+                print("DEBUG PART1 objectifs_emotionnels_text:", (p16.get("objectifs_emotionnels_text") or "")[:220])
+                print("DEBUG INPUT selected_message:", personality_data.get("selected_message"))
+                print("DEBUG INPUT selected_personality:", personality_data.get("selected_personality"))
+
+            except Exception as e:
+                print("DEBUG PART1 inspect error:", e)
+
             # ✅ DEBUG COUNTS AVANT MERGE (pour confirmer que PART2/PART3 ne sont pas vides)
             def _len_safe(x):
                 return len(x) if isinstance(x, list) else 0
@@ -1029,6 +1061,12 @@ JSON À CORRIGER :
             # -------------------------
             result = self._normalize_styling_schema_v3(result)
 
+            p16 = result.get("page16") or {}
+            print("DEBUG POST-NORMALIZE page16 keys:", list(p16.keys()) if isinstance(p16, dict) else type(p16))
+            print("DEBUG objectifs_morphologiques_text:", (p16.get("objectifs_morphologiques_text") or "")[:200])
+            print("DEBUG objectifs_emotionnels_text:", (p16.get("objectifs_emotionnels_text") or "")[:200])
+
+            
             print("DEBUG onboarding_data type:", type(ud.get("onboarding_data")).__name__)
             print("DEBUG onboarding_data parsed keys:", list(onb.keys())[:10])
 
