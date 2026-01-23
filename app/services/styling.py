@@ -674,7 +674,13 @@ JSON À CORRIGER :
 
             # --- Normalisation robuste user_data / onboarding_data ---
             ud = user_data if isinstance(user_data, dict) else {}
-            onb = self._as_dict(ud.get("onboarding_data"))
+            profile = ud.get("profile") or {}
+            onb = self._as_dict(
+                ud.get("onboarding_data")
+                or profile.get("onboarding_data")
+                or {}
+)
+
 
             # =========================
             # DEBUG PATCH 1: INPUT user_data + onboarding_data (masked)
@@ -692,22 +698,32 @@ JSON À CORRIGER :
                 return y
 
             print("DEBUG user_data type:", type(user_data).__name__)
-            print("DEBUG user_data top keys:", list(ud.keys()))
-            print("DEBUG onboarding_data raw type:", type(ud.get("onboarding_data")).__name__)
-            print("DEBUG onboarding_data parsed keys:", list(onb.keys()))
+            print("DEBUG user_data top keys:", list(ud.keys())[:30])
+            print("DEBUG profile keys:", list((profile or {}).keys())[:30])
+
+            src = (
+                "ud.onboarding_data" if ud.get("onboarding_data") else
+                "profile.onboarding_data" if (profile or {}).get("onboarding_data") else
+                "NONE"
+            )
+            print("DEBUG onboarding_data source:", src)
+            print("DEBUG onboarding_data parsed keys:", list(onb.keys())[:30])
+
             print("DEBUG ud snapshot (masked):", json.dumps(_mask({
-                "style_preferences": ud.get("style_preferences"),
-                "personality_data": ud.get("personality_data"),
-                "brand_preferences": ud.get("brand_preferences"),
-                "color_preferences": ud.get("color_preferences"),
-                "pattern_preferences": ud.get("pattern_preferences"),
-                "morphology_goals": ud.get("morphology_goals"),
-                "personal_info": ud.get("personal_info"),
-                "measurements": ud.get("measurements"),
-                "eye_color": ud.get("eye_color"),
-                "hair_color": ud.get("hair_color"),
-                "onboarding_data": ud.get("onboarding_data"),
+                "style_preferences": ud.get("style_preferences") or onb.get("style_preferences"),
+                "personality_data": ud.get("personality_data") or onb.get("personality_data"),
+                "brand_preferences": ud.get("brand_preferences") or onb.get("brand_preferences"),
+                "color_preferences": ud.get("color_preferences") or onb.get("color_preferences"),
+                "pattern_preferences": ud.get("pattern_preferences") or onb.get("pattern_preferences"),
+                "morphology_goals": ud.get("morphology_goals") or onb.get("morphology_goals"),
+                "personal_info": ud.get("personal_info") or onb.get("personal_info"),
+                "measurements": ud.get("measurements") or onb.get("measurements"),
+                "eye_color": ud.get("eye_color") or onb.get("eye_color"),
+                "hair_color": ud.get("hair_color") or onb.get("hair_color"),
+                "onboarding_data_ud": ud.get("onboarding_data"),
+                "onboarding_data_profile": (profile or {}).get("onboarding_data"),
             }), ensure_ascii=False)[:1200])
+
 
             def pick(key, default):
                 v = ud.get(key, None)
