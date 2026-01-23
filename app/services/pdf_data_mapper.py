@@ -11,7 +11,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 from app.services.visuals import visuals_service
-from app.services.archetype_visuals_service import get_style_visuals_for_archetype
+from app.services.archetype_visual_selector import get_style_visuals_for_archetype
+
 
 
 class PDFDataMapper:
