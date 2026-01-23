@@ -150,6 +150,50 @@ class StylingService:
             k = str(x).strip().lower()
             out.append(mapping.get(k, str(x)))
         return out
+
+    def _is_part1_complete(self, d: Dict[str, Any], prompt_data: Dict[str, Any]) -> bool:
+        try:
+            p16 = (d.get("page16") or {}) if isinstance(d, dict) else {}
+            if not isinstance(p16, dict):
+                return False
+
+            # Si l'entrée a des données, ces champs ne doivent pas être vides
+            has_personality = isinstance((prompt_data.get("personality_data") or {}).get("selected_personality"), list) and len((prompt_data.get("personality_data") or {}).get("selected_personality") or []) > 0
+            has_messages = isinstance((prompt_data.get("personality_data") or {}).get("selected_message"), list) and len((prompt_data.get("personality_data") or {}).get("selected_message") or []) > 0
+            has_goals = isinstance((prompt_data.get("morphology_goals") or {}).get("body_parts_to_highlight"), list) or isinstance((prompt_data.get("morphology_goals") or {}).get("body_parts_to_minimize"), list)
+
+            # Champs attendus par ton template
+            required = ["archetype_title", "archetype_text", "traits_dominants_detectes",
+                        "objectifs_emotionnels_text", "objectifs_pratiques_text", "objectifs_morphologiques_text",
+                        "preferences_style_text", "boussole_text"]
+
+            for k in required:
+                if k not in p16:
+                    return False
+
+            # Archetype_title doit être non vide
+            if not isinstance(p16.get("archetype_title"), str) or not p16["archetype_title"].strip():
+                return False
+
+            # Si personnalité présente => traits + archetype_text doivent être remplis
+            if has_personality:
+                if not isinstance(p16.get("traits_dominants_detectes"), list) or len(p16["traits_dominants_detectes"]) == 0:
+                    return False
+                if not isinstance(p16.get("archetype_text"), str) or len(p16["archetype_text"].split()) < 40:
+                    return False
+
+            # Si messages présents => objectifs émotionnels doit être rempli
+            if has_messages and (not isinstance(p16.get("objectifs_emotionnels_text"), str) or not p16["objectifs_emotionnels_text"].strip()):
+                return False
+
+            # Si objectifs morpho présents => objectifs_morphologiques_text doit être rempli
+            if has_goals and (not isinstance(p16.get("objectifs_morphologiques_text"), str) or not p16["objectifs_morphologiques_text"].strip()):
+                return False
+
+            return True
+        except Exception:
+            return False
+
     def _is_part2_complete(self, d: Dict[str, Any]) -> bool:
         try:
             p18 = (d.get("page18") or {}).get("categories") or {}
@@ -964,12 +1008,24 @@ JSON À CORRIGER :
 
                     return out_obj
 
-                    return _extract_json_object(content)
 
                 # ---------------------------------------------------------
                 # 1) Essai standard
                 # ---------------------------------------------------------
                 out = await _single_call()
+
+                if name == "PART1" and not self._is_part1_complete(out, prompt_data):
+                    guard = (
+                        "IMPORTANT — JSON STRICT ET SCHEMA EXACT.\n"
+                        "- Tu dois retourner EXACTEMENT la structure JSON demandée dans le prompt, sans clés alternatives.\n"
+                        "- page16 doit contenir: archetype_title, archetype_text, traits_dominants_detectes, objectifs_emotionnels_text, objectifs_pratiques_text, objectifs_morphologiques_text, preferences_style_text, boussole_text.\n"
+                        "- Interdiction de renvoyer style_objectives, style_preferences_text, compass_text ou toute autre clé non prévue.\n"
+                        "- AUCUN champ texte ne doit être vide si les données d'entrée correspondantes existent.\n"
+                        "- Si manque de place: raccourcis les phrases, mais remplis tous les champs.\n"
+                    )
+                    out2 = await _single_call(extra_guard=guard, tokens_override=2600)
+                    if self._is_part1_complete(out2, prompt_data):
+                        out = out2
 
                 # ---------------------------------------------------------
                 # 2) Retry si incomplet (PART2 / PART3)
@@ -1106,6 +1162,50 @@ JSON À CORRIGER :
         # BACKWARD/DUAL SCHEMA SUPPORT (page16): map new nested blocks -> flat keys
         p16 = result.get("page16") or {}
         if isinstance(p16, dict):
+            # ---------------------------------------------------------
+            # FIX page16: compat avec sortie PART1 actuelle (style_objectives,
+            # style_preferences_text, compass_text) -> champs attendus HTML
+            # ---------------------------------------------------------
+            so = p16.get("style_objectives") or {}
+
+            # 1) style_goals_block depuis style_objectives
+            if not isinstance(p16.get("style_goals_block"), dict):
+                p16["style_goals_block"] = {}
+
+            if isinstance(so, dict):
+                emo = so.get("emotional") or so.get("emotional_goals") or ""
+                pra = so.get("practical") or so.get("practical_goals") or ""
+                mor = so.get("morphological") or so.get("morphology_goals") or ""
+
+                # si listes -> texte (PDF friendly)
+                if isinstance(emo, list): emo = " • " + "\n • ".join([str(x).strip() for x in emo if str(x).strip()])
+                if isinstance(pra, list): pra = " • " + "\n • ".join([str(x).strip() for x in pra if str(x).strip()])
+                if isinstance(mor, list): mor = " • " + "\n • ".join([str(x).strip() for x in mor if str(x).strip()])
+
+                # remplir le bloc si vide
+                if not p16["style_goals_block"].get("emotional_goals"):
+                    p16["style_goals_block"]["emotional_goals"] = self._one_line(self._ensure_str(emo, ""))
+                if not p16["style_goals_block"].get("practical_goals"):
+                    p16["style_goals_block"]["practical_goals"] = self._one_line(self._ensure_str(pra, ""))
+                if not p16["style_goals_block"].get("morphology_goals"):
+                    p16["style_goals_block"]["morphology_goals"] = self._one_line(self._ensure_str(mor, ""))
+
+            # 2) fallback texte (utilisé par ton HTML)
+            if not p16.get("objectifs_emotionnels_text"):
+                p16["objectifs_emotionnels_text"] = self._one_line(self._ensure_str(p16["style_goals_block"].get("emotional_goals"), ""))
+            if not p16.get("objectifs_pratiques_text"):
+                p16["objectifs_pratiques_text"] = self._one_line(self._ensure_str(p16["style_goals_block"].get("practical_goals"), ""))
+            if not p16.get("objectifs_morphologiques_text"):
+                p16["objectifs_morphologiques_text"] = self._one_line(self._ensure_str(p16["style_goals_block"].get("morphology_goals"), ""))
+
+            # 3) préférences + boussole: map clés PART1 -> clés template
+            if not p16.get("preferences_style_text"):
+                p16["preferences_style_text"] = self._one_line(self._ensure_str(p16.get("style_preferences_text"), ""))
+
+            if not p16.get("boussole_text"):
+                # PART1 renvoie compass_text (d'après tes logs)
+                p16["boussole_text"] = self._one_line(self._ensure_str(p16.get("compass_text") or p16.get("compass_sentence"), ""))
+
             ab = p16.get("archetype_block") or {}
             if isinstance(ab, dict):
                 if not p16.get("archetype_text"):
