@@ -30,6 +30,12 @@ MÉTHODE OBLIGATOIRE :
 - Sage / Mystique
 - Visionnaire / Créative
 
+RÈGLE DE SORTIE ARCHÉTYPE (CRITIQUE) :
+- page16.archetype_title doit être EXACTEMENT l’une de ces 5 chaînes, sans variation, sans abréviation, sans texte additionnel :
+"Reine / Leader" | "Guerrière / Chasseresse" | "Romantique / Amante" | "Sage / Mystique" | "Visionnaire / Créative"
+- Ne pas écrire "Guerrière" seul, ni "Reine", ni "Leader", ni "Mystique", ni "Visionnaire" seul.
+
+
 2) Déduire un style personnalisé (nom de style) + un mix de 2 à 4 styles parmi :
 Classique / Intemporel, Chic / Élégant, Minimaliste, Casual, Bohème, Romantique, Glamour, Rock,
 Urbain / Streetwear, Sporty Chic, Preppy, Vintage, Moderne / Contemporain, Artistique / Créatif,

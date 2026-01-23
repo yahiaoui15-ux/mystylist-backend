@@ -11,6 +11,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 from app.services.visuals import visuals_service
+from app.services.archetype_visuals_service import get_style_visuals_for_archetype
+
 
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
@@ -463,8 +465,31 @@ class PDFDataMapper:
         print(f"   ✓ Associations: {len(associations)} enrichies")
         print(f"   ✓ Makeup: {sum(1 for v in makeup_mapping.values() if v)} champs remplis")
         print(f"   ✓ Morpho categories: {list(morpho_categories.keys())}")
-        
+
+        # ---------------------------------------------------------------------
+        # PAGE 16 - UNIVERS VISUEL (style_visuals) - EXACTEMENT 9 VISUELS
+        # ---------------------------------------------------------------------
+        try:
+            page16 = PDFDataMapper._safe_dict(styling_raw.get("page16", {}))
+            archetype = (page16.get("archetype_title") or "").strip()
+
+            # Si pas d'archetype_title, on laisse vide (le template affichera les placeholders)
+            if archetype:
+                style_visuals = get_style_visuals_for_archetype(archetype=archetype)
+            else:
+                style_visuals = []
+
+            # Variable attendue par ton HTML page 16: {% if style_visuals ... %}
+            liquid_data["style_visuals"] = style_visuals
+
+            print(f"   ✓ style_visuals: {len(style_visuals)} items (archétype='{archetype}')")
+
+        except Exception as e:
+            print(f"⚠️  Erreur style_visuals: {e}")
+            liquid_data["style_visuals"] = []
+
         return liquid_data
+
     
     @staticmethod
     def _transform_morphology_service_data(morphology_raw: dict, user_data: dict) -> dict:

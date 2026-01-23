@@ -59,6 +59,9 @@ class SupabaseClient:
             print(f"❌ Erreur insert {table}: {e}")
             raise
 
+    def get_client(self):
+        """Expose le client Supabase natif (supabase-py)"""
+        return self._get_client()
 
 # ❌ SUPPRIMÉ: méthode upload_pdf (n'existe pas en Python)
 # Utiliser PDFStorageManager.save_pdf_to_supabase() à la place (REST API HTTP)
