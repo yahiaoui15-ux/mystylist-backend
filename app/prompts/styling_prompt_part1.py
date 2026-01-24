@@ -1,8 +1,8 @@
 """
-STYLING PROMPT – PART 1 (Pages 16–17) — V3
+STYLING PROMPT – PART 1 (Pages 16–17) — V3.1
 Couvre:
 - Page 16: archétype (émotionnel) + objectifs (3 sous-parties) + préférences + boussole + tags traits
-- Page 17: style personnalisé premium (identité + projection) + mix + explication + impact dressing + repère clé intégré
+- Page 17: style personnalisé premium (identité + projection) + mix + explication + impact dressing + repère clé + contraintes
 ✅ JSON strict
 ✅ Strings one-line (pas de retours ligne)
 ✅ Compatible placeholders {a.b.c}
@@ -44,7 +44,8 @@ Ethnique, Féminin Moderne, Sexy Assumé, Naturel / Authentique.
 EXIGENCE PREMIUM (PAGE 17) :
 - Tu dois "affirmer" un style comme le ferait une vraie styliste : identité, cohérence intérieure, projection dans le quotidien, bénéfices émotionnels.
 - Tu dois différencier implicitement : expliquer pourquoi CE style et pas un autre, en t’appuyant sur (personnalité + message + contextes + préférences + rejets + marques).
-- Tu dois inclure un "repère clé" mémorisable MAIS sans ajouter de nouvelle clé JSON : il doit être intégré à la fin de wardrobe_impact_text sous forme de phrase (ex: "Votre repère clé : ...").
+- Tu dois fournir un repère clé mémorisable sous forme d’une phrase indépendante (champ style_tagline).
+- Tu dois expliciter les contraintes respectées (marques + rejets couleurs/motifs) dans un encadré court (champ constraints_text).
 """
 
 STYLING_PART1_USER_PROMPT = """
@@ -135,12 +136,21 @@ C) style_explained_text (110 à 160 mots) :
 - Expliquer le lien archétype -> style (cohérence intérieure), avec justification explicite via personnalité + message + contextes.
 - Justifier le mix via style_preferences, et intégrer marques + rejets (couleurs/motifs) comme contraintes respectées.
 - Inclure une phrase de projection émotionnelle (ce que la cliente va "ressentir" en portant ce style) sans faire de liste.
+- Ne pas inclure de repère clé ici (il va dans style_tagline).
 
 D) wardrobe_impact_text (120 à 170 mots) :
 - Dire ce que ce style change dans ses tenues et pourquoi c’est plus simple et plus cohérent pour elle.
 - Donner des exemples concrets de pièces, coupes, matières et accessoires, cohérents avec préférences et rejets.
-- Donner 3 à 5 "piliers" du style sous forme de phrases (pas de liste) : coupes, matières, couleurs, détails, accessoires.
-- Terminer IMPÉRATIVEMENT par un repère clé mémorisable sous forme de phrase introduite exactement par "Votre repere cle : " (sans accent sur "repere" et "cle"), et pas d’ajout de clé JSON.
+- Donner 3 à 5 piliers du style sous forme de phrases (pas de liste) : coupes, matières, couleurs, détails, accessoires.
+- Ne pas inclure "Votre repere cle :" dans ce champ.
+
+E) style_tagline (12 à 18 mots, 1 seule phrase) :
+- Un repère clé mémorisable, qui résume la signature du style et aide à choisir vite.
+- Doit sonner premium, très personnel, et directement applicable (pas une phrase vague).
+
+F) constraints_text (25 à 45 mots, 1 à 2 phrases) :
+- Confirmer clairement que tu respectes les contraintes : marques affinitaires (si présentes) + rejets couleurs/motifs (si présents).
+- Rassurer : pas de forcing, pas de déguisement, on reste "toi" mais plus cohérente.
 
 BRIEF MANNEQUIN (pour visuels IA ultérieurs) :
 mannequin_brief réaliste (PAS la cliente), basé sur:
@@ -168,7 +178,9 @@ STRUCTURE JSON OBLIGATOIRE (PART 1) :
       { "style": "", "pct": 0 }
     ],
     "style_explained_text": "",
-    "wardrobe_impact_text": ""
+    "wardrobe_impact_text": "",
+    "style_tagline": "",
+    "constraints_text": ""
   },
   "mannequin_brief": {
     "age": "",

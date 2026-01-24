@@ -1233,6 +1233,47 @@ JSON À CORRIGER :
             p16["dominant_traits"] = self._ensure_list(p16.get("dominant_traits"), [])
 
             result["page16"] = p16
+            
+        # ---------------------------------------------------------
+        # page17: normalisation + compat template (style_tagline / constraints_text)
+        # ---------------------------------------------------------
+        p17 = result.get("page17") or {}
+        if isinstance(p17, dict):
+            # Ensure base keys
+            p17["style_name"] = self._one_line(self._ensure_str(p17.get("style_name"), ""))
+            p17["style_explained_text"] = self._one_line(self._ensure_str(p17.get("style_explained_text"), ""))
+            p17["wardrobe_impact_text"] = self._one_line(self._ensure_str(p17.get("wardrobe_impact_text"), ""))
+
+            # style_mix: list of {"style": str, "pct": int}
+            sm = p17.get("style_mix")
+            sm = sm if isinstance(sm, list) else []
+            norm_sm = []
+            for it in sm:
+                if isinstance(it, dict):
+                    st = self._one_line(self._ensure_str(it.get("style"), ""))
+                    pct = it.get("pct", 0)
+                    try:
+                        pct = int(pct)
+                    except Exception:
+                        pct = 0
+                    if st:
+                        norm_sm.append({"style": st, "pct": pct})
+            p17["style_mix"] = norm_sm
+
+            # New fields expected by HTML
+            p17["style_tagline"] = self._one_line(self._ensure_str(p17.get("style_tagline"), ""))
+            p17["constraints_text"] = self._one_line(self._ensure_str(p17.get("constraints_text"), ""))
+
+            # Fallback: if model embedded tagline in wardrobe_impact_text
+            # e.g. "... Votre repere cle : ..."
+            if not p17["style_tagline"] and isinstance(p17.get("wardrobe_impact_text"), str):
+                m = re.search(r"(?:Votre\s+repere\s+cle\s*:\s*)(.+)$", p17["wardrobe_impact_text"], flags=re.IGNORECASE)
+                if m:
+                    p17["style_tagline"] = self._one_line(m.group(1))
+                    # Remove the embedded part to avoid duplication in HTML
+                    p17["wardrobe_impact_text"] = self._one_line(re.sub(r"(?:Votre\s+repere\s+cle\s*:\s*).+$", "", p17["wardrobe_impact_text"], flags=re.IGNORECASE).strip())
+
+            result["page17"] = p17
 
         # page18/page19 categories structure
         for pkey in ["page18", "page19"]:

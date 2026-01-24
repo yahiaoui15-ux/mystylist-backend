@@ -227,6 +227,17 @@ class PDFDataMapper:
         # ✅ Safety defaults V3 pour Liquid (évite erreurs sur .size / for-loops)
         # IMPORTANT: on FORCE les sous-blocs à être des dicts, même si la source contient None/str/etc.
 
+        # --- page16 / page17 safety defaults (évite placeholders "—" inutiles)
+        styling_raw["page16"] = PDFDataMapper._safe_dict(styling_raw.get("page16", {}))
+        styling_raw["page17"] = PDFDataMapper._safe_dict(styling_raw.get("page17", {}))
+
+        styling_raw["page17"].setdefault("style_name", "")
+        styling_raw["page17"].setdefault("style_mix", [])
+        styling_raw["page17"].setdefault("style_explained_text", "")
+        styling_raw["page17"].setdefault("wardrobe_impact_text", "")
+        styling_raw["page17"].setdefault("style_tagline", "")
+        styling_raw["page17"].setdefault("constraints_text", "")
+
         # --- page18.categories.*
         styling_raw["page18"] = PDFDataMapper._safe_dict(styling_raw.get("page18", {}))
         styling_raw["page18"]["categories"] = PDFDataMapper._safe_dict(styling_raw["page18"].get("categories", {}))
