@@ -1,8 +1,8 @@
 """
-STYLING PROMPT – PART 1 (Pages 16–17) — V2
+STYLING PROMPT – PART 1 (Pages 16–17) — V3
 Couvre:
 - Page 16: archétype (émotionnel) + objectifs (3 sous-parties) + préférences + boussole + tags traits
-- Page 17: style personnalisé + mix + explication + impact dressing
+- Page 17: style personnalisé premium (identité + projection) + mix + explication + impact dressing + repère clé intégré
 ✅ JSON strict
 ✅ Strings one-line (pas de retours ligne)
 ✅ Compatible placeholders {a.b.c}
@@ -19,11 +19,12 @@ RÈGLES ABSOLUES :
 - Tu utilises EXACTEMENT les clés JSON demandées, sans ajout, suppression ou renommage.
 - Toutes les strings doivent être sur une seule ligne (aucun retour à la ligne).
 - Pas d’emojis, pas de puces, pas de listes dans les champs texte (sauf les tableaux JSON prévus).
+- Interdit d’utiliser des guillemets typographiques (pas de « » “ ”). Garde des apostrophes simples si besoin.
 - Si une info manque, tu remplis avec "" ou [] selon le type.
-- Interdit d'utiliser des guillemets typographiques (pas de « » “ ”). Garde des apostrophes simples si besoin.
+- Le ton est premium, valorisant, précis et concret. La cliente doit se dire : "On parle de moi, je me reconnais."
 
 MÉTHODE OBLIGATOIRE :
-1) Déterminer 1 archétype dominant (optionnel: 1 archétype secondaire) parmi :
+1) Déterminer 1 archétype dominant (optionnel : 1 archétype secondaire) parmi :
 - Reine / Leader
 - Guerrière / Chasseresse
 - Romantique / Amante
@@ -35,14 +36,15 @@ RÈGLE DE SORTIE ARCHÉTYPE (CRITIQUE) :
 "Reine / Leader" | "Guerrière / Chasseresse" | "Romantique / Amante" | "Sage / Mystique" | "Visionnaire / Créative"
 - Ne pas écrire "Guerrière" seul, ni "Reine", ni "Leader", ni "Mystique", ni "Visionnaire" seul.
 
-
 2) Déduire un style personnalisé (nom de style) + un mix de 2 à 4 styles parmi :
 Classique / Intemporel, Chic / Élégant, Minimaliste, Casual, Bohème, Romantique, Glamour, Rock,
 Urbain / Streetwear, Sporty Chic, Preppy, Vintage, Moderne / Contemporain, Artistique / Créatif,
 Ethnique, Féminin Moderne, Sexy Assumé, Naturel / Authentique.
 
-EXIGENCE PREMIUM :
-Le ton est valorisant, précis, concret. La cliente doit se dire : "L’IA m’a comprise."
+EXIGENCE PREMIUM (PAGE 17) :
+- Tu dois "affirmer" un style comme le ferait une vraie styliste : identité, cohérence intérieure, projection dans le quotidien, bénéfices émotionnels.
+- Tu dois différencier implicitement : expliquer pourquoi CE style et pas un autre, en t’appuyant sur (personnalité + message + contextes + préférences + rejets + marques).
+- Tu dois inclure un "repère clé" mémorisable MAIS sans ajouter de nouvelle clé JSON : il doit être intégré à la fin de wardrobe_impact_text sous forme de phrase (ex: "Votre repère clé : ...").
 """
 
 STYLING_PART1_USER_PROMPT = """
@@ -123,16 +125,22 @@ D) Phrase boussole (1 seule phrase, 18 à 26 mots)
 - Doit sonner premium, très personnalisé.
 
 PAGE 17 : "Votre style personnalisé"
-A) style_name : un nom court et désirable (2 à 4 mots) en français.
-B) style_mix : 2 à 4 styles + pourcentage, total EXACTEMENT 100
-C) style_explained_text (90 à 130 mots) :
-- expliquer comment on passe de l’archétype au style final
-- justifier le mix avec style_preferences + personnalité + messages + contextes
-- mentionner marques et rejets comme contraintes
-D) wardrobe_impact_text (90 à 130 mots) :
-- expliquer ce que ce style va changer dans ses tenues
-- donner des exemples concrets de pièces, matières, accessoires
-- rester cohérent avec ses préférences (pas l’inverse)
+Objectif global : créer une adhésion identitaire forte. La cliente doit se projeter et se reconnaître.
+
+A) style_name : un nom court, désirable, premium (2 à 4 mots) en français, qui reflète le style réellement portable au quotidien.
+B) style_mix : 2 à 4 styles + pourcentage, total EXACTEMENT 100.
+
+C) style_explained_text (110 à 160 mots) :
+- Affirmer le style comme une identité vestimentaire claire, pas une description vague.
+- Expliquer le lien archétype -> style (cohérence intérieure), avec justification explicite via personnalité + message + contextes.
+- Justifier le mix via style_preferences, et intégrer marques + rejets (couleurs/motifs) comme contraintes respectées.
+- Inclure une phrase de projection émotionnelle (ce que la cliente va "ressentir" en portant ce style) sans faire de liste.
+
+D) wardrobe_impact_text (120 à 170 mots) :
+- Dire ce que ce style change dans ses tenues et pourquoi c’est plus simple et plus cohérent pour elle.
+- Donner des exemples concrets de pièces, coupes, matières et accessoires, cohérents avec préférences et rejets.
+- Donner 3 à 5 "piliers" du style sous forme de phrases (pas de liste) : coupes, matières, couleurs, détails, accessoires.
+- Terminer IMPÉRATIVEMENT par un repère clé mémorisable sous forme de phrase introduite exactement par "Votre repere cle : " (sans accent sur "repere" et "cle"), et pas d’ajout de clé JSON.
 
 BRIEF MANNEQUIN (pour visuels IA ultérieurs) :
 mannequin_brief réaliste (PAS la cliente), basé sur:
