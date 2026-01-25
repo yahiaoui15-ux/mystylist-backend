@@ -12,6 +12,8 @@ from datetime import datetime
 import json
 from app.services.visuals import visuals_service
 from app.services.archetype_visual_selector import get_style_visuals_for_archetype
+from app.services.style_visuals_selector import get_style_visuals_for_style
+
 
 
 
@@ -501,6 +503,29 @@ class PDFDataMapper:
             liquid_data["style_visuals"] = []
 
         return liquid_data
+        
+        # ---------------------------------------------------------------------
+        # PAGE 17 - VISUELS DE STYLE (style_visuals_page17) - 9 VISUELS
+        # ---------------------------------------------------------------------
+        try:
+            page17 = PDFDataMapper._safe_dict(styling_raw.get("page17", {}))
+
+            # 1) on prend le style dominant: style_mix[0].style sinon style_name
+            style_label = ""
+            sm = page17.get("style_mix") or []
+            if isinstance(sm, list) and len(sm) > 0 and isinstance(sm[0], dict):
+                style_label = (sm[0].get("style") or "").strip()
+            if not style_label:
+                style_label = (page17.get("style_name") or "").strip()
+
+            style_visuals_page17 = get_style_visuals_for_style(style_label=style_label, season="all", limit=9)
+
+            liquid_data["style_visuals_page17"] = style_visuals_page17
+            print(f"   ✓ style_visuals_page17: {len(style_visuals_page17)} items (style='{style_label}')")
+
+        except Exception as e:
+            print(f"⚠️  Erreur style_visuals_page17: {e}")
+            liquid_data["style_visuals_page17"] = []
 
     
     @staticmethod
