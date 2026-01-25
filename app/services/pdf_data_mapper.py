@@ -502,33 +502,94 @@ class PDFDataMapper:
             print(f"⚠️  Erreur style_visuals: {e}")
             liquid_data["style_visuals"] = []
 
-
-
         # ---------------------------------------------------------------------
         # PAGE 17 - VISUELS DE STYLE (style_visuals_page17) - 9 VISUELS
         # ---------------------------------------------------------------------
         try:
             page17 = PDFDataMapper._safe_dict(styling_raw.get("page17", {}))
 
-            # 1) on prend le style dominant: style_mix[0].style sinon style_name
-            style_label = ""
+            def _norm(s: str) -> str:
+                if not s:
+                    return ""
+                s = str(s).strip().lower()
+                s = s.replace("&", "and")
+                s = " ".join(s.split())
+                return s
+
+            style_name = (page17.get("style_name") or "").strip()
             sm = page17.get("style_mix") or []
+
+            top_style = ""
             if isinstance(sm, list) and len(sm) > 0 and isinstance(sm[0], dict):
-                style_label = (sm[0].get("style") or "").strip()
-            if not style_label:
-                style_label = (page17.get("style_name") or "").strip()
+                top_style = (sm[0].get("style") or "").strip()
 
-            style_visuals_page17 = get_style_visuals_for_style(style_label=style_label, season="all", limit=9)
+            # -------- LOGS AVANT --------
+            print("\n🧩 PAGE17 VISUALS DEBUG (BEFORE SELECTOR)")
+            print(f"   • page17.style_name = {style_name!r}")
+            print(f"   • page17.style_mix  = {sm!r}")
+            print(f"   • extracted top_style = {top_style!r}")
 
-            liquid_data["style_visuals_page17"] = style_visuals_page17
-            print(f"   ✓ style_visuals_page17: {len(style_visuals_page17)} items (style='{style_label}')")
+            candidates = []
+            if style_name:
+                candidates.append(style_name)   # ex: "Romantisme Minimaliste"
+            if top_style:
+                candidates.append(top_style)    # ex: "Minimaliste"
+
+            seen = set()
+            candidates = [c for c in candidates if c and not (_norm(c) in seen or seen.add(_norm(c)))]
+
+            print(f"   • candidates = {candidates!r}")
+
+            style_visuals_page17 = []
+            chosen = ""
+
+            for cand in candidates:
+                chosen = cand
+                print(f"\n   ▶ trying style_label={cand!r}")
+                style_visuals_page17 = get_style_visuals_for_style(
+                    style_label=cand,
+                    season="all",
+                    limit=9
+                ) or []
+
+                print(f"     • selector returned: {len(style_visuals_page17)} items")
+                if style_visuals_page17 and isinstance(style_visuals_page17[0], dict):
+                    print(f"     • first item keys: {list(style_visuals_page17[0].keys())}")
+                    print(f"     • first url: {style_visuals_page17[0].get('url')}")
+
+                if style_visuals_page17:
+                    break
+
+            cleaned = []
+            for v in style_visuals_page17:
+                if isinstance(v, dict):
+                    url = (v.get("url") or "").strip()
+                    label = (v.get("label") or v.get("title") or "").strip()
+                    if url.endswith("?"):
+                        url = url[:-1]
+                    if url:
+                        cleaned.append({"url": url, "label": label})
+
+            liquid_data["style_visuals_page17"] = cleaned
+
+            # -------- LOGS APRÈS --------
+            print("\n🧩 PAGE17 VISUALS DEBUG (AFTER CLEAN)")
+            print(f"   ✓ chosen='{chosen}'")
+            print(f"   ✓ cleaned count={len(cleaned)}")
+            if cleaned:
+                print(f"   ✓ first cleaned url={cleaned[0]['url']}")
+
+            print("\n🔎 LIQUID ROOT KEYS CHECK")
+            print("   • has style_visuals_page17:", "style_visuals_page17" in liquid_data)
+            print("   • style_visuals_page17 len:", len(liquid_data.get('style_visuals_page17', [])))
 
         except Exception as e:
             print(f"⚠️  Erreur style_visuals_page17: {e}")
             liquid_data["style_visuals_page17"] = []
 
+
         return liquid_data
-          
+
     @staticmethod
     def _transform_morphology_service_data(morphology_raw: dict, user_data: dict) -> dict:
         """Transforme morphology_service.analyze() en morphology_page1"""
