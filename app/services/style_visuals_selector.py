@@ -1,92 +1,110 @@
 # app/services/style_visuals_selector.py
 import os
 from typing import List, Dict, Any
-
 from supabase import create_client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
-_BUCKET_PUBLIC_BASE = os.getenv("STYLE_IMAGES_PUBLIC_BASE_URL", "").strip()
-# optionnel : si vide, on utilisera directement image_url depuis la table
+# ✅ fallback: si pas de SERVICE_ROLE en prod, on tente SUPABASE_KEY / SUPABASE_ANON_KEY
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    or os.getenv("SUPABASE_KEY", "").strip()
+    or os.getenv("SUPABASE_ANON_KEY", "").strip()
+)
 
-_STYLE_MAP = {
-    "style minimaliste": "Minimaliste",
-    "style classique / intemporel": "Classique",
-    "style chic / élégant": "Chic",
-    "style casual / décontracté": "Casual",
-    "style moderne / contemporain": "Moderne",
-    "style romantique": "Romantique",
-    "style bohème": "Bohème",
-    "style boheme": "Bohème",
-    "style sporty chic": "Sportswear",
-    "style rock": "Rock",
-    "style vintage": "Vintage",
-    "style urbain / streetwear": "Casual",  # ✅ confirmé
+# ⚠️ dans ta table, la "catégorie" est stockée dans la colonne `label`
+# et elle est en slug (boheme, casual, etc.)
+_STYLE_SLUG_MAP = {
+    "minimaliste": "minimaliste",
+    "style minimaliste": "minimaliste",
+    "classique": "classique",
+    "style classique / intemporel": "classique",
+    "chic": "chic",
+    "style chic / élégant": "chic",
+    "casual": "casual",
+    "style casual / décontracté": "casual",
+    "moderne": "moderne",
+    "style moderne / contemporain": "moderne",
+    "romantique": "romantique",
+    "style romantique": "romantique",
+    "boheme": "boheme",
+    "bohème": "boheme",
+    "style bohème": "boheme",
+    "style boheme": "boheme",
+    "sportswear": "sportswear",
+    "style sporty chic": "sportswear",
+    "rock": "rock",
+    "style rock": "rock",
+    "vintage": "vintage",
+    "style vintage": "vintage",
+    "streetwear": "casual",
+    "style urbain / streetwear": "casual",
 }
 
 def normalize_style_for_db(style_label: str) -> str:
     s = (style_label or "").strip().lower()
     if not s:
-        return "Casual"
-    # match exact map
-    if s in _STYLE_MAP:
-        return _STYLE_MAP[s]
-    # fallback heuristique
+        return "casual"
+
+    if s in _STYLE_SLUG_MAP:
+        return _STYLE_SLUG_MAP[s]
+
+    # heuristiques
     if "streetwear" in s or "urbain" in s:
-        return "Casual"
+        return "casual"
     if "sport" in s:
-        return "Sportswear"
+        return "sportswear"
     if "class" in s or "intemp" in s:
-        return "Classique"
+        return "classique"
     if "chic" in s or "élég" in s or "eleg" in s:
-        return "Chic"
+        return "chic"
     if "minim" in s:
-        return "Minimaliste"
+        return "minimaliste"
     if "roman" in s:
-        return "Romantique"
+        return "romantique"
     if "boh" in s:
-        return "Bohème"
+        return "boheme"
     if "vint" in s:
-        return "Vintage"
+        return "vintage"
     if "rock" in s:
-        return "Rock"
+        return "rock"
     if "modern" in s or "contemp" in s:
-        return "Moderne"
+        return "moderne"
     if "casual" in s or "décontract" in s or "decontract" in s:
-        return "Casual"
-    return "Casual"
+        return "casual"
+    return "casual"
 
 def _client():
-    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
-        raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY manquants")
-    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("SUPABASE_URL / SUPABASE_KEY manquants (SERVICE_ROLE_KEY ou ANON_KEY)")
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_style_visuals_for_style(style_label: str, season: str = "all", limit: int = 9) -> List[Dict[str, Any]]:
     """
     Retourne [{url,label}, ...] ordonné par slot.
+    Table: public.style_images(season, slot, label, image_url)
+    - `label` = slug de style (boheme, casual, ...)
     """
-    style_db = normalize_style_for_db(style_label)
+    style_slug = normalize_style_for_db(style_label)
 
     sb = _client()
     res = (
         sb.table("style_images")
-        .select("slot,label,image_url,style,season")
+        .select("slot,label,image_url,season")
         .eq("season", season)
-        .ilike("style", style_db)   # tolère casse
+        .eq("label", style_slug)           # ✅ filtre sur la bonne colonne
         .order("slot", desc=False)
         .limit(limit)
         .execute()
     )
 
     rows = res.data or []
-    out = []
+    out: List[Dict[str, Any]] = []
+
     for r in rows:
-        url = r.get("image_url") or ""
-        label = r.get("label") or ""
-        # si tu veux reconstruire l'URL depuis un base public, tu peux :
-        # if _BUCKET_PUBLIC_BASE and not url:
-        #     url = f"{_BUCKET_PUBLIC_BASE}/{style_db.lower()}/{season}/slot-{int(r.get('slot')):02d}"
-        out.append({"url": url, "label": label})
+        url = (r.get("image_url") or "").strip()
+        # caption optionnel: tu peux mettre un libellé plus friendly si tu veux
+        caption = (r.get("label") or "").strip()
+        out.append({"url": url, "label": caption})
 
     return out
