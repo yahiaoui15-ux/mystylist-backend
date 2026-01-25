@@ -502,8 +502,8 @@ class PDFDataMapper:
             print(f"⚠️  Erreur style_visuals: {e}")
             liquid_data["style_visuals"] = []
 
-        return liquid_data
-        
+
+
         # ---------------------------------------------------------------------
         # PAGE 17 - VISUELS DE STYLE (style_visuals_page17) - 9 VISUELS
         # ---------------------------------------------------------------------
@@ -527,7 +527,8 @@ class PDFDataMapper:
             print(f"⚠️  Erreur style_visuals_page17: {e}")
             liquid_data["style_visuals_page17"] = []
 
-    
+        return liquid_data
+          
     @staticmethod
     def _transform_morphology_service_data(morphology_raw: dict, user_data: dict) -> dict:
         """Transforme morphology_service.analyze() en morphology_page1"""
