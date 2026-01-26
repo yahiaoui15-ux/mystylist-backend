@@ -13,7 +13,7 @@ import json
 from app.services.visuals import visuals_service
 from app.services.archetype_visual_selector import get_style_visuals_for_archetype
 from app.services.style_visuals_selector import get_style_visuals_for_style
-
+from app.services.style_visuals_selector import get_style_visuals_for_style, get_style_visuals_for_style_mix
 
 
 
@@ -546,11 +546,9 @@ class PDFDataMapper:
             for cand in candidates:
                 chosen = cand
                 print(f"\n   ▶ trying style_label={cand!r}")
-                style_visuals_page17 = get_style_visuals_for_style(
-                    style_label=cand,
-                    season="all",
-                    limit=9
-                ) or []
+                style_mix = page17.get("style_mix") or []
+                style_visuals_page17 = get_style_visuals_for_style_mix(style_mix=style_mix, season="all", total=9)
+
 
                 print(f"     • selector returned: {len(style_visuals_page17)} items")
                 if style_visuals_page17 and isinstance(style_visuals_page17[0], dict):

@@ -2,6 +2,7 @@
 import os
 from typing import List, Dict, Any
 from supabase import create_client
+from math import floor
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 
@@ -108,3 +109,89 @@ def get_style_visuals_for_style(style_label: str, season: str = "all", limit: in
         out.append({"url": url, "label": caption})
 
     return out
+
+def _allocate_counts(style_mix: List[Dict[str, Any]], total: int = 9) -> List[Dict[str, Any]]:
+    """
+    style_mix: [{"style":"Minimaliste","pct":70}, ...]
+    Retour: [{"style":"Minimaliste","n":6}, {"style":"Romantique","n":3}]
+    """
+    cleaned = []
+    for s in (style_mix or []):
+        if not isinstance(s, dict):
+            continue
+        name = (s.get("style") or "").strip()
+        pct = s.get("pct", 0)
+        try:
+            pct = float(pct)
+        except Exception:
+            pct = 0
+        if name and pct > 0:
+            cleaned.append({"style": name, "pct": pct})
+
+    if not cleaned:
+        return [{"style": "Casual", "n": total}]
+
+    # base: floors
+    base = []
+    used = 0
+    for item in cleaned:
+        n = int(floor((item["pct"] / 100.0) * total))
+        base.append({"style": item["style"], "pct": item["pct"], "n": n})
+        used += n
+
+    # distribuer le reste selon les plus grosses décimales
+    remainder = total - used
+    if remainder > 0:
+        fracs = []
+        for item in cleaned:
+            raw = (item["pct"] / 100.0) * total
+            fracs.append((raw - floor(raw), item["style"]))
+        fracs.sort(reverse=True)  # plus grosses décimales d'abord
+
+        # si égalité, ça reste stable (ordre)
+        idx_map = {b["style"]: i for i, b in enumerate(base)}
+        for _, st in fracs:
+            if remainder <= 0:
+                break
+            base[idx_map[st]]["n"] += 1
+            remainder -= 1
+
+    # garantir au moins 1 visuel pour les styles présents si total le permet
+    # (optionnel, mais utile pour éviter 0 si pct faible)
+    for b in base:
+        if b["n"] == 0 and total >= len(base):
+            b["n"] = 1
+    # re-normaliser si on a dépassé total
+    while sum(b["n"] for b in base) > total:
+        # enlever 1 au plus gros n
+        base.sort(key=lambda x: x["n"], reverse=True)
+        for b in base:
+            if b["n"] > 1:
+                b["n"] -= 1
+                break
+
+    # trier par pct décroissant (dominant d'abord)
+    base.sort(key=lambda x: x["pct"], reverse=True)
+    return [{"style": b["style"], "n": b["n"]} for b in base if b["n"] > 0]
+
+
+def get_style_visuals_for_style_mix(style_mix: List[Dict[str, Any]], season: str = "all", total: int = 9) -> List[Dict[str, Any]]:
+    """
+    Retourne une liste de 9 visuels répartis selon les %.
+    """
+    plan = _allocate_counts(style_mix, total=total)
+
+    out: List[Dict[str, Any]] = []
+    for p in plan:
+        n = p["n"]
+        if n <= 0:
+            continue
+        chunk = get_style_visuals_for_style(style_label=p["style"], season=season, limit=n)
+        out.extend(chunk)
+
+    # si jamais un style manque en DB, compléter avec le dominant
+    if len(out) < total:
+        dominant = plan[0]["style"] if plan else "Casual"
+        out.extend(get_style_visuals_for_style(style_label=dominant, season=season, limit=total - len(out)))
+
+    return out[:total]
