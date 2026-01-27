@@ -14,7 +14,9 @@ from app.services.visuals import visuals_service
 from app.services.archetype_visual_selector import get_style_visuals_for_archetype
 from app.services.style_visuals_selector import get_style_visuals_for_style
 from app.services.style_visuals_selector import get_style_visuals_for_style, get_style_visuals_for_style_mix
-
+import os
+import csv
+from app.services.product_matcher_service import product_matcher_service
 
 
 class PDFDataMapper:
@@ -95,7 +97,57 @@ class PDFDataMapper:
         color_info["name"]: hex_code
         for hex_code, color_info in COLOR_HEX_MAP.items()
     }
-    
+
+    _VISUALS_INDEX = None  # cache
+
+    @classmethod
+    def _load_visuals_index(cls) -> dict:
+        """
+        Charge la bibliothèque visuelle depuis CSV et indexe par nom_simplifie (visual_key).
+        Attend au minimum les colonnes: nom_simplifie, url_image
+        """
+        if cls._VISUALS_INDEX is not None:
+            return cls._VISUALS_INDEX
+
+        # 1) Chemin via env (recommandé)
+        csv_path = os.getenv("STYLE_VISUALS_CSV_PATH", "").strip()
+
+        # 2) Fallback: essaie un chemin local si tu poses le CSV dans /data ou /app/assets
+        fallback_paths = [
+            csv_path,
+            "data/visuels_rows.csv",
+            "app/assets/visuels_rows.csv",
+            "/mnt/data/visuels_rows (6).csv",  # utile en dev/local notebook
+        ]
+        csv_path = next((p for p in fallback_paths if p and os.path.exists(p)), "")
+
+        index = {}
+        if not csv_path:
+            cls._VISUALS_INDEX = index
+            return index
+
+        try:
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    key = (row.get("nom_simplifie") or "").strip().lower()
+                    url = (row.get("url_image") or "").strip()
+                    if key and url and key not in index:
+                        index[key] = url
+        except Exception as e:
+            print(f"⚠️ Erreur chargement visuels CSV: {e}")
+            index = {}
+
+        cls._VISUALS_INDEX = index
+        return index
+
+    @classmethod
+    def _visual_url_from_key(cls, visual_key: str) -> str:
+        if not visual_key:
+            return ""
+        idx = cls._load_visuals_index()
+        return idx.get(str(visual_key).strip().lower(), "")
+
     @staticmethod
     def generate_display_name(color_name: str) -> str:
         """Génère displayName depuis name"""
@@ -255,25 +307,60 @@ class PDFDataMapper:
         styling_raw["page19"]["categories"].setdefault("shoes", [])
         styling_raw["page19"]["categories"].setdefault("accessories", [])
 
-        # --- page20.formulas
-        styling_raw["page20"] = PDFDataMapper._safe_dict(styling_raw.get("page20", {}))
-        # si "formulas" existe mais n'est pas une liste -> on remet []
-        styling_raw["page20"]["formulas"] = (
-            styling_raw["page20"].get("formulas") if isinstance(styling_raw["page20"].get("formulas"), list) else []
-        )
+        # ---------------------------------------------------------------------
+        # STYLING VISUALS + PRODUCT MATCH (PAGES 18-19)
+        # ---------------------------------------------------------------------
+        from app.services.visuals_service import visuals_service
+        from app.services.product_matcher_service import product_matcher_service
 
-        # --- pages21_23.formula_X.(professional|weekend|evening).product_slots
-        styling_raw["pages21_23"] = PDFDataMapper._safe_dict(styling_raw.get("pages21_23", {}))
 
-        for fk in ["formula_1", "formula_2", "formula_3"]:
-            styling_raw["pages21_23"][fk] = PDFDataMapper._safe_dict(styling_raw["pages21_23"].get(fk, {}))
+        def _apply_fallback_visuals(items: list) -> list:
+            """
+            Ajoute item.image_url (fallback pédagogique) si:
+            - pas de match affilié (ou match.image_url vide)
+            - et visual_key présent
+            """
+            out = []
+            for it in items if isinstance(items, list) else []:
+                if not isinstance(it, dict):
+                    continue
 
-            for ctx in ["professional", "weekend", "evening"]:
-                styling_raw["pages21_23"][fk][ctx] = PDFDataMapper._safe_dict(styling_raw["pages21_23"][fk].get(ctx, {}))
+                # Normalise
+                it.setdefault("image_url", "")
+                vk = (it.get("visual_key") or "").strip()
 
-                # si "product_slots" existe mais n'est pas une liste -> on remet []
-                ps = styling_raw["pages21_23"][fk][ctx].get("product_slots")
-                styling_raw["pages21_23"][fk][ctx]["product_slots"] = ps if isinstance(ps, list) else []
+                # Si un match affilié existe, on laisse le HTML afficher match.image_url en priorité
+                match = it.get("match") if isinstance(it.get("match"), dict) else None
+                match_img = (match.get("image_url") if match else "") or ""
+
+                # Si pas d'image affiliée, on met fallback visuel pédagogique via table `visuels`
+                if not match_img and not it["image_url"] and vk:
+                    fb = visuals_service.get_url(vk)
+                    if fb:
+                        it["image_url"] = fb
+
+                out.append(it)
+            return out
+
+
+        # Page 18 - enrich affiliate matches
+        for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
+            items = styling_raw["page18"]["categories"].get(k, [])
+            # 1) match affilié
+            items = product_matcher_service.enrich_pieces(items, k)
+            # 2) fallback pédagogique si pas de match
+            items = _apply_fallback_visuals(items)
+            styling_raw["page18"]["categories"][k] = items
+
+        # Page 19 - enrich affiliate matches
+        for k in ["swim_lingerie", "shoes", "accessories"]:
+            items = styling_raw["page19"]["categories"].get(k, [])
+            # 1) match affilié
+            items = product_matcher_service.enrich_pieces(items, k)
+            # 2) fallback pédagogique si pas de match
+            items = _apply_fallback_visuals(items)
+            styling_raw["page19"]["categories"][k] = items
+
 
         
         # Page 8 & Pages 9-15
