@@ -1,9 +1,7 @@
-# app/services/product_matcher_service.py
 from typing import Dict, Any, List, Optional
 import re
 import hashlib
-from urllib.parse import urlparse
-
+import os
 import httpx
 
 from app.utils.supabase_client import supabase
@@ -14,34 +12,23 @@ class ProductMatcherService:
     Match une pièce IA (piece_title/spec/visual_key) vers:
     1) un produit affilié (VIEW SQL normalisée: pdt_products)
     2) sinon un visuel pédagogique de "visuels"
+    + Cache images affiliées dans Supabase Storage pour compat PDFMonkey
     """
 
     VISUELS_TYPE_MAP = {
         "tops": "haut",
         "bottoms": "bas",
         "dresses_playsuits": "robe",
-        "outerwear": "haut",         # ou "veste" selon ta table visuels
-        "swim_lingerie": "lingerie", # ou "maillot_lingerie"
+        "outerwear": "haut",
+        "swim_lingerie": "lingerie",
         "shoes": "chaussures",
         "accessories": "accessoire",
     }
 
-    # Mots-clés attendus par catégorie pour éviter les matches absurdes (robe -> basket, etc.)
-    AFFILIATE_KEYWORDS_BY_CATEGORY = {
-        "tops": ["blouse", "chemise", "top", "pull", "gilet", "tshirt", "t-shirt", "cardigan", "maille", "tee-shirt"],
-        "bottoms": ["pantalon", "jean", "jupe", "short", "legging"],
-        "dresses_playsuits": ["robe", "combinaison", "salopette"],
-        "outerwear": ["manteau", "veste", "blazer", "trench", "parka"],
-        "swim_lingerie": ["soutien", "culotte", "lingerie", "maillot", "bikini", "brassiere", "brassière"],
-        "shoes": ["bottines", "escarpins", "baskets", "sandales", "boots", "mocassins", "derbies", "ballerines"],
-        "accessories": ["sac", "ceinture", "collier", "boucles", "bracelet", "foulard", "écharpe", "chapeau", "bijou"],
-    }
+    AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
 
     def __init__(self):
         self.client = supabase.get_client()
-        # Bucket Supabase Storage PUBLIC dans lequel tu caches les images affiliées
-        # ⚠️ Mets le nom EXACT de ton bucket public
-        self.public_bucket = "public-assets"
 
     # -------------------------
     # Public API
@@ -57,24 +44,17 @@ class ProductMatcherService:
         return out
 
     def match_piece(self, piece: Dict[str, Any], category: str) -> Dict[str, Any]:
-        """
-        Retourne un dict standard:
-        {
-          image_url, product_url, source, title, brand, price
-        }
-        """
         piece_title = (piece.get("piece_title") or "").strip()
         spec = (piece.get("spec") or "").strip()
         visual_key = (piece.get("visual_key") or "").strip()
 
-        # 1) Try affiliate match (via view pdt_products)
         affiliate = self._find_affiliate_product(piece_title=piece_title, spec=spec, category=category)
         if affiliate:
             raw_img = affiliate.get("image_url", "") or ""
-            cached_img = self._cache_image_to_supabase(raw_img) if raw_img else ""
+            safe_img = self._ensure_cached_public_image(raw_img, affiliate)
 
             return {
-                "image_url": cached_img or raw_img or "",
+                "image_url": safe_img,
                 "product_url": affiliate.get("product_url", "") or "",
                 "source": "affiliate",
                 "title": affiliate.get("title", "") or piece_title,
@@ -82,7 +62,6 @@ class ProductMatcherService:
                 "price": str(affiliate.get("price", "") or ""),
             }
 
-        # 2) Fallback visuel table "visuels"
         visual = self._find_visual_by_key(visual_key=visual_key, category=category)
         if visual:
             return {
@@ -94,7 +73,6 @@ class ProductMatcherService:
                 "price": "",
             }
 
-        # 3) Last resort
         return {
             "image_url": "",
             "product_url": "",
@@ -105,15 +83,90 @@ class ProductMatcherService:
         }
 
     # -------------------------
+    # Image cache (Supabase Storage)
+    # -------------------------
+    def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
+        """
+        Retourne une URL publique Supabase si possible (cache),
+        sinon retombe sur l'URL originale.
+        """
+        if not image_url:
+            return ""
+
+        # Si c'est déjà une URL Supabase Storage publique, on ne retélécharge pas
+        if "supabase.co/storage/v1/object/public" in image_url:
+            return image_url
+
+        try:
+            product_id = str(affiliate_row.get("product_id") or "")
+            title = str(affiliate_row.get("title") or "")
+            key_seed = f"{product_id}|{title}|{image_url}"
+            h = hashlib.sha256(key_seed.encode("utf-8")).hexdigest()[:24]
+
+            # Choix extension basique (jpg par défaut)
+            ext = "jpg"
+            low = image_url.lower()
+            if ".png" in low:
+                ext = "png"
+            elif ".webp" in low:
+                ext = "webp"
+            elif ".jpeg" in low:
+                ext = "jpeg"
+
+            object_path = f"pdt/{h}.{ext}"
+
+            bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
+
+            # 1) Si le fichier existe déjà, on renvoie l'URL publique
+            try:
+                public = bucket.get_public_url(object_path)
+                # get_public_url renvoie une string ou dict selon versions; on normalise
+                if isinstance(public, dict) and public.get("publicUrl"):
+                    return public["publicUrl"]
+                if isinstance(public, str) and public.strip():
+                    return public
+            except Exception:
+                pass
+
+            # 2) Télécharger l'image
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            }
+            r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
+            r.raise_for_status()
+
+            content_type = r.headers.get("content-type", "")
+            data = r.content
+            if not data or len(data) < 200:
+                return image_url
+
+            # 3) Upload (upsert pour éviter erreurs)
+            bucket.upload(
+                path=object_path,
+                file=data,
+                file_options={
+                    "content-type": content_type or f"image/{ext}",
+                    "upsert": "true",
+                },
+            )
+
+            public = bucket.get_public_url(object_path)
+            if isinstance(public, dict) and public.get("publicUrl"):
+                return public["publicUrl"]
+            if isinstance(public, str) and public.strip():
+                return public
+
+            return image_url
+
+        except Exception as e:
+            print(f"⚠️ Image cache failed: {e}")
+            return image_url
+
+    # -------------------------
     # Private: AFFILIATE MATCH (VIEW pdt_products)
     # -------------------------
     def _find_affiliate_product(self, piece_title: str, spec: str, category: str) -> Optional[Dict[str, Any]]:
-        """
-        Amélioré:
-        - récupère jusqu'à 10 candidats
-        - score les candidats (cohérence catégorie + overlap mots)
-        - retourne le meilleur si score > 0
-        """
         kws = self._extract_keywords(piece_title, spec)
 
         select_fields = ",".join([
@@ -133,7 +186,6 @@ class ProductMatcherService:
             "gender",
         ])
 
-        # 1) keyword tries
         for kw in kws[:4]:
             try:
                 resp = (
@@ -141,18 +193,15 @@ class ProductMatcherService:
                     .table("pdt_products")
                     .select(select_fields)
                     .or_(f"title.ilike.%{kw}%,description_short.ilike.%{kw}%")
-                    .limit(10)
+                    .limit(1)
                     .execute()
                 )
                 data = getattr(resp, "data", None) or []
                 if data:
-                    best = max(data, key=lambda c: self._score_candidate(piece_title, spec, c, category))
-                    if self._score_candidate(piece_title, spec, best, category) > 0:
-                        return best
+                    return data[0]
             except Exception as e:
                 print(f"⚠️ Affiliate match kw failed ({kw}): {e}")
 
-        # 2) fallback: full title
         if piece_title:
             try:
                 safe_title = piece_title.replace("%", "").strip()
@@ -161,54 +210,18 @@ class ProductMatcherService:
                     .table("pdt_products")
                     .select(select_fields)
                     .or_(f"title.ilike.%{safe_title}%,description_short.ilike.%{safe_title}%")
-                    .limit(10)
+                    .limit(1)
                     .execute()
                 )
                 data = getattr(resp, "data", None) or []
                 if data:
-                    best = max(data, key=lambda c: self._score_candidate(piece_title, spec, c, category))
-                    if self._score_candidate(piece_title, spec, best, category) > 0:
-                        return best
+                    return data[0]
             except Exception as e:
                 print(f"⚠️ Affiliate match title fallback failed: {e}")
 
         return None
 
-    def _score_candidate(self, piece_title: str, spec: str, cand: Dict[str, Any], category: str) -> int:
-        """
-        Score simple mais efficace:
-        + overlap keywords
-        + bonus si mots-clés catégorie présents
-        - forte pénalité si incohérent avec la catégorie
-        """
-        title = (cand.get("title") or "").lower()
-        desc = (cand.get("description_short") or "").lower()
-        blob = f"{title} {desc}"
-
-        score = 0
-
-        # overlap mots
-        for w in self._extract_keywords(piece_title, spec):
-            if w and w in blob:
-                score += 2
-
-        expected = self.AFFILIATE_KEYWORDS_BY_CATEGORY.get(category, [])
-        if expected:
-            if any(k in blob for k in expected):
-                score += 8
-                # bonus si le titre contient un mot “très typant”
-                for k in expected[:3]:
-                    if k in title:
-                        score += 3
-            else:
-                score -= 12  # pénalité forte si hors catégorie
-
-        return score
-
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
-        """
-        Ex: "Blouse fluide à col V" -> ["col v","blouse","fluide",...]
-        """
         text = f"{piece_title} {spec}".lower()
         text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", text)
         text = re.sub(r"\s{2,}", " ", text).strip()
@@ -252,65 +265,9 @@ class ProductMatcherService:
         return final[:8]
 
     # -------------------------
-    # Private: CACHE IMAGES (fix PDFMonkey broken images)
-    # -------------------------
-    def _cache_image_to_supabase(self, image_url: str) -> str:
-        """
-        Télécharge l'image distante (CDN) et la ré-upload dans Supabase Storage public.
-        Retourne l'URL publique Supabase, sinon fallback sur l'url originale.
-        """
-        if not image_url:
-            return ""
-
-        h = hashlib.sha1(image_url.encode("utf-8")).hexdigest()
-
-        ext = ".jpg"
-        path = urlparse(image_url).path.lower()
-        if path.endswith(".png"):
-            ext = ".png"
-        elif path.endswith(".webp"):
-            ext = ".webp"
-        elif path.endswith(".jpeg"):
-            ext = ".jpeg"
-
-        filename = f"affiliate_cache/{h}{ext}"
-
-        try:
-            r = httpx.get(
-                image_url,
-                timeout=20,
-                follow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0"},
-            )
-            r.raise_for_status()
-
-            content_type = r.headers.get("content-type", "image/jpeg")
-
-            # Supabase python: upload + upsert
-            self.client.storage.from_(self.public_bucket).upload(
-                filename,
-                r.content,
-                {"content-type": content_type, "upsert": "true"},
-            )
-
-            public_url = self.client.storage.from_(self.public_bucket).get_public_url(filename)
-            return public_url or image_url
-        except Exception as e:
-            print(f"⚠️ Image cache failed: {e} url={image_url}")
-            return image_url
-
-    # -------------------------
     # Private: VISUELS FALLBACK
     # -------------------------
     def _find_visual_by_key(self, visual_key: str, category: str) -> Optional[Dict[str, Any]]:
-        """
-        Table: public.visuels
-        Colonnes:
-          - nom_simplifie (text)
-          - type_vetement (text)
-          - coupe (text)
-          - url_image (text)
-        """
         if not visual_key:
             return None
 
@@ -332,7 +289,6 @@ class ProductMatcherService:
             if data:
                 return data[0]
 
-            # retry sans filtre type_vetement
             resp2 = (
                 self.client
                 .table("visuels")
