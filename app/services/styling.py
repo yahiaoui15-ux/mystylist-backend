@@ -1305,6 +1305,8 @@ JSON À CORRIGER :
                     out.append({
                         "piece_title": self._one_line(self._ensure_str(it.get("piece_title"), "")),
                         "spec": self._one_line(self._ensure_str(it.get("spec"), "")),
+                        "visual_key": self._one_line(self._ensure_str(it.get("visual_key"), "")),
+                        "image_url": self._one_line(self._ensure_str(it.get("image_url"), "")),
                         "recommended_colors": self._ensure_list(it.get("recommended_colors"), []),
                         "recommended_patterns": self._ensure_list(it.get("recommended_patterns"), []),
                         "accessories_pairing": self._one_line(self._ensure_str(it.get("accessories_pairing"), "")),

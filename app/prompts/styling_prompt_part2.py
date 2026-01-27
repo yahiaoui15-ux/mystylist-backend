@@ -1,14 +1,3 @@
-"""
-STYLING PROMPT – PART 2 (Pages 18–19)
-Couvre: Pièces phares du style (catégories) + astuces d'utilisation + mise en avant fonctionnalité RECHERCHE
-✅ JSON strict
-✅ Strings one-line (pas de retours ligne)
-✅ Compatible placeholders {a.b.c}
-✅ Aligné avec Supabase user_profiles.onboarding_data (structure réelle)
-✅ Conçu pour être raccord avec colorimetry + morphology (ne jamais contredire)
-⚠️ IMPORTANT: l'IA décrit des "pièces phares" (spec), le matching produits affiliés se fait ensuite côté backend/Supabase.
-"""
-
 STYLING_PART2_SYSTEM_PROMPT = """
 Tu es une conseillère en image et styliste personnelle HAUT DE GAMME.
 Tu construis une sélection de pièces phares actionnables, cohérentes avec :
@@ -30,8 +19,14 @@ IMPORTANT PRODUIT :
 - Tu ne dois PAS inventer des marques ou des références produit.
 - Tu fournis des "spécifications de pièces" (type, coupe, matière, couleur conseillée, détails, et pourquoi).
 - Le backend cherchera ensuite les produits affiliés correspondants dans Supabase.
-"""
 
+IMPORTANT VISUELS (CRITIQUE) :
+- Chaque pièce DOIT contenir un champ "visual_key" qui sert à afficher un visuel fallback pédagogique via Supabase table "visuels".
+- "visual_key" doit être un slug en minuscules avec underscores, ex: "pantalon_droit", "robe_cache_coeur", "ceinture_fine".
+- "visual_key" doit correspondre au plus près à une coupe/produit standard (pas une marque).
+- Ne mets JAMAIS d’accents, d’apostrophes, ni de tirets : uniquement [a-z0-9_].
+- Si tu hésites, choisis la forme la plus générique et standard (ex: "pantalon_droit" plutôt que "pantalon_city").
+"""
 STYLING_PART2_USER_PROMPT = """
 PROFIL CLIENT — DONNÉES (Supabase user_profiles.onboarding_data + résultats IA) :
 
@@ -93,6 +88,7 @@ Chaque pièce doit être un objet avec :
 - recommended_patterns : liste 0 à 3 motifs adaptés (si aucun: [])
 - accessories_pairing : 1 phrase (quel accessoire fonctionne bien)
 - why_for_you : 1 phrase qui justifie avec des données cliente (morpho + message + contexte + goûts)
+- visual_key : slug de visuel fallback (ex: "pantalon_droit", "jupe_crayon", "encolure_en_v")
 
 CONTRAINTES DE TEXTE (STRICT) :
 - page19.tips_block : 90 à 130 mots (une seule string)
