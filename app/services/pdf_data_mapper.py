@@ -10,15 +10,12 @@ PDF Data Mapper v5.3 - CORRIGÉ COMPLET
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
-from app.services.visuals import visuals_service
 from app.services.archetype_visual_selector import get_style_visuals_for_archetype
-from app.services.style_visuals_selector import get_style_visuals_for_style
 from app.services.style_visuals_selector import get_style_visuals_for_style, get_style_visuals_for_style_mix
 import os
 import csv
 from app.services.product_matcher_service import product_matcher_service
 from app.services.visuals_service import visuals_service
-from app.services.product_matcher_service import product_matcher_service
 
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
@@ -135,6 +132,7 @@ class PDFDataMapper:
                     url = (row.get("url_image") or "").strip()
                     if key and url and key not in index:
                         index[key] = url
+
         except Exception as e:
             print(f"⚠️ Erreur chargement visuels CSV: {e}")
             index = {}
@@ -757,9 +755,9 @@ class PDFDataMapper:
         categories_data = {}
         category_names = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
         
-# Remplace intégralement le bloc "for category_name in category_names:" dans
-# PDFDataMapper._generate_morphology_categories() (fichier pdf_data_mapper.py)
-# par ce bloc-ci, SANS aucune ligne de diff.
+        # Remplace intégralement le bloc "for category_name in category_names:" dans
+        # PDFDataMapper._generate_morphology_categories() (fichier pdf_data_mapper.py)
+        # par ce bloc-ci, SANS aucune ligne de diff.
 
         for category_name in category_names:
             # Récupérer depuis OpenAI s'il existe (safe)
