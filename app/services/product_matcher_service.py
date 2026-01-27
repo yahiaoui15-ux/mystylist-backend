@@ -1,7 +1,8 @@
 from typing import Dict, Any, List, Optional
 import re
 
-from app.supabase_client import supabase
+from app.utils.supabase_client import supabase
+
 
 
 
