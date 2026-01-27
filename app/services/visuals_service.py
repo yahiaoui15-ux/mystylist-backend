@@ -1,7 +1,6 @@
 from functools import lru_cache
 from typing import Dict, Optional
-
-from app.db.supabase_client import supabase
+from app.utils.supabase_client import supabase
 
 
 class VisualsService:

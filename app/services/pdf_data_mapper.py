@@ -17,7 +17,8 @@ from app.services.style_visuals_selector import get_style_visuals_for_style, get
 import os
 import csv
 from app.services.product_matcher_service import product_matcher_service
-
+from app.services.visuals_service import visuals_service
+from app.services.product_matcher_service import product_matcher_service
 
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
@@ -310,8 +311,7 @@ class PDFDataMapper:
         # ---------------------------------------------------------------------
         # STYLING VISUALS + PRODUCT MATCH (PAGES 18-19)
         # ---------------------------------------------------------------------
-        from app.services.visuals_service import visuals_service
-        from app.services.product_matcher_service import product_matcher_service
+ 
 
 
         def _apply_fallback_visuals(items: list) -> list:
