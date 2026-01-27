@@ -340,14 +340,28 @@ class PDFDataMapper:
                 out.append(it)
             return out
 
-
         # Page 18 - enrich affiliate matches
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             items = styling_raw["page18"]["categories"].get(k, [])
+
             # 1) match affilié
             items = product_matcher_service.enrich_pieces(items, k)
+
+            # 🔴 DEBUG TEMPORAIRE – À NE FAIRE QUE POUR tops
+            if k == "tops" and items:
+                import json
+                print("\n🧪 DEBUG PAGE18 / TOPS (APRÈS enrich_pieces)")
+                print(json.dumps(items[0], ensure_ascii=False, indent=2))
+
             # 2) fallback pédagogique si pas de match
             items = _apply_fallback_visuals(items)
+
+            # 🔴 DEBUG TEMPORAIRE – APRÈS fallback
+            if k == "tops" and items:
+                import json
+                print("\n🧪 DEBUG PAGE18 / TOPS (APRÈS fallback)")
+                print(json.dumps(items[0], ensure_ascii=False, indent=2))
+
             styling_raw["page18"]["categories"][k] = items
 
         # Page 19 - enrich affiliate matches
