@@ -1,7 +1,8 @@
 from typing import Dict, Any, List, Optional
 import re
 
-from app.db.supabase_client import supabase
+from app.supabase_client import supabase
+
 
 
 class ProductMatcherService:
