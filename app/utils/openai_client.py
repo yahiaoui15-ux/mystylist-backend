@@ -1,7 +1,12 @@
 import os
 import time
-from typing import Optional, Dict, Any, List
+import base64
+import mimetypes
+import re
 
+import httpx
+
+from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
 
 
@@ -67,6 +72,36 @@ class OpenAIClient:
                 "step": self._context_step,
             },
         }
+    
+    _DATA_URL_RE = re.compile(r"^data:image\/[a-zA-Z0-9.+-]+;base64,")
+
+    def _guess_mime(self, url: str, content_type: Optional[str]) -> str:
+        if content_type and content_type.startswith("image/"):
+            return content_type.split(";")[0].strip()
+        mime, _ = mimetypes.guess_type(url)
+        return mime or "image/jpeg"
+
+    async def _to_data_url(self, image_url: str, timeout: float = 20.0) -> str:
+        """
+        Convertit une URL (Supabase/public) en data URL base64.
+        Si c'est déjà une data URL, renvoie tel quel.
+        """
+        if not image_url:
+            return image_url
+
+        u = image_url.strip()
+        if self._DATA_URL_RE.match(u):
+            return u
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+            r = await client.get(u)
+            r.raise_for_status()
+
+            content_type = r.headers.get("content-type")
+            mime = self._guess_mime(u, content_type)
+
+            b64 = base64.b64encode(r.content).decode("utf-8")
+            return f"data:{mime};base64,{b64}"
 
     # ---------------------------------------------------------------------
     # Chat texte (services appellent call_chat(prompt=..., ...))
@@ -126,11 +161,29 @@ class OpenAIClient:
 
         # Construction du contenu multi-part
         content_parts: List[Dict[str, Any]] = [{"type": "text", "text": str(prompt or "")}]
+
+        # DEBUG (utile pour diagnostiquer)
+        print("DEBUG analyze_image:")
+        print(" - used_model:", used_model)
+        print(" - images_count:", len(image_urls or []))
+
         for url in (image_urls or []):
             u = str(url or "").strip()
             if not u:
                 continue
-            content_parts.append({"type": "image_url", "image_url": {"url": u}})
+
+            # DEBUG avant conversion
+            print(" - image_url raw (preview):", u[:120])
+
+            # ✅ conversion URL -> data URL base64
+            data_url = await self._to_data_url(u)
+
+            # DEBUG après conversion
+            print(" - image_url data prefix:", data_url[:35])
+            print(" - image_url data length:", len(data_url))
+
+            content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+
 
         messages = []
         if self._system_prompt:
