@@ -8,8 +8,6 @@ import httpx
 
 from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
-from io import BytesIO
-from PIL import Image  # pip install pillow
 
 
 
@@ -84,35 +82,9 @@ class OpenAIClient:
         mime, _ = mimetypes.guess_type(url)
         return mime or "image/jpeg"
 
-    async def _to_data_url(self, image_url: str, timeout: float = 20.0, max_width: int = 1024, jpeg_quality: int = 75) -> str:
-        """
-        Convertit une URL (Supabase/public) en data URL base64.
-        + OPTIM : resize + jpeg compression pour réduire les image-tokens.
-        Si c'est déjà une data URL, renvoie tel quel.
-        """
-        if not image_url:
-            return image_url
-
-        u = image_url.strip()
-        if self._DATA_URL_RE.match(u):
-            return u
-
-        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-            r = await client.get(u)
-            r.raise_for_status()
-
-            # --- OPTIM : resize/compress ---
-            img = Image.open(BytesIO(r.content)).convert("RGB")
-
-            if img.width > max_width:
-                new_h = int(img.height * (max_width / img.width))
-                img = img.resize((max_width, new_h), Image.LANCZOS)
-
-            buf = BytesIO()
-            img.save(buf, format="JPEG", quality=jpeg_quality, optimize=True)
-
-            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            return f"data:image/jpeg;base64,{b64}"
+    def _to_data_url(self, image_bytes: bytes, mime: str = "image/jpeg") -> str:
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     # ---------------------------------------------------------------------
     # Chat texte (services appellent call_chat(prompt=..., ...))
