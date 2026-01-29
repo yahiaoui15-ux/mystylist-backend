@@ -3,12 +3,10 @@ import time
 import base64
 import mimetypes
 import re
+from typing import Optional, Dict, Any, List
 
 import httpx
-
-from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
-
 
 
 class OpenAIClient:
@@ -58,7 +56,11 @@ class OpenAIClient:
     ) -> Dict[str, Any]:
         prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
         completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0
-        total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or (prompt_tokens + completion_tokens)) if usage else (prompt_tokens + completion_tokens)
+        total_tokens = (
+            int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or (prompt_tokens + completion_tokens))
+            if usage
+            else (prompt_tokens + completion_tokens)
+        )
 
         return {
             "content": (content or "").strip(),
@@ -73,8 +75,8 @@ class OpenAIClient:
                 "step": self._context_step,
             },
         }
-    
-    _DATA_URL_RE = re.compile(r"^data:image\/[a-zA-Z0-9.+-]+;base64,")
+
+    _DATA_URL_RE = re.compile(r"^data:image\/[a-zA-Z0-9.+-]+;base64,", re.IGNORECASE)
 
     def _guess_mime(self, url: str, content_type: Optional[str]) -> str:
         if content_type and content_type.startswith("image/"):
@@ -82,9 +84,36 @@ class OpenAIClient:
         mime, _ = mimetypes.guess_type(url)
         return mime or "image/jpeg"
 
-    def _to_data_url(self, image_bytes: bytes, mime: str = "image/jpeg") -> str:
+    def _bytes_to_data_url(self, image_bytes: bytes, mime: str = "image/jpeg") -> str:
         b64 = base64.b64encode(image_bytes).decode("utf-8")
         return f"data:{mime};base64,{b64}"
+
+    async def _url_to_data_url(self, url: str) -> str:
+        """
+        Convertit:
+        - data:image/... => renvoie tel quel
+        - https://... => télécharge en bytes puis encode en data URL
+        """
+        u = str(url or "").strip()
+        if not u:
+            raise ValueError("Empty image url")
+
+        # Déjà une data URL => ok
+        if self._DATA_URL_RE.match(u):
+            return u
+
+        # Téléchargement en BYTES (pas text)
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(u, follow_redirects=True)
+            r.raise_for_status()
+
+            image_bytes = r.content  # bytes
+            if isinstance(image_bytes, str):
+                # Fallback (ne devrait pas arriver si r.content)
+                image_bytes = image_bytes.encode("utf-8")
+
+            mime = self._guess_mime(u, r.headers.get("content-type"))
+            return self._bytes_to_data_url(image_bytes, mime=mime)
 
     # ---------------------------------------------------------------------
     # Chat texte (services appellent call_chat(prompt=..., ...))
@@ -159,15 +188,13 @@ class OpenAIClient:
             print(" - image_url raw (preview):", u[:120])
 
             # ✅ conversion URL -> data URL base64
-            data_url = await self._to_data_url(u)
+            data_url = await self._url_to_data_url(u)
 
             # DEBUG après conversion
             print(" - image_url data prefix:", data_url[:35])
             print(" - image_url data length:", len(data_url))
 
             content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
-
-
 
         messages = []
         if self._system_prompt:
