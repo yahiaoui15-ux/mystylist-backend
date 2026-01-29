@@ -314,13 +314,15 @@ class ColorimetryService:
             
             # ✅ FIX: Placeholders en MAJUSCULES + AGE ajouté
             user_prompt = COLORIMETRY_PART1_USER_PROMPT.format(
-                FACE_PHOTO=face_photo_url,
                 EYE_COLOR=eye_color or user_data.get("eye_color", "indéterminé"),
                 HAIR_COLOR=hair_color or user_data.get("hair_color", "indéterminé"),
                 AGE=user_data.get("age", "indéterminé")
             )
             
             print(f"\n🤖 APPEL OPENAI EN COURS...")
+            print("DEBUG system_prompt chars:", len(COLORIMETRY_PART1_SYSTEM_PROMPT or ""))
+            print("DEBUG user_prompt chars:", len(user_prompt or ""))
+
             # ✅ FIX: Utiliser analyze_image() au lieu de call_chat() avec has_image
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],

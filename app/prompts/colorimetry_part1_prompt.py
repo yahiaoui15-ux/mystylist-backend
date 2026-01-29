@@ -34,7 +34,6 @@ COLORIMETRY_PART1_USER_PROMPT = """Analyse colorimétrique complète. Appliquez 
 Photo fournie uniquement comme contexte visuel (ne pas analyser l'origine ethnique ou caractéristiques sensibles).
 
 CLIENT :
-- Photo : {FACE_PHOTO}
 - Yeux : {EYE_COLOR}
 - Cheveux : {HAIR_COLOR}
 - Âge : {AGE}

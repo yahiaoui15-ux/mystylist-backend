@@ -1,6 +1,5 @@
 import os
 import time
-
 import re
 from typing import Optional, Dict, Any, List
 
@@ -22,18 +21,13 @@ class OpenAIClient:
 
         self.client = AsyncOpenAI(api_key=api_key)
 
-        # Modèles par défaut (override via env si besoin)
         self.default_chat_model = (os.getenv("OPENAI_CHAT_MODEL") or "gpt-4o-mini").strip()
         self.default_vision_model = (os.getenv("OPENAI_VISION_MODEL") or "gpt-4o-mini").strip()
 
-        # Contexte + system prompt (pilotés par tes services)
         self._context_scope: str = ""
         self._context_step: str = ""
         self._system_prompt: str = ""
 
-    # ---------------------------------------------------------------------
-    # Compat API projet (utilisée partout dans tes services)
-    # ---------------------------------------------------------------------
     def set_context(self, scope: str, step: str = "") -> None:
         self._context_scope = str(scope or "")
         self._context_step = str(step or "")
@@ -41,9 +35,6 @@ class OpenAIClient:
     def set_system_prompt(self, system_prompt: str) -> None:
         self._system_prompt = str(system_prompt or "")
 
-    # ---------------------------------------------------------------------
-    # Helpers
-    # ---------------------------------------------------------------------
     def _build_return(
         self,
         content: str,
@@ -68,54 +59,11 @@ class OpenAIClient:
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
             "duration_seconds": round(time.time() - started_at, 3),
-            "context": {
-                "scope": self._context_scope,
-                "step": self._context_step,
-            },
+            "context": {"scope": self._context_scope, "step": self._context_step},
         }
 
     _DATA_URL_RE = re.compile(r"^data:image\/[a-zA-Z0-9.+-]+;base64,", re.IGNORECASE)
 
-    def _guess_mime(self, url: str, content_type: Optional[str]) -> str:
-        if content_type and content_type.startswith("image/"):
-            return content_type.split(";")[0].strip()
-        mime, _ = mimetypes.guess_type(url)
-        return mime or "image/jpeg"
-
-    def _bytes_to_data_url(self, image_bytes: bytes, mime: str = "image/jpeg") -> str:
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        return f"data:{mime};base64,{b64}"
-
-    async def _url_to_data_url(self, url: str) -> str:
-        """
-        Convertit:
-        - data:image/... => renvoie tel quel
-        - https://... => télécharge en bytes puis encode en data URL
-        """
-        u = str(url or "").strip()
-        if not u:
-            raise ValueError("Empty image url")
-
-        # Déjà une data URL => ok
-        if self._DATA_URL_RE.match(u):
-            return u
-
-        # Téléchargement en BYTES (pas text)
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(u, follow_redirects=True)
-            r.raise_for_status()
-
-            image_bytes = r.content  # bytes
-            if isinstance(image_bytes, str):
-                # Fallback (ne devrait pas arriver si r.content)
-                image_bytes = image_bytes.encode("utf-8")
-
-            mime = self._guess_mime(u, r.headers.get("content-type"))
-            return self._bytes_to_data_url(image_bytes, mime=mime)
-
-    # ---------------------------------------------------------------------
-    # Chat texte (services appellent call_chat(prompt=..., ...))
-    # ---------------------------------------------------------------------
     async def call_chat(
         self,
         prompt: str,
@@ -154,9 +102,6 @@ class OpenAIClient:
             started_at=started_at,
         )
 
-    # ---------------------------------------------------------------------
-    # Vision (services appellent analyze_image(image_urls=[...], prompt=..., ...))
-    # ---------------------------------------------------------------------
     async def analyze_image(
         self,
         image_urls: List[str],
@@ -169,11 +114,16 @@ class OpenAIClient:
         used_model = (model or self.default_vision_model).strip()
         started_at = time.time()
 
+        vision_detail = (os.getenv("OPENAI_VISION_DETAIL") or "low").strip().lower()
+        if vision_detail not in ("low", "high", "auto"):
+            vision_detail = "low"
+
         content_parts: List[Dict[str, Any]] = [{"type": "text", "text": str(prompt or "")}]
 
         print("DEBUG analyze_image:")
         print(" - used_model:", used_model)
         print(" - images_count:", len(image_urls or []))
+        print(" - vision_detail:", vision_detail)
 
         for url in (image_urls or []):
             u = str(url or "").strip()
@@ -182,18 +132,19 @@ class OpenAIClient:
 
             print(" - image_url raw (preview):", u[:120])
 
-            # ✅ IMPORTANT: ne pas convertir en base64 (sinon explosion tokens)
-            # On envoie l'URL directement.
-            # Si c'est déjà un data URL (cas rare), on le laisse tel quel.
+            # IMPORTANT: on n'encode PAS en base64 (sinon tokens explosent).
+            # Si data URL, on la garde. Sinon on envoie l'URL distante.
+            final_url = u
             if self._DATA_URL_RE.match(u):
-                final_url = u
                 print(" - image_url mode: data_url (already)")
             else:
-                final_url = u
                 print(" - image_url mode: remote_url")
 
             content_parts.append(
-                {"type": "image_url", "image_url": {"url": final_url}}
+                {
+                    "type": "image_url",
+                    "image_url": {"url": final_url, "detail": vision_detail},
+                }
             )
 
         messages = []
@@ -222,7 +173,6 @@ class OpenAIClient:
             finish_reason=finish_reason,
             started_at=started_at,
         )
-
 
 
 openai_client = OpenAIClient()
