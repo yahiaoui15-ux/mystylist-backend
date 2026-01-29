@@ -207,7 +207,7 @@ class MorphologyService:
             response_part1 = await self.openai.analyze_image(
                 image_urls=[body_photo_url],
                 prompt=user_prompt_part1,
-                model="gpt-4-turbo",
+                # ✅ ne pas forcer gpt-4-turbo ici (vision)
                 max_tokens=800
             )
             print("✅ RÉPONSE REÇUE")

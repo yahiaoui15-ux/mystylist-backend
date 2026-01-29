@@ -325,7 +325,7 @@ class ColorimetryService:
             response = await self.openai.analyze_image(
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
-                model="gpt-4-turbo",
+            # ✅ ne pas forcer gpt-4-turbo ici (vision)
                 max_tokens=1000
             )
             print(f"✅ RÉPONSE REÇUE")
