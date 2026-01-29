@@ -16,7 +16,9 @@ except ImportError:
 
 class OpenAIClient:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        if not OPENAI_API_KEY or not str(OPENAI_API_KEY).strip():
+            raise RuntimeError("OPENAI_API_KEY is missing or empty")
+        self.client = AsyncOpenAI(api_key=str(OPENAI_API_KEY).strip())
         self._current_system_prompt = ""
         self._current_section = ""
         self._current_subsection = ""
@@ -42,7 +44,13 @@ class OpenAIClient:
             return f"data:{content_type};base64,{b64}"
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def analyze_image(self, image_urls: list, prompt: str, model: str = "gpt-4-turbo", max_tokens: int = 4000):
+    async def analyze_image(
+        self,
+        image_urls: list,
+        prompt: str,
+        model: str = "gpt-4-turbo",
+        max_tokens: int = 4000,
+    ):
         try:
             # 1) Construire contenu (texte + images en data URL)
             content = [{"type": "text", "text": prompt}]
@@ -60,7 +68,7 @@ class OpenAIClient:
             response = await self.client.chat.completions.create(
                 model=model,
                 max_tokens=max_tokens,
-                messages=messages
+                messages=messages,
             )
 
             content_text = response.choices[0].message.content
@@ -76,14 +84,14 @@ class OpenAIClient:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     raw_response_preview=content_text,
-                    parse_success=True
+                    parse_success=True,
                 )
 
             return {
                 "content": content_text,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens
+                "total_tokens": total_tokens,
             }
 
         except Exception as e:
@@ -91,6 +99,12 @@ class OpenAIClient:
             if HAS_CALL_TRACKER:
                 call_tracker.log_error(
                     section=self._current_section or "OpenAI",
-                    error_msg=f"Vision call failed: {str(e)}"
+                    error_msg=f"Vision call failed: {str(e)}",
                 )
             raise
+
+
+# ✅ IMPORTANT: export attendu par le reste du codebase
+openai_client = OpenAIClient()
+
+__all__ = ["OpenAIClient", "openai_client"]
