@@ -1,11 +1,9 @@
 import os
 import time
-import base64
-import mimetypes
+
 import re
 from typing import Optional, Dict, Any, List
 
-import httpx
 from openai import AsyncOpenAI
 
 
@@ -171,10 +169,8 @@ class OpenAIClient:
         used_model = (model or self.default_vision_model).strip()
         started_at = time.time()
 
-        # Construction du contenu multi-part
         content_parts: List[Dict[str, Any]] = [{"type": "text", "text": str(prompt or "")}]
 
-        # DEBUG (utile pour diagnostiquer)
         print("DEBUG analyze_image:")
         print(" - used_model:", used_model)
         print(" - images_count:", len(image_urls or []))
@@ -184,17 +180,21 @@ class OpenAIClient:
             if not u:
                 continue
 
-            # DEBUG avant conversion
             print(" - image_url raw (preview):", u[:120])
 
-            # ✅ conversion URL -> data URL base64
-            data_url = await self._url_to_data_url(u)
+            # ✅ IMPORTANT: ne pas convertir en base64 (sinon explosion tokens)
+            # On envoie l'URL directement.
+            # Si c'est déjà un data URL (cas rare), on le laisse tel quel.
+            if self._DATA_URL_RE.match(u):
+                final_url = u
+                print(" - image_url mode: data_url (already)")
+            else:
+                final_url = u
+                print(" - image_url mode: remote_url")
 
-            # DEBUG après conversion
-            print(" - image_url data prefix:", data_url[:35])
-            print(" - image_url data length:", len(data_url))
-
-            content_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+            content_parts.append(
+                {"type": "image_url", "image_url": {"url": final_url}}
+            )
 
         messages = []
         if self._system_prompt:
@@ -222,6 +222,7 @@ class OpenAIClient:
             finish_reason=finish_reason,
             started_at=started_at,
         )
+
 
 
 openai_client = OpenAIClient()
