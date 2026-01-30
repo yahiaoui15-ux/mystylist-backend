@@ -41,18 +41,35 @@ class ImageThumbnailer:
     @classmethod
     def _ensure_bucket_exists(cls, bucket_name: str) -> None:
         """
-        Crée le bucket si absent (nécessite une clé avec droits suffisants).
-        Si ça échoue, on laisse faire (l'upload lèvera une erreur explicite).
+        Vérifie que le bucket existe, de façon compatible supabase-py (retour variable selon versions).
+        Ne tente pas de créer (tu l’as déjà créé dans l’UI).
         """
         try:
             client = supabase.get_client()
             existing = client.storage.list_buckets()
-            names = [b.get("name") for b in (existing or []) if isinstance(b, dict)]
+
+            # supabase-py peut renvoyer: {"data":[...]} ou un objet avec .data, ou directement une liste
+            if isinstance(existing, dict):
+                buckets = existing.get("data") or existing.get("buckets") or []
+            else:
+                buckets = getattr(existing, "data", None)
+                if buckets is None:
+                    buckets = existing if isinstance(existing, list) else []
+
+            names = []
+            for b in buckets or []:
+                if isinstance(b, dict):
+                    names.append(b.get("name"))
+                else:
+                    names.append(getattr(b, "name", None))
+
+            names = [n for n in names if n]
+
             if bucket_name not in names:
-                client.storage.create_bucket(bucket_name, public=True)
-                print(f"✅ Bucket créé: {bucket_name}")
+                print(f"⚠️ Bucket '{bucket_name}' non trouvé dans list_buckets(). Noms vus={names[:20]}")
         except Exception as e:
-            print(f"⚠️ Impossible de vérifier/créer le bucket {bucket_name}: {e}")
+            print(f"⚠️ Impossible de lister les buckets: {e}")
+
 
     @classmethod
     async def get_or_create_thumbnail_url(
@@ -84,11 +101,12 @@ class ImageThumbnailer:
             public = client.storage.from_(bucket).get_public_url(thumb_path)
             public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
             if public_url:
-                # test existence en HTTP HEAD (sinon get_public_url renvoie un lien même si l'objet n'existe pas)
+                # test existence en HTTP GET 
                 async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as h:
-                    r = await h.head(public_url)
-                    if r.status_code == 200:
+                    r = await h.get(public_url, headers={"Range": "bytes=0-0"})
+                    if r.status_code in (200, 206):
                         return public_url
+
         except Exception:
             pass
 
@@ -122,8 +140,9 @@ class ImageThumbnailer:
             client.storage.from_(bucket).upload(thumb_path, out.getvalue(), {"content-type": "image/jpeg", "upsert": "true"})
         except Exception as e:
             print(f"❌ Upload thumbnail échoué: {e}")
-            # fallback: on renvoie l'original (au moins ça n'empêche pas le run)
+            print("   ↳ Cause probable: clé Supabase sans droits d'écriture Storage (anon key). Utiliser service role côté backend.")
             return source_url
+
 
         # 5) URL publique
         public = client.storage.from_(bucket).get_public_url(thumb_path)

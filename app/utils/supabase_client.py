@@ -1,3 +1,4 @@
+import os
 from supabase import create_client
 from app.config_prod import settings
 
@@ -5,12 +6,14 @@ from app.config_prod import settings
 class SupabaseClient:
     def __init__(self):
         self.client = None
-    
+
     def _get_client(self):
         """Initialise le client à la première utilisation"""
         if self.client is None:
             try:
-                self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                # ✅ Priorité à la service role key côté backend (Storage upload)
+                key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or settings.SUPABASE_KEY or "").strip()
+                self.client = create_client(settings.SUPABASE_URL, key)
                 print(f"✅ Client Supabase initialisé avec succès")
             except Exception as e:
                 print(f"❌ Erreur lors de l'initialisation Supabase: {e}")
