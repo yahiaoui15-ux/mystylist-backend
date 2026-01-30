@@ -328,7 +328,7 @@ class ColorimetryService:
                 image_urls=[face_photo_url],
                 prompt=user_prompt,
             # ✅ ne pas forcer gpt-4-turbo ici (vision)
-                max_tokens=1000
+                max_tokens=1000,
                 vision_detail_override="high",  # 👈 ICI
             )
             print(f"✅ RÉPONSE REÇUE")
