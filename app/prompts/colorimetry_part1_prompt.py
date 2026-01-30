@@ -29,7 +29,7 @@ CLIENT :
 - Âge : {AGE}
 
 Retournez UNIQUEMENT ce JSON (aucun texte hors JSON) :
-{
+{{
   "saison_confirmee": "Automne|Printemps|Été|Hiver",
   "sous_ton_detecte": "chaud|froid|neutre",
   "valeur_peau": "clair|moyen|fonce",
@@ -37,7 +37,7 @@ Retournez UNIQUEMENT ce JSON (aucun texte hors JSON) :
   "contraste_naturel": "faible|moyen|fort",
   "eye_color": "{EYE_COLOR}",
   "hair_color": "{HAIR_COLOR}",
-  "analyse_colorimetrique_detaillee": {
+  "analyse_colorimetrique_detaillee": {{
     "justification_saison": "30-38 mots, décisifs, cohérents avec la saison. Mentionner carnation, yeux {EYE_COLOR}, cheveux {HAIR_COLOR}, contraste, valeur, intensité. Terminer par : Ce profil correspond sans ambiguïté à [SAISON].",
     "temperature": "chaud|froid|neutre",
     "valeur": "clair|moyen|fonce",
@@ -48,13 +48,13 @@ Retournez UNIQUEMENT ce JSON (aucun texte hors JSON) :
     "description_cheveux": "22-30 mots, cohérents avec la saison et {HAIR_COLOR}.",
     "harmonie_globale": "26-34 mots expliquant pourquoi tout converge vers UNE seule saison.",
     "bloc_emotionnel": "22-30 mots : impact esthétique concret lié à la saison retenue.",
-    "impact_visuel": {
+    "impact_visuel": {{
       "effet_couleurs_chaudes": "18-26 mots, spécifique et cohérent avec la saison.",
       "effet_couleurs_froides": "18-26 mots, spécifique et cohérent avec la saison.",
       "pourquoi": "14-18 mots : logique optique simple, cohérente avec la saison."
-    }
-  }
-}
+    }}
+  }}
+}}
 
 RÈGLES D'OR :
 ✅ Matrice décisionnelle = loi absolue
