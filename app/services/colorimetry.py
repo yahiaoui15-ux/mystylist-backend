@@ -22,6 +22,8 @@ from app.prompts.colorimetry_part3_prompt import COLORIMETRY_PART3_SYSTEM_PROMPT
 from app.services.robust_json_parser import RobustJSONParser
 from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
 from app.services.color_image_matcher import ColorImageMatcher
+from app.services.image_thumbnailer import ImageThumbnailer
+
 
 
 class ColorimetryService:
@@ -323,14 +325,24 @@ class ColorimetryService:
             print("DEBUG system_prompt chars:", len(COLORIMETRY_PART1_SYSTEM_PROMPT or ""))
             print("DEBUG user_prompt chars:", len(user_prompt or ""))
 
+            # ✅ NEW: créer/charger un thumbnail pour réduire le coût vision
+            thumb_url = await ImageThumbnailer.get_or_create_thumbnail_url(
+                source_url=face_photo_url,
+                bucket_name="user-photos-cache",
+                max_side=768,
+                quality=85,
+            )
+
+            print(f"   • Image (thumb): {thumb_url[:60]}...")
+
             # ✅ FIX: Utiliser analyze_image() au lieu de call_chat() avec has_image
             response = await self.openai.analyze_image(
-                image_urls=[face_photo_url],
+                image_urls=[thumb_url],
                 prompt=user_prompt,
-            # ✅ ne pas forcer gpt-4-turbo ici (vision)
-                max_tokens=1000,
-                vision_detail_override="high",  # 👈 ICI
+                max_tokens=600,                 # ✅ tu peux baisser: JSON part1 n'a pas besoin de 1000
+                vision_detail_override="low",    # ✅ low + thumbnail = coût bas + fiabilité haute
             )
+
             print(f"✅ RÉPONSE REÇUE")
             
             prompt_tokens = response.get("prompt_tokens", 0)
