@@ -110,11 +110,17 @@ class OpenAIClient:
         max_tokens: int = 1000,
         temperature: float = 0.2,
         response_format: Optional[Dict[str, Any]] = None,
+        vision_detail_override: Optional[str] = None,  # 👈 AJOUT
+
     ) -> Dict[str, Any]:
         used_model = (model or self.default_vision_model).strip()
         started_at = time.time()
 
-        vision_detail = (os.getenv("OPENAI_VISION_DETAIL") or "low").strip().lower()
+        vision_detail = (
+            vision_detail_override
+            or (os.getenv("OPENAI_VISION_DETAIL") or "low")
+        ).strip().lower()
+
         if vision_detail not in ("low", "high", "auto"):
             vision_detail = "low"
 
