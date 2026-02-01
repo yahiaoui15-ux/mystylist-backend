@@ -1,8 +1,9 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import re
 import hashlib
 import os
 import httpx
+from urllib.parse import urlparse, parse_qs, unquote
 
 from app.utils.supabase_client import supabase
 
@@ -11,6 +12,9 @@ class ProductMatcherService:
     """
     Match une pièce IA (piece_title/spec/visual_key) vers:
     1) un produit affilié (VIEW SQL normalisée: pdt_products)
+       - récupère jusqu'à 20 candidats
+       - filtre les URLs dont le murl ne ressemble pas à une page produit
+       - renvoie 1 produit principal + 2 alternatives (Option A)
     2) sinon un visuel pédagogique de "visuels"
     + Cache images affiliées dans Supabase Storage pour compat PDFMonkey
     """
@@ -26,6 +30,10 @@ class ProductMatcherService:
     }
 
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
+
+    # Heuristique "page produit" PlaceDesTendances :
+    # on accepte si murl contient un id numérique "long" (>=6 chiffres) quelque part (ex: 9280136)
+    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})")
 
     def __init__(self):
         self.client = supabase.get_client()
@@ -48,20 +56,35 @@ class ProductMatcherService:
         spec = (piece.get("spec") or "").strip()
         visual_key = (piece.get("visual_key") or "").strip()
 
-        affiliate = self._find_affiliate_product(piece_title=piece_title, spec=spec, category=category)
-        if affiliate:
-            raw_img = affiliate.get("image_url", "") or ""
-            safe_img = self._ensure_cached_public_image(raw_img, affiliate)
+        # 1) Affiliés (Option A: 3 candidats)
+        candidates = self._find_affiliate_products(piece_title=piece_title, spec=spec, category=category, limit=20)
+        top3 = self._pick_top3_valid_candidates(candidates)
+
+        if top3:
+            main = top3[0]
+            raw_img = main.get("image_url", "") or ""
+            safe_img = self._ensure_cached_public_image(raw_img, main)
+
+            # Labels "propres" pour Option 2/3
+            alt1 = top3[1] if len(top3) > 1 else None
+            alt2 = top3[2] if len(top3) > 2 else None
 
             return {
                 "image_url": safe_img,
-                "product_url": affiliate.get("product_url", "") or "",
+                "product_url": main.get("product_url", "") or "",
                 "source": "affiliate",
-                "title": affiliate.get("title", "") or piece_title,
-                "brand": affiliate.get("brand", "") or "",
-                "price": str(affiliate.get("price", "") or ""),
+                "title": main.get("title", "") or piece_title,
+                "brand": main.get("brand", "") or "",
+                "price": str(main.get("price", "") or ""),
+
+                # Option A: 2 alternatives sous forme de liens
+                "alt1_url": (alt1.get("product_url") if alt1 else "") or "",
+                "alt1_label": (self._format_alt_label(alt1) if alt1 else "") or "",
+                "alt2_url": (alt2.get("product_url") if alt2 else "") or "",
+                "alt2_label": (self._format_alt_label(alt2) if alt2 else "") or "",
             }
 
+        # 2) Fallback visuel pédagogique
         visual = self._find_visual_by_key(visual_key=visual_key, category=category)
         if visual:
             return {
@@ -71,8 +94,13 @@ class ProductMatcherService:
                 "title": piece_title,
                 "brand": "",
                 "price": "",
+                "alt1_url": "",
+                "alt1_label": "",
+                "alt2_url": "",
+                "alt2_label": "",
             }
 
+        # 3) Rien
         return {
             "image_url": "",
             "product_url": "",
@@ -80,7 +108,84 @@ class ProductMatcherService:
             "title": piece_title,
             "brand": "",
             "price": "",
+            "alt1_url": "",
+            "alt1_label": "",
+            "alt2_url": "",
+            "alt2_label": "",
         }
+
+    # -------------------------
+    # Option A helpers
+    # -------------------------
+    def _format_alt_label(self, row: Optional[Dict[str, Any]]) -> str:
+        if not row:
+            return ""
+        brand = (row.get("brand") or "").strip()
+        price = row.get("price")
+        title = (row.get("title") or "").strip()
+        p = ""
+        if price is not None and str(price).strip():
+            p = f"{price}€"
+        # Priorité : brand + prix, sinon title court
+        if brand and p:
+            return f"{brand} — {p}"
+        if brand:
+            return brand
+        if title:
+            # évite les titres trop longs
+            return title[:48] + ("…" if len(title) > 48 else "")
+        return "Alternative"
+
+    def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filtre les candidats dont la destination (murl) n'a pas l'air d'une page produit.
+        Retourne au max 3.
+        """
+        out: List[Dict[str, Any]] = []
+        for c in candidates or []:
+            if not isinstance(c, dict):
+                continue
+
+            affiliate_url = (c.get("product_url") or "").strip()
+            murl = self._extract_murl_from_affiliate_url(affiliate_url)
+
+            # si pas de murl => on garde quand même, mais moins fiable
+            if murl:
+                if not self._looks_like_product_page(murl):
+                    continue
+
+            out.append(c)
+            if len(out) >= 3:
+                break
+        return out
+
+    def _extract_murl_from_affiliate_url(self, affiliate_url: str) -> str:
+        """
+        Extrait murl=... depuis une URL LinkSynergy.
+        Retourne une URL décodée (https://www.placedestendances.com/...).
+        """
+        if not affiliate_url:
+            return ""
+        try:
+            u = urlparse(affiliate_url)
+            qs = parse_qs(u.query)
+            m = qs.get("murl")
+            if not m:
+                return ""
+            return unquote(m[0] or "").strip()
+        except Exception:
+            return ""
+
+    def _looks_like_product_page(self, murl: str) -> bool:
+        """
+        Heuristique simple et robuste :
+        - si on voit un id produit long (>=6 chiffres) dans l'URL => OK
+        - sinon => probablement page marque / listing => NOK
+        """
+        if not murl:
+            return False
+        # PlaceDesTendances produit = presque toujours un id numérique long dans l'URL
+        return bool(self.PDT_PRODUCT_ID_RE.search(murl))
 
     # -------------------------
     # Image cache (Supabase Storage)
@@ -117,14 +222,20 @@ class ProductMatcherService:
 
             bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
 
-            # 1) Si le fichier existe déjà, on renvoie l'URL publique
+            # 1) Si le fichier existe déjà, renvoyer l'URL publique (avec check HTTP)
             try:
                 public = bucket.get_public_url(object_path)
-                # get_public_url renvoie une string ou dict selon versions; on normalise
+                public_url = ""
                 if isinstance(public, dict) and public.get("publicUrl"):
-                    return public["publicUrl"]
-                if isinstance(public, str) and public.strip():
-                    return public
+                    public_url = public["publicUrl"]
+                elif isinstance(public, str) and public.strip():
+                    public_url = public
+
+                if public_url:
+                    # Vérifie que l'objet existe vraiment (Range bytes=0-0)
+                    r = httpx.get(public_url, headers={"Range": "bytes=0-0"}, timeout=8.0, follow_redirects=True)
+                    if r.status_code in (200, 206):
+                        return public_url
             except Exception:
                 pass
 
@@ -151,6 +262,7 @@ class ProductMatcherService:
                 },
             )
 
+            # 4) URL publique
             public = bucket.get_public_url(object_path)
             if isinstance(public, dict) and public.get("publicUrl"):
                 return public["publicUrl"]
@@ -166,7 +278,11 @@ class ProductMatcherService:
     # -------------------------
     # Private: AFFILIATE MATCH (VIEW pdt_products)
     # -------------------------
-    def _find_affiliate_product(self, piece_title: str, spec: str, category: str) -> Optional[Dict[str, Any]]:
+    def _find_affiliate_products(self, piece_title: str, spec: str, category: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Récupère une liste de candidats (jusqu'à `limit`) via keywords,
+        en évitant les doublons, puis fallback sur le titre complet.
+        """
         kws = self._extract_keywords(piece_title, spec)
 
         select_fields = ",".join([
@@ -186,23 +302,43 @@ class ProductMatcherService:
             "gender",
         ])
 
+        collected: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        def _add_rows(rows: List[Dict[str, Any]]) -> None:
+            nonlocal collected, seen_ids
+            for row in rows or []:
+                pid = str(row.get("product_id") or "")
+                if not pid:
+                    # si pas d'id, on hash l'url pour limiter les doublons
+                    pid = hashlib.sha256((row.get("product_url") or "").encode("utf-8")).hexdigest()[:12]
+                if pid in seen_ids:
+                    continue
+                seen_ids.add(pid)
+                collected.append(row)
+                if len(collected) >= limit:
+                    return
+
+        # 1) Queries par mots-clés (plus large: limit 20 par kw)
         for kw in kws[:4]:
+            if len(collected) >= limit:
+                break
             try:
                 resp = (
                     self.client
                     .table("pdt_products")
                     .select(select_fields)
                     .or_(f"title.ilike.%{kw}%,description_short.ilike.%{kw}%")
-                    .limit(1)
+                    .limit(min(20, limit))
                     .execute()
                 )
                 data = getattr(resp, "data", None) or []
-                if data:
-                    return data[0]
+                _add_rows(data)
             except Exception as e:
                 print(f"⚠️ Affiliate match kw failed ({kw}): {e}")
 
-        if piece_title:
+        # 2) Fallback sur titre complet si besoin
+        if len(collected) < 3 and piece_title:
             try:
                 safe_title = piece_title.replace("%", "").strip()
                 resp = (
@@ -210,16 +346,15 @@ class ProductMatcherService:
                     .table("pdt_products")
                     .select(select_fields)
                     .or_(f"title.ilike.%{safe_title}%,description_short.ilike.%{safe_title}%")
-                    .limit(1)
+                    .limit(min(20, limit))
                     .execute()
                 )
                 data = getattr(resp, "data", None) or []
-                if data:
-                    return data[0]
+                _add_rows(data)
             except Exception as e:
                 print(f"⚠️ Affiliate match title fallback failed: {e}")
 
-        return None
+        return collected[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
         text = f"{piece_title} {spec}".lower()

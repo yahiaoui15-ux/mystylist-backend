@@ -340,6 +340,7 @@ class PDFDataMapper:
                 out.append(it)
             return out
 
+
         # Page 18 - enrich affiliate matches
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             items = styling_raw["page18"]["categories"].get(k, [])
