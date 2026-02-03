@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 import re
 import hashlib
 import os
@@ -33,7 +33,17 @@ class ProductMatcherService:
 
     # Heuristique "page produit" PlaceDesTendances :
     # on accepte si murl contient un id numérique "long" (>=6 chiffres) quelque part (ex: 9280136)
-    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})")
+    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})", re.IGNORECASE)
+
+    # Optionnel: validation réseau de la page produit (réduit les "pages marque" si feed obsolète)
+    # Active uniquement sur le produit principal (pour limiter coûts/latence)
+    VALIDATE_MURL_NETWORK = os.getenv("PDT_VALIDATE_MURL_NETWORK", "1").strip() in ("1", "true", "True", "yes", "YES")
+
+    # Filtre strict femmes (évite homme/enfant/unisex)
+    STRICT_FEMALE_ONLY = os.getenv("PDT_STRICT_FEMALE_ONLY", "1").strip() in ("1", "true", "True", "yes", "YES")
+
+    # Timeout réseau
+    HTTP_TIMEOUT = float(os.getenv("PDT_HTTP_TIMEOUT", "8.0").strip() or "8.0")
 
     def __init__(self):
         self.client = supabase.get_client()
@@ -58,7 +68,7 @@ class ProductMatcherService:
 
         # 1) Affiliés (Option A: 3 candidats)
         candidates = self._find_affiliate_products(piece_title=piece_title, spec=spec, category=category, limit=20)
-        top3 = self._pick_top3_valid_candidates(candidates)
+        top3 = self._pick_top3_valid_candidates(candidates, validate_network=self.VALIDATE_MURL_NETWORK)
 
         if top3:
             main = top3[0]
@@ -132,16 +142,23 @@ class ProductMatcherService:
         if brand:
             return brand
         if title:
-            # évite les titres trop longs
             return title[:48] + ("…" if len(title) > 48 else "")
         return "Alternative"
 
-    def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _pick_top3_valid_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        validate_network: bool = True,
+    ) -> List[Dict[str, Any]]:
         """
         Filtre les candidats dont la destination (murl) n'a pas l'air d'une page produit.
+        - Déduplique sur murl (évite les 2-3 alternatives identiques)
+        - Optionnel: valide réseau UNIQUEMENT pour le candidat principal (réduit pages marque)
         Retourne au max 3.
         """
         out: List[Dict[str, Any]] = []
+        seen_murl = set()
+
         for c in candidates or []:
             if not isinstance(c, dict):
                 continue
@@ -149,15 +166,30 @@ class ProductMatcherService:
             affiliate_url = (c.get("product_url") or "").strip()
             murl = self._extract_murl_from_affiliate_url(affiliate_url)
 
-            # si pas de murl => on garde quand même, mais moins fiable
             if murl:
+                # filtre heuristique id produit long
                 if not self._looks_like_product_page(murl):
                     continue
+
+                # dédup destination
+                if murl in seen_murl:
+                    continue
+                seen_murl.add(murl)
 
             out.append(c)
             if len(out) >= 3:
                 break
-        return out
+
+        # Validation réseau: uniquement sur le principal (index 0)
+        if validate_network and out:
+            murl0 = self._extract_murl_from_affiliate_url((out[0].get("product_url") or "").strip())
+            if murl0:
+                ok = self._validate_product_page_network(murl0)
+                if not ok:
+                    # si le principal est "mort"/redirige brand, on le retire
+                    out = out[1:]
+
+        return out[:3]
 
     def _extract_murl_from_affiliate_url(self, affiliate_url: str) -> str:
         """
@@ -184,8 +216,28 @@ class ProductMatcherService:
         """
         if not murl:
             return False
-        # PlaceDesTendances produit = presque toujours un id numérique long dans l'URL
         return bool(self.PDT_PRODUCT_ID_RE.search(murl))
+
+    def _validate_product_page_network(self, murl: str) -> bool:
+        """
+        Valide que la page semble encore être une fiche produit (pas redirect vers marque/home).
+        Stratégie:
+        - HEAD murl (follow_redirects)
+        - accepte si url finale contient encore un id produit long
+        """
+        try:
+            r = httpx.head(murl, timeout=self.HTTP_TIMEOUT, follow_redirects=True, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            })
+            final_url = str(r.url) if getattr(r, "url", None) else murl
+            if r.status_code >= 400:
+                return False
+            # final doit conserver un id produit
+            return bool(self.PDT_PRODUCT_ID_RE.search(final_url))
+        except Exception:
+            return False
 
     # -------------------------
     # Image cache (Supabase Storage)
@@ -200,7 +252,9 @@ class ProductMatcherService:
 
         # Si c'est déjà une URL Supabase Storage publique, on ne retélécharge pas
         if "supabase.co/storage/v1/object/public" in image_url:
-            return image_url
+            # defensive: retire un éventuel "?" final
+            url = image_url.strip()
+            return url[:-1] if url.endswith("?") else url
 
         try:
             product_id = str(affiliate_row.get("product_id") or "")
@@ -231,45 +285,64 @@ class ProductMatcherService:
                 elif isinstance(public, str) and public.strip():
                     public_url = public
 
+                public_url = (public_url or "").strip()
+                if public_url.endswith("?"):
+                    public_url = public_url[:-1]
+
                 if public_url:
                     # Vérifie que l'objet existe vraiment (Range bytes=0-0)
-                    r = httpx.get(public_url, headers={"Range": "bytes=0-0"}, timeout=8.0, follow_redirects=True)
+                    r = httpx.get(
+                        public_url,
+                        headers={"Range": "bytes=0-0"},
+                        timeout=self.HTTP_TIMEOUT,
+                        follow_redirects=True,
+                    )
                     if r.status_code in (200, 206):
                         return public_url
             except Exception:
                 pass
 
-            # 2) Télécharger l'image
+            # 2) Télécharger l'image (anti-hotlink: referer/origin)
             headers = {
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                "Referer": "https://www.placedestendances.com/",
+                "Origin": "https://www.placedestendances.com",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
             }
             r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
             r.raise_for_status()
 
-            content_type = r.headers.get("content-type", "")
+            content_type = (r.headers.get("content-type", "") or "").strip()
             data = r.content
             if not data or len(data) < 200:
                 return image_url
 
-            # 3) Upload (upsert pour éviter erreurs)
+            # 3) Upload (upsert bool)
             bucket.upload(
                 path=object_path,
                 file=data,
                 file_options={
                     "content-type": content_type or f"image/{ext}",
-                    "upsert": "true",
+                    "upsert": True,
                 },
             )
 
             # 4) URL publique
             public = bucket.get_public_url(object_path)
+            public_url = ""
             if isinstance(public, dict) and public.get("publicUrl"):
-                return public["publicUrl"]
-            if isinstance(public, str) and public.strip():
-                return public
+                public_url = public["publicUrl"]
+            elif isinstance(public, str) and public.strip():
+                public_url = public
 
-            return image_url
+            public_url = (public_url or "").strip()
+            if public_url.endswith("?"):
+                public_url = public_url[:-1]
+
+            return public_url or image_url
 
         except Exception as e:
             print(f"⚠️ Image cache failed: {e}")
@@ -282,6 +355,9 @@ class ProductMatcherService:
         """
         Récupère une liste de candidats (jusqu'à `limit`) via keywords,
         en évitant les doublons, puis fallback sur le titre complet.
+        Applique des filtres:
+        - STRICT_FEMALE_ONLY: gender='female' + product_type ilike 'Femme%'
+        - filtre "univers" par category (swim/shoes/accessories) via category_secondary/product_type
         """
         kws = self._extract_keywords(piece_title, spec)
 
@@ -310,7 +386,6 @@ class ProductMatcherService:
             for row in rows or []:
                 pid = str(row.get("product_id") or "")
                 if not pid:
-                    # si pas d'id, on hash l'url pour limiter les doublons
                     pid = hashlib.sha256((row.get("product_url") or "").encode("utf-8")).hexdigest()[:12]
                 if pid in seen_ids:
                     continue
@@ -319,16 +394,52 @@ class ProductMatcherService:
                 if len(collected) >= limit:
                     return
 
-        # 1) Queries par mots-clés (plus large: limit 20 par kw)
+        # --- contraintes par category (filtres larges mais efficaces)
+        # NB: avec Supabase query builder, on reste simple: on filtre sur category_secondary/product_type
+        category_filters = {
+            "swim_lingerie": {
+                "category_secondary_ilike": ["%Swimwear%", "%Underwear%"],
+                "product_type_ilike": ["%Maillot de bain%", "%Underwear%", "%Lingerie%"],
+            },
+            "shoes": {
+                "category_secondary_ilike": ["%Footwear%"],
+                "product_type_ilike": ["%Chauss%"],
+            },
+            "accessories": {
+                "category_secondary_ilike": ["%Accessories%"],
+                "product_type_ilike": ["%Access%"],
+            },
+            # tops/bottoms/dresses_playsuits/outerwear : on ne met pas de filtre trop agressif ici
+        }
+
+        def _base_query():
+            q = self.client.table("pdt_products").select(select_fields)
+
+            if self.STRICT_FEMALE_ONLY:
+                # évite homme/enfant/unisex
+                q = q.eq("gender", "female").ilike("product_type", "Femme%")
+
+            # filtre univers si category connue
+            f = category_filters.get(category)
+            if f:
+                ors = []
+                for pat in f.get("category_secondary_ilike", []):
+                    ors.append(f"category_secondary.ilike.{pat}")
+                for pat in f.get("product_type_ilike", []):
+                    ors.append(f"product_type.ilike.{pat}")
+                if ors:
+                    q = q.or_(",".join(ors))
+
+            return q
+
+        # 1) Queries par mots-clés
         for kw in kws[:4]:
             if len(collected) >= limit:
                 break
             try:
+                q = _base_query()
                 resp = (
-                    self.client
-                    .table("pdt_products")
-                    .select(select_fields)
-                    .or_(f"title.ilike.%{kw}%,description_short.ilike.%{kw}%")
+                    q.or_(f"title.ilike.%{kw}%,description_short.ilike.%{kw}%")
                     .limit(min(20, limit))
                     .execute()
                 )
@@ -341,11 +452,9 @@ class ProductMatcherService:
         if len(collected) < 3 and piece_title:
             try:
                 safe_title = piece_title.replace("%", "").strip()
+                q = _base_query()
                 resp = (
-                    self.client
-                    .table("pdt_products")
-                    .select(select_fields)
-                    .or_(f"title.ilike.%{safe_title}%,description_short.ilike.%{safe_title}%")
+                    q.or_(f"title.ilike.%{safe_title}%,description_short.ilike.%{safe_title}%")
                     .limit(min(20, limit))
                     .execute()
                 )
