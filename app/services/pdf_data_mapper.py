@@ -333,9 +333,24 @@ class PDFDataMapper:
 
                 # Si pas d'image affiliée, on met fallback visuel pédagogique via table `visuels`
                 if not match_img and not it["image_url"] and vk:
+                    # 1) tentative directe
                     fb = visuals_service.get_url(vk)
+
+                    # 2) tentative normalisée (au cas où la DB a "jupe_evasee" vs "jupe_évasée")
+                    if not fb:
+                        vk2 = (vk or "").strip().lower()
+                        vk2 = vk2.replace("é", "e").replace("è", "e").replace("ê", "e").replace("ë", "e")
+                        vk2 = vk2.replace("à", "a").replace("â", "a")
+                        vk2 = vk2.replace("î", "i").replace("ï", "i")
+                        vk2 = vk2.replace("ô", "o")
+                        vk2 = vk2.replace("ù", "u").replace("û", "u").replace("ü", "u")
+                        fb = visuals_service.get_url(vk2)
+
                     if fb:
                         it["image_url"] = fb
+                    else:
+                        print(f"⚠️ No visual fallback for visual_key={vk!r}")
+
 
                 out.append(it)
             return out

@@ -4,6 +4,8 @@ import re
 import hashlib
 import os
 import httpx
+import unicodedata
+
 from urllib.parse import urlparse, parse_qs, unquote
 
 from app.utils.supabase_client import supabase
@@ -298,6 +300,33 @@ class ProductMatcherService:
     # -------------------------
     # Safety helpers for PostgREST
     # -------------------------
+
+    def _strip_accents(self, s: str) -> str:
+        s = s or ""
+        return "".join(
+            c for c in unicodedata.normalize("NFD", s)
+            if unicodedata.category(c) != "Mn"
+        )
+
+    def _normalize_kw_for_ilike(self, kw: str) -> str:
+        """
+        Objectif: token safe pour PostgREST ilike:
+        - pas d'accents
+        - pas d'espaces (on garde UNIQUEMENT le 1er mot)
+        - alnum + tiret seulement
+        """
+        kw = (kw or "").strip().lower()
+        if not kw:
+            return ""
+        kw = self._strip_accents(kw)
+        kw = kw.replace("’", "'")
+        # garde uniquement le 1er segment (évite "taille haute" => "taille")
+        kw = kw.split()[0]
+        kw = re.sub(r"[^a-z0-9\-]", "", kw)
+        if len(kw) > self.MAX_TOKEN_LEN:
+            kw = kw[: self.MAX_TOKEN_LEN]
+        return kw
+        
     def _safe_ilike_token(self, s: str) -> str:
         s = (s or "").strip().lower()
         if not s:
@@ -467,9 +496,25 @@ class ProductMatcherService:
                     return
 
         category_filters = {
+            "tops": {
+                "category_secondary_ilike": ["%Tops%", "%Knitwear%"],
+                "product_type_ilike": ["%Top%", "%Blouse%", "%Chemis%", "%Pull%", "%Maille%"],
+            },
+            "bottoms": {
+                "category_secondary_ilike": ["%Bottoms%"],
+                "product_type_ilike": ["%Pantal%", "%Jean%", "%Jupe%", "%Short%"],
+            },
+            "dresses_playsuits": {
+                "category_secondary_ilike": ["%Dresses%"],
+                "product_type_ilike": ["%Robe%", "%Combi%"],
+            },
+            "outerwear": {
+                "category_secondary_ilike": ["%Outerwear%"],
+                "product_type_ilike": ["%Veste%", "%Manteau%", "%Blazer%", "%Trench%"],
+            },
             "swim_lingerie": {
                 "category_secondary_ilike": ["%Swimwear%", "%Underwear%"],
-                "product_type_ilike": ["%Maillot de bain%", "%Underwear%", "%Lingerie%"],
+                "product_type_ilike": ["%Maillot%", "%Underwear%", "%Lingerie%"],
             },
             "shoes": {
                 "category_secondary_ilike": ["%Footwear%"],
@@ -480,6 +525,7 @@ class ProductMatcherService:
                 "product_type_ilike": ["%Access%"],
             },
         }
+
 
         def _base_query():
             q = self.client.table("pdt_products").select(select_fields)
@@ -500,12 +546,16 @@ class ProductMatcherService:
             return q
 
         def _query_kw(q, kw_token: str):
+            """
+            1) tente title-only (plus stable)
+            2) si échec, tente title OR description_short
+            """
             # title only
             try:
                 resp = q.ilike("title", f"%{kw_token}%").limit(min(20, limit)).execute()
                 return getattr(resp, "data", None) or []
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ title-only failed (kw={kw_token!r}) : {e}")
 
             # title OR description_short
             try:
@@ -515,15 +565,17 @@ class ProductMatcherService:
                     .execute()
                 )
                 return getattr(resp, "data", None) or []
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ title+description failed (kw={kw_token!r}) : {e}")
                 return []
+
 
         # 1) Queries par mots-clés
         for kw in kws[:4]:
             if len(collected) >= limit:
                 break
 
-            kw2 = self._safe_ilike_token(kw)
+            kw2 = self._normalize_kw_for_ilike(kw)
             if len(kw2) < 3:
                 continue
 
@@ -536,7 +588,8 @@ class ProductMatcherService:
 
         # 2) Fallback sur titre complet si besoin
         if len(collected) < 3 and piece_title:
-            safe_title = self._safe_ilike_token(piece_title)
+            # on prend le 1er mot du titre comme fallback "safe"
+            safe_title = self._normalize_kw_for_ilike(piece_title)
             if safe_title:
                 try:
                     q = _base_query()
