@@ -1,3 +1,4 @@
+# app/services/product_matcher_service.py
 from typing import Dict, Any, List, Optional
 import re
 import hashlib
@@ -13,10 +14,14 @@ class ProductMatcherService:
     Match une pièce IA (piece_title/spec/visual_key) vers:
     1) un produit affilié (VIEW SQL normalisée: pdt_products)
        - récupère jusqu'à 20 candidats
-       - filtre les URLs dont le murl ne ressemble pas à une page produit
        - renvoie 1 produit principal + 2 alternatives (Option A)
-    2) sinon un visuel pédagogique de "visuels"
-    + Cache images affiliées dans Supabase Storage pour compat PDFMonkey
+    2) sinon un visuel pédagogique (table `visuels`)
+    + Cache images affiliées dans Supabase Storage (bucket public) pour compat PDFMonkey
+
+    ✅ Correctifs (Rakuten/LinkSynergy):
+    - Ne dépend PLUS de murl=... (souvent absent dans click.linksynergy.com)
+    - Validation réseau désactivée par défaut (HEAD souvent bloqué)
+    - Déduplication robuste sur product_url + image_url
     """
 
     VISUELS_TYPE_MAP = {
@@ -31,12 +36,8 @@ class ProductMatcherService:
 
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
 
-    # Heuristique "page produit" PlaceDesTendances :
-    # accepte si murl contient un id numérique "long" (>=6 chiffres) quelque part (ex: 9280136)
-    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})", re.IGNORECASE)
-
-    # Optionnel: validation réseau de la page produit (réduit les "pages marque" si feed obsolète)
-    VALIDATE_MURL_NETWORK = os.getenv("PDT_VALIDATE_MURL_NETWORK", "1").strip() in (
+    # Optionnel: validation réseau de la page produit (désactivée par défaut)
+    VALIDATE_MURL_NETWORK = os.getenv("PDT_VALIDATE_MURL_NETWORK", "0").strip() in (
         "1",
         "true",
         "True",
@@ -59,6 +60,12 @@ class ProductMatcherService:
     # Sécurité: limite la taille des tokens envoyés à PostgREST
     MAX_TOKEN_LEN = int(os.getenv("PDT_MAX_TOKEN_LEN", "48").strip() or "48")
 
+    # Heuristique "page produit" PDT : id long dans URL
+    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})", re.IGNORECASE)
+
+    # Liens d'affiliation "fiables" (tracking)
+    AFFILIATE_HOST_HINTS = ("linksynergy.com", "linkshare.com")
+
     def __init__(self):
         self.client = supabase.get_client()
 
@@ -80,36 +87,48 @@ class ProductMatcherService:
         spec = (piece.get("spec") or "").strip()
         visual_key = (piece.get("visual_key") or "").strip()
 
-        # 1) Affiliés (Option A: 3 candidats)
-        candidates = self._find_affiliate_products(piece_title=piece_title, spec=spec, category=category, limit=20)
-        top3 = self._pick_top3_valid_candidates(candidates, validate_network=self.VALIDATE_MURL_NETWORK)
+        candidates = self._find_affiliate_products(
+            piece_title=piece_title, spec=spec, category=category, limit=20
+        )
+        top3 = self._pick_top3_valid_candidates(
+            candidates, validate_network=self.VALIDATE_MURL_NETWORK
+        )
+
+        # Log simple (utile pour Railway)
+        try:
+            print(
+                f"🧩 MATCH [{category}] '{piece_title[:60]}' → "
+                f"{len(candidates)} candidats / {len(top3)} retenus"
+            )
+        except Exception:
+            pass
 
         if top3:
             main = top3[0]
-            raw_img = main.get("image_url", "") or ""
-            safe_img = self._ensure_cached_public_image(raw_img, main)
+            raw_img = (main.get("image_url") or "").strip()
+            safe_img = self._ensure_cached_public_image(raw_img, main) if raw_img else ""
 
             alt1 = top3[1] if len(top3) > 1 else None
             alt2 = top3[2] if len(top3) > 2 else None
 
             return {
                 "image_url": safe_img,
-                "product_url": main.get("product_url", "") or "",
+                "product_url": (main.get("product_url") or "").strip(),
                 "source": "affiliate",
-                "title": main.get("title", "") or piece_title,
-                "brand": main.get("brand", "") or "",
+                "title": (main.get("title") or piece_title).strip(),
+                "brand": (main.get("brand") or "").strip(),
                 "price": str(main.get("price", "") or ""),
-                "alt1_url": (alt1.get("product_url") if alt1 else "") or "",
-                "alt1_label": (self._format_alt_label(alt1) if alt1 else "") or "",
-                "alt2_url": (alt2.get("product_url") if alt2 else "") or "",
-                "alt2_label": (self._format_alt_label(alt2) if alt2 else "") or "",
+                "alt1_url": ((alt1 or {}).get("product_url") or "").strip(),
+                "alt1_label": self._format_alt_label(alt1) if alt1 else "",
+                "alt2_url": ((alt2 or {}).get("product_url") or "").strip(),
+                "alt2_label": self._format_alt_label(alt2) if alt2 else "",
             }
 
         # 2) Fallback visuel pédagogique
         visual = self._find_visual_by_key(visual_key=visual_key, category=category)
         if visual:
             return {
-                "image_url": visual.get("url_image", "") or "",
+                "image_url": (visual.get("url_image") or "").strip(),
                 "product_url": "",
                 "source": "visual",
                 "title": piece_title,
@@ -158,45 +177,82 @@ class ProductMatcherService:
     def _pick_top3_valid_candidates(
         self,
         candidates: List[Dict[str, Any]],
-        validate_network: bool = True,
+        validate_network: bool = False,
     ) -> List[Dict[str, Any]]:
         """
-        Filtre les candidats dont la destination (murl) n'a pas l'air d'une page produit.
-        - Déduplique sur murl (évite les alternatives identiques)
-        - Optionnel: valide réseau UNIQUEMENT pour le candidat principal
+        ✅ Version Rakuten-safe:
+        - Ne dépend pas de murl=...
+        - Considère un product_url LinkSynergy/LinkShare comme "valide" par défaut
+        - Déduplique sur product_url (et image_url en fallback)
+        - Optionnel: validation réseau uniquement si on arrive à extraire un murl
         """
         out: List[Dict[str, Any]] = []
-        seen_murl = set()
+        seen = set()
 
         for c in candidates or []:
             if not isinstance(c, dict):
                 continue
 
-            affiliate_url = (c.get("product_url") or "").strip()
-            murl = self._extract_murl_from_affiliate_url(affiliate_url)
+            product_url = (c.get("product_url") or "").strip()
+            image_url = (c.get("image_url") or "").strip()
 
+            if not product_url:
+                continue
+
+            key = product_url or image_url
+            if not key:
+                continue
+
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Si c'est un lien d'affiliation classique, on accepte.
+            if self._is_affiliate_tracking_url(product_url):
+                out.append(c)
+                if len(out) >= 3:
+                    break
+                continue
+
+            # Sinon, si on a un murl, on peut faire une heuristique PDT
+            murl = self._extract_murl_from_affiliate_url(product_url)
             if murl:
                 if not self._looks_like_product_page(murl):
                     continue
-                if murl in seen_murl:
-                    continue
-                seen_murl.add(murl)
+                out.append(c)
+                if len(out) >= 3:
+                    break
+                continue
 
+            # Sinon on accepte quand même (on préfère afficher quelque chose)
             out.append(c)
             if len(out) >= 3:
                 break
 
+        # Validation réseau optionnelle uniquement si on sait extraire murl (rare)
         if validate_network and out:
-            murl0 = self._extract_murl_from_affiliate_url((out[0].get("product_url") or "").strip())
-            if murl0:
-                ok = self._validate_product_page_network(murl0)
-                if not ok:
-                    out = out[1:]
+            try:
+                murl0 = self._extract_murl_from_affiliate_url((out[0].get("product_url") or "").strip())
+                if murl0:
+                    ok = self._validate_product_page_network(murl0)
+                    if not ok:
+                        out = out[1:]
+            except Exception:
+                pass
 
         return out[:3]
 
+    def _is_affiliate_tracking_url(self, url: str) -> bool:
+        if not url:
+            return False
+        try:
+            host = (urlparse(url).netloc or "").lower()
+            return any(h in host for h in self.AFFILIATE_HOST_HINTS)
+        except Exception:
+            return False
+
     def _extract_murl_from_affiliate_url(self, affiliate_url: str) -> str:
-        """Extrait murl=... depuis une URL LinkSynergy (URL décodée)."""
+        """Extrait murl=... depuis une URL (quand présent)."""
         if not affiliate_url:
             return ""
         try:
@@ -240,17 +296,12 @@ class ProductMatcherService:
             return False
 
     # -------------------------
-    # Safety helpers for PostgREST or_() strings
+    # Safety helpers for PostgREST
     # -------------------------
     def _safe_ilike_token(self, s: str) -> str:
-        """
-        Rend un token "safe" pour l'utiliser dans une string or_ PostgREST.
-        Objectif: éviter de casser la syntaxe (virgules, parenthèses, quotes, % ...).
-        """
         s = (s or "").strip().lower()
         if not s:
             return ""
-        # caractères qui cassent souvent la syntaxe PostgREST
         s = s.replace("%", " ")
         s = s.replace(",", " ")
         s = s.replace("(", " ").replace(")", " ")
@@ -258,7 +309,6 @@ class ProductMatcherService:
         s = s.replace("\\", " ")
         s = s.replace("\n", " ").replace("\r", " ").replace("\t", " ")
         s = re.sub(r"\s{2,}", " ", s).strip()
-        # borne la taille
         if len(s) > self.MAX_TOKEN_LEN:
             s = s[: self.MAX_TOKEN_LEN].strip()
         return s
@@ -268,7 +318,7 @@ class ProductMatcherService:
     # -------------------------
     def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
         """
-        Retourne une URL publique Supabase si possible (cache),
+        Retourne une URL publique Supabase Storage si possible (cache),
         sinon retombe sur l'URL originale.
         """
         if not image_url:
@@ -297,7 +347,7 @@ class ProductMatcherService:
             object_path = f"pdt/{h}.{ext}"
             bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
 
-            # 1) Si existe déjà
+            # 1) Si existe déjà (public url + range check)
             try:
                 public = bucket.get_public_url(object_path)
                 public_url = ""
@@ -340,7 +390,7 @@ class ProductMatcherService:
             if not data or len(data) < 200:
                 return image_url
 
-            # 3) Upload
+            # 3) Upload (upsert)
             bucket.upload(
                 path=object_path,
                 file=data,
@@ -371,13 +421,13 @@ class ProductMatcherService:
     # -------------------------
     # Private: AFFILIATE MATCH (VIEW pdt_products)
     # -------------------------
-    def _find_affiliate_products(self, piece_title: str, spec: str, category: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def _find_affiliate_products(
+        self, piece_title: str, spec: str, category: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """
         Récupère une liste de candidats via keywords + fallback titre.
-        Correctifs:
-        - retire le filtre ilike("product_type","Femme%") (cause potentielle de requêtes foireuses)
-        - sanitize strict des tokens passés à or_()
-        - tentative "title only" avant "title OR description_short" si PostgREST est sensible
+        - sanitize strict des tokens passés à PostgREST
+        - tentative title-only puis title OR description_short
         """
         kws = self._extract_keywords(piece_title, spec)
 
@@ -435,7 +485,6 @@ class ProductMatcherService:
             q = self.client.table("pdt_products").select(select_fields)
 
             if self.STRICT_FEMALE_ONLY:
-                # ✅ On garde uniquement gender=female (on retire product_type ilike 'Femme%')
                 q = q.eq("gender", "female")
 
             f = category_filters.get(category)
@@ -451,10 +500,6 @@ class ProductMatcherService:
             return q
 
         def _query_kw(q, kw_token: str):
-            """
-            1) tente title-only (plus stable)
-            2) si échec, tente title OR description_short
-            """
             # title only
             try:
                 resp = q.ilike("title", f"%{kw_token}%").limit(min(20, limit)).execute()
@@ -509,35 +554,10 @@ class ProductMatcherService:
 
         stop = set(
             [
-                "a",
-                "à",
-                "au",
-                "aux",
-                "de",
-                "des",
-                "du",
-                "en",
-                "et",
-                "ou",
-                "un",
-                "une",
-                "avec",
-                "pour",
-                "la",
-                "le",
-                "les",
-                "d",
-                "l",
-                "sur",
-                "dans",
-                "sans",
-                "style",
-                "matiere",
-                "matières",
-                "coton",
-                "laine",
-                "viscose",
-                "soie",
+                "a", "à", "au", "aux", "de", "des", "du", "en", "et", "ou",
+                "un", "une", "avec", "pour", "la", "le", "les", "d", "l",
+                "sur", "dans", "sans", "style",
+                "matiere", "matières", "coton", "laine", "viscose", "soie",
             ]
         )
 
