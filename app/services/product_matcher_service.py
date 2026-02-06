@@ -5,8 +5,7 @@ import hashlib
 import os
 import httpx
 import unicodedata
-
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse
 
 from app.utils.supabase_client import supabase
 
@@ -14,17 +13,16 @@ from app.utils.supabase_client import supabase
 class ProductMatcherService:
     """
     Match une pièce IA (piece_title/spec/visual_key) vers:
-    1) un produit affilié (TABLE: active_affiliate_products)  ✅ (aligné avec tes colonnes réelles)
-       - récupère jusqu'à 20 candidats
+    1) un produit affilié (TABLE: affiliate_products) ✅
+       - récupère jusqu'à `limit` candidats
        - renvoie 1 produit principal + 2 alternatives
     2) sinon un visuel pédagogique (table `visuels`)
     + Cache images affiliées dans Supabase Storage (bucket public) pour compat PDFMonkey
 
-    ✅ FIXE MAJEUR v5.3:
-    - ÉLIMINÉ: `.or_()` complexes qui plantent Cloudflare Worker 1101
-    - ÉLIMINÉ: colonne `keywords` (vide dans la DB)
-    - NEW: Requêtes REST simples et séquentielles (fonctionnent à coup sûr)
-    - NEW: Stratégie fallback robuste (kw → catégorie → rien)
+    ✅ FIX v6 (final):
+    - N'interroge PLUS la view `active_affiliate_products` (cause 500/1101 Cloudflare)
+    - Interroge directement `affiliate_products` + filtre `is_deleted=false`
+    - Requêtes PostgREST simples (1 seul ilike par call), filtrage catégorie côté Python
     """
 
     VISUELS_TYPE_MAP = {
@@ -36,6 +34,9 @@ class ProductMatcherService:
         "shoes": "chaussures",
         "accessories": "accessoire",
     }
+
+    # Table source (on évite la VIEW)
+    AFFILIATE_TABLE = os.getenv("AFFILIATE_TABLE", "affiliate_products")
 
     # Bucket public pour cache images affiliées
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
@@ -51,6 +52,17 @@ class ProductMatcherService:
 
     # Liens d'affiliation "fiables" (tracking)
     AFFILIATE_HOST_HINTS = ("linksynergy.com", "linkshare.com", "rakuten", "awin")
+
+    # Catégories (dans ton CSV c'est souvent "Clothing~~Tops~~...")
+    CATEGORY_TOKENS = {
+        "tops": ["tops", "top", "shirt", "blouse", "knitwear", "sweater"],
+        "bottoms": ["bottoms", "trousers", "pants", "jeans", "skirts", "shorts"],
+        "dresses_playsuits": ["dresses", "dress", "playsuits", "playsuit", "jumpsuits", "jumpsuit"],
+        "outerwear": ["outerwear", "coats", "coat", "jackets", "jacket", "blazers", "blazer", "trench"],
+        "swim_lingerie": ["swimwear", "swim", "lingerie", "underwear"],
+        "shoes": ["shoes", "shoe", "boots", "boot", "sandals", "sneakers", "trainers"],
+        "accessories": ["accessories", "accessory", "bags", "bag", "belts", "belt", "jewellery", "jewelry"],
+    }
 
     def __init__(self):
         self.client = supabase.get_client()
@@ -74,11 +86,13 @@ class ProductMatcherService:
         visual_key = (piece.get("visual_key") or "").strip()
 
         candidates = self._find_affiliate_products(
-            piece_title=piece_title, spec=spec, category=category, limit=20
+            piece_title=piece_title,
+            spec=spec,
+            category=category,
+            limit=20,
         )
         top3 = self._pick_top3_valid_candidates(candidates, validate_network=False)
 
-        # Log simple (utile pour Railway)
         try:
             print(
                 f"🧩 MATCH [{category}] '{piece_title[:60]}' → "
@@ -97,14 +111,14 @@ class ProductMatcherService:
 
             return {
                 "image_url": safe_img,
-                "product_url": (main.get("buy_url") or "").strip(),
+                "product_url": (main.get("buy_url") or main.get("product_url") or "").strip(),
                 "source": "affiliate",
                 "title": (main.get("product_name") or piece_title).strip(),
                 "brand": (main.get("brand") or "").strip(),
                 "price": str(main.get("price", "") or ""),
-                "alt1_url": ((alt1 or {}).get("buy_url") or "").strip(),
+                "alt1_url": ((alt1 or {}).get("buy_url") or (alt1 or {}).get("product_url") or "").strip(),
                 "alt1_label": self._format_alt_label(alt1) if alt1 else "",
-                "alt2_url": ((alt2 or {}).get("buy_url") or "").strip(),
+                "alt2_url": ((alt2 or {}).get("buy_url") or (alt2 or {}).get("product_url") or "").strip(),
                 "alt2_label": self._format_alt_label(alt2) if alt2 else "",
             }
 
@@ -167,10 +181,8 @@ class ProductMatcherService:
         validate_network: bool = False,
     ) -> List[Dict[str, Any]]:
         """
-        ✅ Version tracking-safe:
-        - utilise buy_url (tracking)
+        - utilise buy_url en priorité
         - déduplique sur buy_url puis product_id puis image_url
-        - accepte un lien d'affiliation comme "valide" par défaut
         """
         out: List[Dict[str, Any]] = []
         seen = set()
@@ -180,7 +192,7 @@ class ProductMatcherService:
                 continue
 
             buy_url = (c.get("buy_url") or "").strip()
-            product_id = (c.get("product_id") or "").strip()
+            product_id = str(c.get("product_id") or "").strip()
             image_url = (c.get("image_url") or "").strip()
 
             if not buy_url and not product_id and not image_url:
@@ -191,14 +203,6 @@ class ProductMatcherService:
                 continue
             seen.add(key)
 
-            # Si tracking → ok direct
-            if buy_url and self._is_affiliate_tracking_url(buy_url):
-                out.append(c)
-                if len(out) >= 3:
-                    break
-                continue
-
-            # Sinon on accepte (meilleur que "vide")
             out.append(c)
             if len(out) >= 3:
                 break
@@ -215,7 +219,7 @@ class ProductMatcherService:
             return False
 
     # -------------------------
-    # Safety helpers for PostgREST
+    # Text helpers
     # -------------------------
     def _strip_accents(self, s: str) -> str:
         s = s or ""
@@ -228,19 +232,28 @@ class ProductMatcherService:
         """
         Token safe pour PostgREST ilike:
         - pas d'accents
-        - pas d'espaces (on garde UNIQUEMENT le 1er mot)
-        - alnum + tiret seulement
+        - alnum + tiret + espace (on garde 2 mots max)
         """
         kw = (kw or "").strip().lower()
         if not kw:
             return ""
         kw = self._strip_accents(kw)
-        kw = kw.replace("'", "'")
-        kw = kw.split()[0]
-        kw = re.sub(r"[^a-z0-9\-]", "", kw)
+        kw = re.sub(r"[^a-z0-9\-\s]", " ", kw)
+        kw = re.sub(r"\s{2,}", " ", kw).strip()
+        parts = kw.split()[:2]
+        kw = " ".join(parts)
         if len(kw) > self.MAX_TOKEN_LEN:
             kw = kw[: self.MAX_TOKEN_LEN]
         return kw
+
+    def _category_match(self, row: Dict[str, Any], category: str) -> bool:
+        tokens = self.CATEGORY_TOKENS.get(category, [])
+        if not tokens:
+            return True
+        sc = (row.get("secondary_category") or "").lower()
+        pc = (row.get("primary_category") or "").lower()
+        hay = f"{pc} {sc}"
+        return any(t in hay for t in tokens)
 
     # -------------------------
     # Image cache (Supabase Storage)
@@ -253,7 +266,6 @@ class ProductMatcherService:
         if not image_url:
             return ""
 
-        # Déjà une URL publique Supabase Storage
         if "supabase.co/storage/v1/object/public" in image_url:
             url = image_url.strip()
             return url[:-1] if url.endswith("?") else url
@@ -276,19 +288,13 @@ class ProductMatcherService:
             object_path = f"pdt/{h}.{ext}"
             bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
 
-            # 1) Si existe déjà
+            # 1) si déjà public, on teste vite fait
             try:
                 public = bucket.get_public_url(object_path)
-                public_url = ""
-                if isinstance(public, dict) and public.get("publicUrl"):
-                    public_url = public["publicUrl"]
-                elif isinstance(public, str) and public.strip():
-                    public_url = public
-
+                public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
                 public_url = (public_url or "").strip()
                 if public_url.endswith("?"):
                     public_url = public_url[:-1]
-
                 if public_url:
                     r = httpx.get(
                         public_url,
@@ -301,9 +307,9 @@ class ProductMatcherService:
             except Exception:
                 pass
 
-            # 2) Télécharger l'image (anti-hotlink)
+            # 2) télécharger (anti-hotlink)
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0",
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                 "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
                 "Referer": "https://www.placedestendances.com/",
@@ -319,7 +325,7 @@ class ProductMatcherService:
             if not data or len(data) < 200:
                 return image_url
 
-            # 3) Upload (upsert)
+            # 3) upload (upsert)
             bucket.upload(
                 path=object_path,
                 file=data,
@@ -329,14 +335,9 @@ class ProductMatcherService:
                 },
             )
 
-            # 4) URL publique
+            # 4) url publique
             public = bucket.get_public_url(object_path)
-            public_url = ""
-            if isinstance(public, dict) and public.get("publicUrl"):
-                public_url = public["publicUrl"]
-            elif isinstance(public, str) and public.strip():
-                public_url = public
-
+            public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
             public_url = (public_url or "").strip()
             if public_url.endswith("?"):
                 public_url = public_url[:-1]
@@ -348,28 +349,34 @@ class ProductMatcherService:
             return image_url
 
     # -------------------------
-    # Private: AFFILIATE MATCH (TABLE active_affiliate_products)
-    # ✅ REWRITE v5.4: API REST DIRECTE avec httpx (URL encoding correct)
+    # AFFILIATE MATCH (TABLE affiliate_products)
     # -------------------------
     def _find_affiliate_products(
         self, piece_title: str, spec: str, category: str, limit: int = 20
     ) -> List[Dict[str, Any]]:
-        """
-        ✅ NOUVELLE STRATÉGIE (v5.4):
-        - ÉLIMINÉ: .or_() complexes (plantent Cloudflare Worker 1101)
-        - ÉLIMINÉ: SDK Supabase (bug URL encoding sur .ilike())
-        - NEW: API REST directe via httpx avec URL encoding correct
-        - NEW: Requêtes simples et séquentielles (une seule ILIKE par requête)
-        
-        Stratégie fallback:
-        1. product_name ILIKE %kw% → filtrer en Python par catégorie
-        2. product_name ILIKE %kw% (sans catégorie)
-        3. secondary_category ILIKE %pattern%
-        4. primary_category ILIKE %pattern%
-        """
         kws = self._extract_keywords(piece_title, spec)
 
-        select_fields = "merchant_id,sid,product_id,sku,product_name,brand,primary_category,secondary_category,product_url,image_url,buy_url,price,sale_price,currency,availability,is_deleted,last_seen_at,updated_at"
+        select_fields = ",".join([
+            "merchant_id",
+            "sid",
+            "product_id",
+            "sku",
+            "product_name",
+            "brand",
+            "primary_category",
+            "secondary_category",
+            "product_url",
+            "image_url",
+            "buy_url",
+            "price",
+            "sale_price",
+            "currency",
+            "availability",
+            "is_deleted",
+            "last_seen_at",
+            "created_at",
+            "updated_at",
+        ])
 
         collected: List[Dict[str, Any]] = []
         seen = set()
@@ -377,7 +384,7 @@ class ProductMatcherService:
         def _add_rows(rows: List[Dict[str, Any]]) -> None:
             nonlocal collected, seen
             for row in rows or []:
-                key = (row.get("buy_url") or "").strip() or (row.get("product_id") or "").strip()
+                key = (row.get("buy_url") or "").strip() or str(row.get("product_id") or "").strip()
                 if not key:
                     key = hashlib.sha256((row.get("image_url") or "").encode("utf-8")).hexdigest()[:12]
                 if key in seen:
@@ -387,183 +394,99 @@ class ProductMatcherService:
                 if len(collected) >= limit:
                     return
 
-        # Mapping catégories
-        category_patterns = {
-            "tops": ["top", "maille", "knitwear", "blouse", "chemise", "pull"],
-            "bottoms": ["pantal", "jean", "jupe", "short"],
-            "dresses_playsuits": ["robe", "dress", "combi"],
-            "outerwear": ["outerwear", "veste", "manteau", "blazer", "trench"],
-            "swim_lingerie": ["swim", "underwear", "lingerie", "maillot"],
-            "shoes": ["chauss", "shoe", "botte", "sandale", "basket"],
-            "accessories": ["accessor", "sac", "bag", "ceinture", "bijou"],
-        }
+        def _base_query():
+            q = self.client.table(self.AFFILIATE_TABLE).select(select_fields)
+            q = q.eq("is_deleted", False)
+            # priorité aux produits vus récemment (si colonne présente)
+            try:
+                q = q.order("last_seen_at", desc=True)
+            except Exception:
+                pass
+            return q
 
-        patterns = category_patterns.get(category, [])
-
-        # ========================================
-        # PHASE 1: Recherche par mot-clé + catégorie (filtrage Python)
-        # ========================================
+        # -------------------------
+        # PHASE 1: kw + filtre catégorie en Python
+        # -------------------------
         for kw in kws[:3]:
             if len(collected) >= limit:
                 break
-
             kw_safe = self._normalize_kw_for_ilike(kw)
             if len(kw_safe) < 3:
                 continue
+            try:
+                q = _base_query().ilike("product_name", f"%{kw_safe}%").limit(60)
+                resp = q.execute()
+                data = getattr(resp, "data", None) or []
+                filtered = [r for r in data if self._category_match(r, category)]
+                _add_rows(filtered)
+                if filtered:
+                    print(f"✅ KW+CAT [{category}] '{kw_safe}': {len(filtered)}")
+            except Exception as e:
+                print(f"⚠️ KW+CAT query failed: {e}")
 
-            if patterns:
-                for pattern in patterns[:2]:
-                    if len(collected) >= limit:
-                        break
-
-                    pattern_safe = self._normalize_kw_for_ilike(pattern)
-                    if not pattern_safe:
-                        continue
-
-                    try:
-                        data1 = self._rest_query_ilike(
-                            select_fields=select_fields,
-                            column="product_name",
-                            pattern=kw_safe,
-                            limit=min(30, limit - len(collected))
-                        )
-                        filtered1 = [
-                            row for row in data1
-                            if pattern_safe.lower() in (row.get("secondary_category", "") or "").lower()
-                        ]
-                        _add_rows(filtered1)
-                        if filtered1:
-                            print(f"✅ KW1 [{category}] '{kw_safe}' + secondary '{pattern_safe}': {len(filtered1)} résultats")
-                    except Exception as e:
-                        print(f"⚠️ KW1 query failed: {str(e)[:100]}")
-
-        # ========================================
-        # PHASE 2: Fallback - mot-clé sans catégorie
-        # ========================================
-        if len(collected) < 5:
+        # -------------------------
+        # PHASE 2: kw sans catégorie
+        # -------------------------
+        if len(collected) < 6:
             for kw in kws[:3]:
                 if len(collected) >= limit:
                     break
-
                 kw_safe = self._normalize_kw_for_ilike(kw)
                 if len(kw_safe) < 3:
                     continue
-
                 try:
-                    data = self._rest_query_ilike(
-                        select_fields=select_fields,
-                        column="product_name",
-                        pattern=kw_safe,
-                        limit=min(30, limit - len(collected))
-                    )
+                    q = _base_query().ilike("product_name", f"%{kw_safe}%").limit(60)
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
                     _add_rows(data)
                     if data:
-                        print(f"✅ KW2 [{category}] '{kw_safe}' (sans catégorie): {len(data)} résultats")
+                        print(f"✅ KW [{category}] '{kw_safe}': {len(data)}")
                 except Exception as e:
-                    print(f"⚠️ KW2 query failed: {str(e)[:100]}")
+                    print(f"⚠️ KW query failed: {e}")
 
-        # ========================================
-        # PHASE 3: Fallback - secondary_category
-        # ========================================
+        # -------------------------
+        # PHASE 3: fallback catégorie (secondary_category ilike)
+        # (sur TABLE => OK + index trigram)
+        # -------------------------
         if len(collected) < 10:
-            for pattern in patterns[:3]:
+            for token in (self.CATEGORY_TOKENS.get(category, []) or [])[:2]:
                 if len(collected) >= limit:
                     break
-
-                pattern_safe = self._normalize_kw_for_ilike(pattern)
-                if not pattern_safe:
+                t = self._normalize_kw_for_ilike(token)
+                if len(t) < 3:
                     continue
-
                 try:
-                    data = self._rest_query_ilike(
-                        select_fields=select_fields,
-                        column="secondary_category",
-                        pattern=pattern_safe,
-                        limit=min(30, limit - len(collected))
-                    )
+                    q = _base_query().ilike("secondary_category", f"%{t}%").limit(60)
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
                     _add_rows(data)
                     if data:
-                        print(f"✅ CAT1 [{category}] secondary '{pattern_safe}': {len(data)} résultats")
+                        print(f"✅ CAT secondary [{category}] '{t}': {len(data)}")
                 except Exception as e:
-                    print(f"⚠️ CAT1 query failed: {str(e)[:100]}")
+                    print(f"⚠️ CAT secondary query failed: {e}")
 
-        # ========================================
-        # PHASE 4: Fallback - primary_category
-        # ========================================
+        # -------------------------
+        # PHASE 4: fallback primary_category
+        # -------------------------
         if len(collected) < 10:
-            for pattern in patterns[:3]:
+            for token in (self.CATEGORY_TOKENS.get(category, []) or [])[:2]:
                 if len(collected) >= limit:
                     break
-
-                pattern_safe = self._normalize_kw_for_ilike(pattern)
-                if not pattern_safe:
+                t = self._normalize_kw_for_ilike(token)
+                if len(t) < 3:
                     continue
-
                 try:
-                    data = self._rest_query_ilike(
-                        select_fields=select_fields,
-                        column="primary_category",
-                        pattern=pattern_safe,
-                        limit=min(30, limit - len(collected))
-                    )
+                    q = _base_query().ilike("primary_category", f"%{t}%").limit(60)
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
                     _add_rows(data)
                     if data:
-                        print(f"✅ CAT2 [{category}] primary '{pattern_safe}': {len(data)} résultats")
+                        print(f"✅ CAT primary [{category}] '{t}': {len(data)}")
                 except Exception as e:
-                    print(f"⚠️ CAT2 query failed: {str(e)[:100]}")
+                    print(f"⚠️ CAT primary query failed: {e}")
 
         print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]
-
-    def _rest_query_ilike(
-        self,
-        select_fields: str,
-        column: str,
-        pattern: str,
-        limit: int = 30
-    ) -> List[Dict[str, Any]]:
-        """
-        Requête REST Supabase DIRECTE avec httpx (pas de SDK qui buggue l'encodage).
-        
-        Endpoint: POST /rest/v1/active_affiliate_products
-        Params: select=..., column=ilike.%pattern%, limit=N
-        
-        httpx encode les params correctement (% → %25 auto)
-        """
-        from app.config import SUPABASE_URL, SUPABASE_KEY
-        
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            return []
-
-        url = f"{SUPABASE_URL}/rest/v1/active_affiliate_products"
-        
-        params = {
-            "select": select_fields,
-            f"{column}": f"ilike.%{pattern}%",
-            "limit": limit,
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-        }
-        
-        try:
-            resp = httpx.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=self.HTTP_TIMEOUT,
-            )
-            
-            if resp.status_code == 200:
-                return resp.json() or []
-            else:
-                print(f"⚠️ REST query {column}=ilike.%{pattern}% returned {resp.status_code}")
-                return []
-        except Exception as e:
-            print(f"⚠️ REST query exception: {type(e).__name__}: {str(e)[:80]}")
-            return []
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
         text = f"{piece_title} {spec}".lower()
@@ -610,7 +533,7 @@ class ProductMatcherService:
         return final[:8]
 
     # -------------------------
-    # Private: VISUELS FALLBACK
+    # VISUELS FALLBACK
     # -------------------------
     def _find_visual_by_key(self, visual_key: str, category: str) -> Optional[Dict[str, Any]]:
         if not visual_key:
@@ -633,6 +556,7 @@ class ProductMatcherService:
             if data:
                 return data[0]
 
+            # fallback sans type_vetement
             resp2 = (
                 self.client.table("visuels")
                 .select("nom_simplifie, type_vetement, coupe, url_image")
