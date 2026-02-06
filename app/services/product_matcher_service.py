@@ -349,45 +349,27 @@ class ProductMatcherService:
 
     # -------------------------
     # Private: AFFILIATE MATCH (TABLE active_affiliate_products)
-    # ✅ REWRITE v5.3: Requêtes REST SIMPLES (pas de .or_() complexes)
+    # ✅ REWRITE v5.4: API REST DIRECTE avec httpx (URL encoding correct)
     # -------------------------
     def _find_affiliate_products(
         self, piece_title: str, spec: str, category: str, limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
-        ✅ NOUVELLE STRATÉGIE (v5.3):
+        ✅ NOUVELLE STRATÉGIE (v5.4):
         - ÉLIMINÉ: .or_() complexes (plantent Cloudflare Worker 1101)
-        - ÉLIMINÉ: keywords (colonne vide)
-        - NEW: Requêtes REST simples et séquentielles
+        - ÉLIMINÉ: SDK Supabase (bug URL encoding sur .ilike())
+        - NEW: API REST directe via httpx avec URL encoding correct
+        - NEW: Requêtes simples et séquentielles (une seule ILIKE par requête)
         
         Stratégie fallback:
-        1. Chercher: product_name ILIKE %kw% + secondary_category ILIKE %pattern%
-        2. Si peu: product_name ILIKE %kw% + primary_category ILIKE %pattern%
-        3. Si peu: product_name ILIKE %kw% (sans catégorie)
-        4. Fallback: Juste catégorie (secondary_category)
+        1. product_name ILIKE %kw% → filtrer en Python par catégorie
+        2. product_name ILIKE %kw% (sans catégorie)
+        3. secondary_category ILIKE %pattern%
+        4. primary_category ILIKE %pattern%
         """
         kws = self._extract_keywords(piece_title, spec)
 
-        select_fields = ",".join([
-            "merchant_id",
-            "sid",
-            "product_id",
-            "sku",
-            "product_name",
-            "brand",
-            "primary_category",
-            "secondary_category",
-            "product_url",
-            "image_url",
-            "buy_url",
-            "price",
-            "sale_price",
-            "currency",
-            "availability",
-            "is_deleted",
-            "last_seen_at",
-            "updated_at",
-        ])
+        select_fields = "merchant_id,sid,product_id,sku,product_name,brand,primary_category,secondary_category,product_url,image_url,buy_url,price,sale_price,currency,availability,is_deleted,last_seen_at,updated_at"
 
         collected: List[Dict[str, Any]] = []
         seen = set()
@@ -419,7 +401,7 @@ class ProductMatcherService:
         patterns = category_patterns.get(category, [])
 
         # ========================================
-        # PHASE 1: Recherche par mot-clé + catégorie
+        # PHASE 1: Recherche par mot-clé + catégorie (filtrage Python)
         # ========================================
         for kw in kws[:3]:
             if len(collected) >= limit:
@@ -429,9 +411,8 @@ class ProductMatcherService:
             if len(kw_safe) < 3:
                 continue
 
-            # Essayer secondary_category d'abord
             if patterns:
-                for pattern in patterns[:2]:  # Max 2 patterns
+                for pattern in patterns[:2]:
                     if len(collected) >= limit:
                         break
 
@@ -440,14 +421,12 @@ class ProductMatcherService:
                         continue
 
                     try:
-                        # ✅ REQUÊTE 1: product_name ONLY (une seule .ilike())
-                        q1 = self.client.table("active_affiliate_products").select(select_fields)
-                        q1 = q1.ilike("product_name", f"%{kw_safe}%")
-                        q1 = q1.limit(min(20, limit - len(collected)))
-                        resp1 = q1.execute()
-                        data1 = getattr(resp1, "data", None) or []
-                        
-                        # Filtrer en Python par secondary_category (pas de 2e .ilike())
+                        data1 = self._rest_query_ilike(
+                            select_fields=select_fields,
+                            column="product_name",
+                            pattern=kw_safe,
+                            limit=min(30, limit - len(collected))
+                        )
                         filtered1 = [
                             row for row in data1
                             if pattern_safe.lower() in (row.get("secondary_category", "") or "").lower()
@@ -456,7 +435,7 @@ class ProductMatcherService:
                         if filtered1:
                             print(f"✅ KW1 [{category}] '{kw_safe}' + secondary '{pattern_safe}': {len(filtered1)} résultats")
                     except Exception as e:
-                        print(f"⚠️ KW1 query failed: {e}")
+                        print(f"⚠️ KW1 query failed: {str(e)[:100]}")
 
         # ========================================
         # PHASE 2: Fallback - mot-clé sans catégorie
@@ -471,19 +450,20 @@ class ProductMatcherService:
                     continue
 
                 try:
-                    q = self.client.table("active_affiliate_products").select(select_fields)
-                    q = q.ilike("product_name", f"%{kw_safe}%")
-                    q = q.limit(min(20, limit - len(collected)))
-                    resp = q.execute()
-                    data = getattr(resp, "data", None) or []
+                    data = self._rest_query_ilike(
+                        select_fields=select_fields,
+                        column="product_name",
+                        pattern=kw_safe,
+                        limit=min(30, limit - len(collected))
+                    )
                     _add_rows(data)
                     if data:
                         print(f"✅ KW2 [{category}] '{kw_safe}' (sans catégorie): {len(data)} résultats")
                 except Exception as e:
-                    print(f"⚠️ KW2 query failed: {e}")
+                    print(f"⚠️ KW2 query failed: {str(e)[:100]}")
 
         # ========================================
-        # PHASE 3: Fallback - juste catégorie
+        # PHASE 3: Fallback - secondary_category
         # ========================================
         if len(collected) < 10:
             for pattern in patterns[:3]:
@@ -495,16 +475,17 @@ class ProductMatcherService:
                     continue
 
                 try:
-                    q = self.client.table("active_affiliate_products").select(select_fields)
-                    q = q.ilike("secondary_category", f"%{pattern_safe}%")
-                    q = q.limit(min(20, limit - len(collected)))
-                    resp = q.execute()
-                    data = getattr(resp, "data", None) or []
+                    data = self._rest_query_ilike(
+                        select_fields=select_fields,
+                        column="secondary_category",
+                        pattern=pattern_safe,
+                        limit=min(30, limit - len(collected))
+                    )
                     _add_rows(data)
                     if data:
                         print(f"✅ CAT1 [{category}] secondary '{pattern_safe}': {len(data)} résultats")
                 except Exception as e:
-                    print(f"⚠️ CAT1 query failed: {e}")
+                    print(f"⚠️ CAT1 query failed: {str(e)[:100]}")
 
         # ========================================
         # PHASE 4: Fallback - primary_category
@@ -519,19 +500,70 @@ class ProductMatcherService:
                     continue
 
                 try:
-                    q = self.client.table("active_affiliate_products").select(select_fields)
-                    q = q.ilike("primary_category", f"%{pattern_safe}%")
-                    q = q.limit(min(20, limit - len(collected)))
-                    resp = q.execute()
-                    data = getattr(resp, "data", None) or []
+                    data = self._rest_query_ilike(
+                        select_fields=select_fields,
+                        column="primary_category",
+                        pattern=pattern_safe,
+                        limit=min(30, limit - len(collected))
+                    )
                     _add_rows(data)
                     if data:
                         print(f"✅ CAT2 [{category}] primary '{pattern_safe}': {len(data)} résultats")
                 except Exception as e:
-                    print(f"⚠️ CAT2 query failed: {e}")
+                    print(f"⚠️ CAT2 query failed: {str(e)[:100]}")
 
         print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]
+
+    def _rest_query_ilike(
+        self,
+        select_fields: str,
+        column: str,
+        pattern: str,
+        limit: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Requête REST Supabase DIRECTE avec httpx (pas de SDK qui buggue l'encodage).
+        
+        Endpoint: POST /rest/v1/active_affiliate_products
+        Params: select=..., column=ilike.%pattern%, limit=N
+        
+        httpx encode les params correctement (% → %25 auto)
+        """
+        from app.config import SUPABASE_URL, SUPABASE_KEY
+        
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            return []
+
+        url = f"{SUPABASE_URL}/rest/v1/active_affiliate_products"
+        
+        params = {
+            "select": select_fields,
+            f"{column}": f"ilike.%{pattern}%",
+            "limit": limit,
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+        }
+        
+        try:
+            resp = httpx.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=self.HTTP_TIMEOUT,
+            )
+            
+            if resp.status_code == 200:
+                return resp.json() or []
+            else:
+                print(f"⚠️ REST query {column}=ilike.%{pattern}% returned {resp.status_code}")
+                return []
+        except Exception as e:
+            print(f"⚠️ REST query exception: {type(e).__name__}: {str(e)[:80]}")
+            return []
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
         text = f"{piece_title} {spec}".lower()
