@@ -14,17 +14,17 @@ from app.utils.supabase_client import supabase
 class ProductMatcherService:
     """
     Match une pièce IA (piece_title/spec/visual_key) vers:
-    1) un produit affilié (VIEW SQL: active_affiliate_products)  ✅ (aligné avec tes colonnes réelles)
+    1) un produit affilié (TABLE: active_affiliate_products)  ✅ (aligné avec tes colonnes réelles)
        - récupère jusqu'à 20 candidats
        - renvoie 1 produit principal + 2 alternatives
     2) sinon un visuel pédagogique (table `visuels`)
     + Cache images affiliées dans Supabase Storage (bucket public) pour compat PDFMonkey
 
-    ✅ Correctifs clés:
-    - Utilise product_name / keywords / primary_category / secondary_category / buy_url (colonnes réelles)
-    - Ne dépend PAS de colonnes inexistantes (title, description_short, product_type, color, material, gender)
-    - Déduplication robuste sur buy_url + product_id + image_url
-    - Validation réseau désactivée par défaut (HEAD souvent bloqué)
+    ✅ FIXE MAJEUR v5.3:
+    - ÉLIMINÉ: `.or_()` complexes qui plantent Cloudflare Worker 1101
+    - ÉLIMINÉ: colonne `keywords` (vide dans la DB)
+    - NEW: Requêtes REST simples et séquentielles (fonctionnent à coup sûr)
+    - NEW: Stratégie fallback robuste (kw → catégorie → rien)
     """
 
     VISUELS_TYPE_MAP = {
@@ -39,15 +39,6 @@ class ProductMatcherService:
 
     # Bucket public pour cache images affiliées
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
-
-    # Optionnel: validation réseau d'une page "murl" si présent (désactivée par défaut)
-    VALIDATE_MURL_NETWORK = os.getenv("PDT_VALIDATE_MURL_NETWORK", "0").strip() in (
-        "1",
-        "true",
-        "True",
-        "yes",
-        "YES",
-    )
 
     # Timeout réseau
     HTTP_TIMEOUT = float(os.getenv("PDT_HTTP_TIMEOUT", "8.0").strip() or "8.0")
@@ -85,9 +76,7 @@ class ProductMatcherService:
         candidates = self._find_affiliate_products(
             piece_title=piece_title, spec=spec, category=category, limit=20
         )
-        top3 = self._pick_top3_valid_candidates(
-            candidates, validate_network=self.VALIDATE_MURL_NETWORK
-        )
+        top3 = self._pick_top3_valid_candidates(candidates, validate_network=False)
 
         # Log simple (utile pour Railway)
         try:
@@ -106,8 +95,6 @@ class ProductMatcherService:
             alt1 = top3[1] if len(top3) > 1 else None
             alt2 = top3[2] if len(top3) > 2 else None
 
-            # IMPORTANT: dans tes données réelles, le lien tracké est buy_url.
-            # On renvoie product_url = buy_url pour que tes clics restent attribués.
             return {
                 "image_url": safe_img,
                 "product_url": (main.get("buy_url") or "").strip(),
@@ -184,7 +171,6 @@ class ProductMatcherService:
         - utilise buy_url (tracking)
         - déduplique sur buy_url puis product_id puis image_url
         - accepte un lien d'affiliation comme "valide" par défaut
-        - validation réseau optionnelle uniquement si murl=... présent
         """
         out: List[Dict[str, Any]] = []
         seen = set()
@@ -205,18 +191,8 @@ class ProductMatcherService:
                 continue
             seen.add(key)
 
-            # Si tracking -> ok direct
+            # Si tracking → ok direct
             if buy_url and self._is_affiliate_tracking_url(buy_url):
-                out.append(c)
-                if len(out) >= 3:
-                    break
-                continue
-
-            # Sinon, si murl=... on peut heuristiquement checker
-            murl = self._extract_murl_from_affiliate_url(buy_url)
-            if murl:
-                if not self._looks_like_product_page(murl):
-                    continue
                 out.append(c)
                 if len(out) >= 3:
                     break
@@ -227,17 +203,6 @@ class ProductMatcherService:
             if len(out) >= 3:
                 break
 
-        # Validation réseau optionnelle
-        if validate_network and out:
-            try:
-                murl0 = self._extract_murl_from_affiliate_url((out[0].get("buy_url") or "").strip())
-                if murl0:
-                    ok = self._validate_product_page_network(murl0)
-                    if not ok:
-                        out = out[1:]
-            except Exception:
-                pass
-
         return out[:3]
 
     def _is_affiliate_tracking_url(self, url: str) -> bool:
@@ -246,50 +211,6 @@ class ProductMatcherService:
         try:
             host = (urlparse(url).netloc or "").lower()
             return any(h in host for h in self.AFFILIATE_HOST_HINTS)
-        except Exception:
-            return False
-
-    def _extract_murl_from_affiliate_url(self, affiliate_url: str) -> str:
-        """Extrait murl=... depuis une URL (quand présent)."""
-        if not affiliate_url:
-            return ""
-        try:
-            u = urlparse(affiliate_url)
-            qs = parse_qs(u.query)
-            m = qs.get("murl")
-            if not m:
-                return ""
-            return unquote(m[0] or "").strip()
-        except Exception:
-            return ""
-
-    def _looks_like_product_page(self, murl: str) -> bool:
-        """Heuristique: id produit long (>=6 chiffres) dans l'URL => OK."""
-        if not murl:
-            return False
-        return bool(self.PDT_PRODUCT_ID_RE.search(murl))
-
-    def _validate_product_page_network(self, murl: str) -> bool:
-        """
-        Valide que la page semble encore être une fiche produit (pas redirect vers marque/home).
-        - HEAD murl (follow_redirects)
-        - accepte si url finale contient encore un id produit long
-        """
-        try:
-            r = httpx.head(
-                murl,
-                timeout=self.HTTP_TIMEOUT,
-                follow_redirects=True,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-                },
-            )
-            final_url = str(r.url) if getattr(r, "url", None) else murl
-            if r.status_code >= 400:
-                return False
-            return bool(self.PDT_PRODUCT_ID_RE.search(final_url))
         except Exception:
             return False
 
@@ -314,7 +235,7 @@ class ProductMatcherService:
         if not kw:
             return ""
         kw = self._strip_accents(kw)
-        kw = kw.replace("’", "'")
+        kw = kw.replace("'", "'")
         kw = kw.split()[0]
         kw = re.sub(r"[^a-z0-9\-]", "", kw)
         if len(kw) > self.MAX_TOKEN_LEN:
@@ -427,44 +348,46 @@ class ProductMatcherService:
             return image_url
 
     # -------------------------
-    # Private: AFFILIATE MATCH (VIEW active_affiliate_products)
+    # Private: AFFILIATE MATCH (TABLE active_affiliate_products)
+    # ✅ REWRITE v5.3: Requêtes REST SIMPLES (pas de .or_() complexes)
     # -------------------------
     def _find_affiliate_products(
         self, piece_title: str, spec: str, category: str, limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
-        Récupère des candidats via keywords + fallback.
-        ✅ Aligné sur active_affiliate_products:
-        - product_name (texte principal)
-        - keywords (fallback texte)
-        - primary_category / secondary_category (filtres)
-        - buy_url (lien tracké)
+        ✅ NOUVELLE STRATÉGIE (v5.3):
+        - ÉLIMINÉ: .or_() complexes (plantent Cloudflare Worker 1101)
+        - ÉLIMINÉ: keywords (colonne vide)
+        - NEW: Requêtes REST simples et séquentielles
+        
+        Stratégie fallback:
+        1. Chercher: product_name ILIKE %kw% + secondary_category ILIKE %pattern%
+        2. Si peu: product_name ILIKE %kw% + primary_category ILIKE %pattern%
+        3. Si peu: product_name ILIKE %kw% (sans catégorie)
+        4. Fallback: Juste catégorie (secondary_category)
         """
         kws = self._extract_keywords(piece_title, spec)
 
-        select_fields = ",".join(
-            [
-                "merchant_id",
-                "sid",
-                "product_id",
-                "sku",
-                "product_name",
-                "brand",
-                "primary_category",
-                "secondary_category",
-                "product_url",
-                "image_url",
-                "buy_url",
-                "price",
-                "sale_price",
-                "currency",
-                "availability",
-                "keywords",
-                "is_deleted",
-                "last_seen_at",
-                "updated_at",
-            ]
-        )
+        select_fields = ",".join([
+            "merchant_id",
+            "sid",
+            "product_id",
+            "sku",
+            "product_name",
+            "brand",
+            "primary_category",
+            "secondary_category",
+            "product_url",
+            "image_url",
+            "buy_url",
+            "price",
+            "sale_price",
+            "currency",
+            "availability",
+            "is_deleted",
+            "last_seen_at",
+            "updated_at",
+        ])
 
         collected: List[Dict[str, Any]] = []
         seen = set()
@@ -472,7 +395,6 @@ class ProductMatcherService:
         def _add_rows(rows: List[Dict[str, Any]]) -> None:
             nonlocal collected, seen
             for row in rows or []:
-                # clé de dédup: buy_url puis product_id
                 key = (row.get("buy_url") or "").strip() or (row.get("product_id") or "").strip()
                 if not key:
                     key = hashlib.sha256((row.get("image_url") or "").encode("utf-8")).hexdigest()[:12]
@@ -483,84 +405,126 @@ class ProductMatcherService:
                 if len(collected) >= limit:
                     return
 
-        # Catégories: on reste simple (colonne réelle: secondary_category / primary_category)
-        category_filters = {
-            "tops": ["top", "tops", "maille", "knitwear", "blouse", "chemise", "pull"],
-            "bottoms": ["bottom", "bottoms", "pantal", "jean", "jupe", "short"],
-            "dresses_playsuits": ["dress", "dresses", "robe", "combi"],
+        # Mapping catégories
+        category_patterns = {
+            "tops": ["top", "maille", "knitwear", "blouse", "chemise", "pull"],
+            "bottoms": ["pantal", "jean", "jupe", "short"],
+            "dresses_playsuits": ["robe", "dress", "combi"],
             "outerwear": ["outerwear", "veste", "manteau", "blazer", "trench"],
-            "swim_lingerie": ["swim", "swimwear", "underwear", "lingerie", "maillot"],
-            "shoes": ["footwear", "chauss", "shoe", "shoes", "bott", "sandale", "basket"],
-            "accessories": ["accessor", "accessories", "sac", "bag", "ceinture", "bijou"],
+            "swim_lingerie": ["swim", "underwear", "lingerie", "maillot"],
+            "shoes": ["chauss", "shoe", "botte", "sandale", "basket"],
+            "accessories": ["accessor", "sac", "bag", "ceinture", "bijou"],
         }
 
-        def _base_query():
-            # active_affiliate_products = is_deleted = false déjà dans la vue, mais on peut garder safe
-            q = self.client.table("active_affiliate_products").select(select_fields)
+        patterns = category_patterns.get(category, [])
 
-            # Filtre catégorie (OR sur primary + secondary)
-            pats = category_filters.get(category, [])
-            if pats:
-                ors = []
-                for p in pats[:8]:
-                    tok = self._normalize_kw_for_ilike(p)
-                    if not tok:
-                        continue
-                    ors.append(f"secondary_category.ilike.%{tok}%")
-                    ors.append(f"primary_category.ilike.%{tok}%")
-                if ors:
-                    q = q.or_(",".join(ors))
-            return q
-
-        def _query_kw(q, kw_token: str):
-            """
-            1) product_name only
-            2) product_name OR keywords
-            """
-            try:
-                resp = q.ilike("product_name", f"%{kw_token}%").limit(min(20, limit)).execute()
-                return getattr(resp, "data", None) or []
-            except Exception as e:
-                print(f"⚠️ product_name-only failed (kw={kw_token!r}) : {e}")
-
-            try:
-                resp = (
-                    q.or_(f"product_name.ilike.%{kw_token}%,keywords.ilike.%{kw_token}%")
-                    .limit(min(20, limit))
-                    .execute()
-                )
-                return getattr(resp, "data", None) or []
-            except Exception as e:
-                print(f"⚠️ product_name+keywords failed (kw={kw_token!r}) : {e}")
-                return []
-
-        # 1) Queries par mots-clés
-        for kw in kws[:4]:
+        # ========================================
+        # PHASE 1: Recherche par mot-clé + catégorie
+        # ========================================
+        for kw in kws[:3]:
             if len(collected) >= limit:
                 break
 
-            kw2 = self._normalize_kw_for_ilike(kw)
-            if len(kw2) < 3:
+            kw_safe = self._normalize_kw_for_ilike(kw)
+            if len(kw_safe) < 3:
                 continue
 
-            try:
-                q = _base_query()
-                data = _query_kw(q, kw2)
-                _add_rows(data)
-            except Exception as e:
-                print(f"⚠️ Affiliate match kw failed ({kw2}): {e}")
+            # Essayer secondary_category d'abord
+            if patterns:
+                for pattern in patterns[:2]:  # Max 2 patterns
+                    if len(collected) >= limit:
+                        break
 
-        # 2) Fallback sur titre complet si besoin
-        if len(collected) < 3 and piece_title:
-            safe_title = self._normalize_kw_for_ilike(piece_title)
-            if safe_title:
+                    pattern_safe = self._normalize_kw_for_ilike(pattern)
+                    if not pattern_safe:
+                        continue
+
+                    try:
+                        q = self.client.table("active_affiliate_products").select(select_fields)
+                        q = q.ilike("product_name", f"%{kw_safe}%")
+                        q = q.ilike("secondary_category", f"%{pattern_safe}%")
+                        q = q.limit(min(20, limit - len(collected)))
+                        resp = q.execute()
+                        data = getattr(resp, "data", None) or []
+                        _add_rows(data)
+                        if data:
+                            print(f"✅ KW1 [{category}] '{kw_safe}' + secondary '{pattern_safe}': {len(data)} résultats")
+                    except Exception as e:
+                        print(f"⚠️ KW1 query failed: {e}")
+
+        # ========================================
+        # PHASE 2: Fallback - mot-clé sans catégorie
+        # ========================================
+        if len(collected) < 5:
+            for kw in kws[:3]:
+                if len(collected) >= limit:
+                    break
+
+                kw_safe = self._normalize_kw_for_ilike(kw)
+                if len(kw_safe) < 3:
+                    continue
+
                 try:
-                    q = _base_query()
-                    data = _query_kw(q, safe_title)
+                    q = self.client.table("active_affiliate_products").select(select_fields)
+                    q = q.ilike("product_name", f"%{kw_safe}%")
+                    q = q.limit(min(20, limit - len(collected)))
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
                     _add_rows(data)
+                    if data:
+                        print(f"✅ KW2 [{category}] '{kw_safe}' (sans catégorie): {len(data)} résultats")
                 except Exception as e:
-                    print(f"⚠️ Affiliate match title fallback failed ({safe_title}): {e}")
+                    print(f"⚠️ KW2 query failed: {e}")
 
+        # ========================================
+        # PHASE 3: Fallback - juste catégorie
+        # ========================================
+        if len(collected) < 10:
+            for pattern in patterns[:3]:
+                if len(collected) >= limit:
+                    break
+
+                pattern_safe = self._normalize_kw_for_ilike(pattern)
+                if not pattern_safe:
+                    continue
+
+                try:
+                    q = self.client.table("active_affiliate_products").select(select_fields)
+                    q = q.ilike("secondary_category", f"%{pattern_safe}%")
+                    q = q.limit(min(20, limit - len(collected)))
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
+                    _add_rows(data)
+                    if data:
+                        print(f"✅ CAT1 [{category}] secondary '{pattern_safe}': {len(data)} résultats")
+                except Exception as e:
+                    print(f"⚠️ CAT1 query failed: {e}")
+
+        # ========================================
+        # PHASE 4: Fallback - primary_category
+        # ========================================
+        if len(collected) < 10:
+            for pattern in patterns[:3]:
+                if len(collected) >= limit:
+                    break
+
+                pattern_safe = self._normalize_kw_for_ilike(pattern)
+                if not pattern_safe:
+                    continue
+
+                try:
+                    q = self.client.table("active_affiliate_products").select(select_fields)
+                    q = q.ilike("primary_category", f"%{pattern_safe}%")
+                    q = q.limit(min(20, limit - len(collected)))
+                    resp = q.execute()
+                    data = getattr(resp, "data", None) or []
+                    _add_rows(data)
+                    if data:
+                        print(f"✅ CAT2 [{category}] primary '{pattern_safe}': {len(data)} résultats")
+                except Exception as e:
+                    print(f"⚠️ CAT2 query failed: {e}")
+
+        print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
@@ -568,14 +532,12 @@ class ProductMatcherService:
         text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", text)
         text = re.sub(r"\s{2,}", " ", text).strip()
 
-        stop = set(
-            [
-                "a", "à", "au", "aux", "de", "des", "du", "en", "et", "ou",
-                "un", "une", "avec", "pour", "la", "le", "les", "d", "l",
-                "sur", "dans", "sans", "style",
-                "matiere", "matières", "coton", "laine", "viscose", "soie",
-            ]
-        )
+        stop = set([
+            "a", "à", "au", "aux", "de", "des", "du", "en", "et", "ou",
+            "un", "une", "avec", "pour", "la", "le", "les", "d", "l",
+            "sur", "dans", "sans", "style",
+            "matiere", "matières", "coton", "laine", "viscose", "soie",
+        ])
 
         tokens = [t.strip() for t in text.split() if t.strip()]
         tokens = [t for t in tokens if t not in stop and len(t) >= 3]
