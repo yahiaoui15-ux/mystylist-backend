@@ -440,15 +440,21 @@ class ProductMatcherService:
                         continue
 
                     try:
-                        q = self.client.table("active_affiliate_products").select(select_fields)
-                        q = q.ilike("product_name", f"%{kw_safe}%")
-                        q = q.ilike("secondary_category", f"%{pattern_safe}%")
-                        q = q.limit(min(20, limit - len(collected)))
-                        resp = q.execute()
-                        data = getattr(resp, "data", None) or []
-                        _add_rows(data)
-                        if data:
-                            print(f"✅ KW1 [{category}] '{kw_safe}' + secondary '{pattern_safe}': {len(data)} résultats")
+                        # ✅ REQUÊTE 1: product_name ONLY (une seule .ilike())
+                        q1 = self.client.table("active_affiliate_products").select(select_fields)
+                        q1 = q1.ilike("product_name", f"%{kw_safe}%")
+                        q1 = q1.limit(min(20, limit - len(collected)))
+                        resp1 = q1.execute()
+                        data1 = getattr(resp1, "data", None) or []
+                        
+                        # Filtrer en Python par secondary_category (pas de 2e .ilike())
+                        filtered1 = [
+                            row for row in data1
+                            if pattern_safe.lower() in (row.get("secondary_category", "") or "").lower()
+                        ]
+                        _add_rows(filtered1)
+                        if filtered1:
+                            print(f"✅ KW1 [{category}] '{kw_safe}' + secondary '{pattern_safe}': {len(filtered1)} résultats")
                     except Exception as e:
                         print(f"⚠️ KW1 query failed: {e}")
 
