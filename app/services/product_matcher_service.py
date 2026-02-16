@@ -1,11 +1,12 @@
 # app/services/product_matcher_service.py
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import re
 import hashlib
 import os
-import httpx
 import unicodedata
 from urllib.parse import urlparse
+
+import httpx
 
 from app.utils.supabase_client import supabase
 
@@ -13,16 +14,17 @@ from app.utils.supabase_client import supabase
 class ProductMatcherService:
     """
     Match une pièce IA (piece_title/spec/visual_key) vers:
-    1) un produit affilié (TABLE: affiliate_products) ✅
+    1) un produit affilié (TABLE: affiliate_products)
        - récupère jusqu'à `limit` candidats
        - renvoie 1 produit principal + 2 alternatives
     2) sinon un visuel pédagogique (table `visuels`)
     + Cache images affiliées dans Supabase Storage (bucket public) pour compat PDFMonkey
 
-    ✅ FIX v6 (final):
-    - N'interroge PLUS la view `active_affiliate_products` (cause 500/1101 Cloudflare)
-    - Interroge directement `affiliate_products` + filtre `is_deleted=false`
+    ✅ FIX v7 (stable + rapide):
+    - Interroge DIRECTEMENT `affiliate_products` + filtre `is_deleted=false`
     - Requêtes PostgREST simples (1 seul ilike par call), filtrage catégorie côté Python
+    - Catégories alignées avec tes valeurs FR/EN (Vêtements~~Robe / Clothing~~Dresses / Footwear~~Sneakers...)
+    - Cache image NON BLOQUANT (timeouts courts + limite taille + cache mémoire request)
     """
 
     VISUELS_TYPE_MAP = {
@@ -35,37 +37,83 @@ class ProductMatcherService:
         "accessories": "accessoire",
     }
 
-    # Table source (on évite la VIEW)
+    # Table source
     AFFILIATE_TABLE = os.getenv("AFFILIATE_TABLE", "affiliate_products")
 
-    # Bucket public pour cache images affiliées
+    # Bucket public (doit être PUBLIC pour PDFMonkey)
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
 
-    # Timeout réseau
-    HTTP_TIMEOUT = float(os.getenv("PDT_HTTP_TIMEOUT", "8.0").strip() or "8.0")
+    # Timeouts (évite worker timeout)
+    HTTP_CONNECT_TIMEOUT = float(os.getenv("PDT_HTTP_CONNECT_TIMEOUT", "3.0"))
+    HTTP_READ_TIMEOUT = float(os.getenv("PDT_HTTP_READ_TIMEOUT", "6.0"))
+    HTTP_TOTAL_TIMEOUT = float(os.getenv("PDT_HTTP_TOTAL_TIMEOUT", "8.0"))
 
-    # Sécurité: limite la taille des tokens envoyés à PostgREST
+    # Taille max d’image acceptée (en bytes) pour éviter de télécharger des monstres
+    MAX_IMAGE_BYTES = int(os.getenv("PDT_MAX_IMAGE_BYTES", str(1_800_000)))  # ~1.8MB
+
+    # Sécurité tokens envoyés à PostgREST
     MAX_TOKEN_LEN = int(os.getenv("PDT_MAX_TOKEN_LEN", "48").strip() or "48")
-
-    # Heuristique "page produit" : id long (>=6 chiffres) dans URL
-    PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})", re.IGNORECASE)
 
     # Liens d'affiliation "fiables" (tracking)
     AFFILIATE_HOST_HINTS = ("linksynergy.com", "linkshare.com", "rakuten", "awin")
 
-    # Catégories (dans ton CSV c'est souvent "Clothing~~Tops~~...")
+    # Tokens réels observés dans tes secondary_category (FR/EN)
     CATEGORY_TOKENS = {
-        "tops": ["tops", "top", "shirt", "blouse", "knitwear", "sweater"],
-        "bottoms": ["bottoms", "trousers", "pants", "jeans", "skirts", "shorts"],
-        "dresses_playsuits": ["dresses", "dress", "playsuits", "playsuit", "jumpsuits", "jumpsuit"],
-        "outerwear": ["outerwear", "coats", "coat", "jackets", "jacket", "blazers", "blazer", "trench"],
-        "swim_lingerie": ["swimwear", "swim", "lingerie", "underwear"],
-        "shoes": ["shoes", "shoe", "boots", "boot", "sandals", "sneakers", "trainers"],
-        "accessories": ["accessories", "accessory", "bags", "bag", "belts", "belt", "jewellery", "jewelry"],
+        "tops": [
+            # FR
+            "vêtements~~pull", "vetements~~pull",
+            "vêtements~~chemise", "vetements~~chemise",
+            "vêtements~~tee-shirt", "vetements~~tee-shirt",
+            "vêtements~~t-shirt", "vetements~~t-shirt",
+            "vêtements~~top", "vetements~~top",
+            "vêtements~~top & blouse", "vetements~~top & blouse",
+            "vêtements~~gilet", "vetements~~gilet",
+            "vêtements~~maille", "vetements~~maille",
+            # EN
+            "clothing~~tops", "clothing~~top", "clothing~~shirts", "clothing~~blouses",
+            "clothing~~knitwear", "clothing~~sweaters",
+        ],
+        "bottoms": [
+            "vêtements~~pantalon", "vetements~~pantalon",
+            "vêtements~~jean", "vetements~~jean",
+            "vêtements~~jupe", "vetements~~jupe",
+            "vêtements~~short", "vetements~~short",
+            "clothing~~trousers", "clothing~~pants", "clothing~~jeans", "clothing~~skirts", "clothing~~shorts",
+        ],
+        "dresses_playsuits": [
+            "vêtements~~robe", "vetements~~robe",
+            "clothing~~dresses", "clothing~~dress",
+            "clothing~~playsuits", "clothing~~jumpsuits",
+        ],
+        "outerwear": [
+            "vêtements~~manteau", "vetements~~manteau",
+            "vêtements~~veste", "vetements~~veste",
+            "vêtements~~veste & blouson", "vetements~~veste & blouson",
+            "clothing~~outerwear", "clothing~~coats", "clothing~~jackets", "clothing~~blazers", "clothing~~trench",
+        ],
+        "swim_lingerie": [
+            "vêtements~~underwear", "vetements~~underwear",
+            "vêtements~~lingerie", "vetements~~lingerie",
+            "vêtements~~maillot", "vetements~~maillot",
+            "clothing~~underwear", "clothing~~lingerie", "clothing~~swimwear",
+        ],
+        "shoes": [
+            "footwear~~sneakers", "footwear~~boots", "footwear~~sandals",
+            "footwear~~shoes",
+            "chaussures~~baskets", "chaussures~~chaussures",
+            "chaussures", "footwear",
+        ],
+        "accessories": [
+            "accessories", "apparel & accessories",
+            "luggage & bags",
+            "sac", "bag", "ceinture", "belt", "bijou", "jewellery", "jewelry",
+        ],
     }
 
     def __init__(self):
         self.client = supabase.get_client()
+        # cache mémoire (évite de retélécharger la même image 10x sur un même rapport)
+        self._image_cache: Dict[str, str] = {}
 
     # -------------------------
     # Public API
@@ -91,13 +139,10 @@ class ProductMatcherService:
             category=category,
             limit=20,
         )
-        top3 = self._pick_top3_valid_candidates(candidates, validate_network=False)
+        top3 = self._pick_top3_valid_candidates(candidates)
 
         try:
-            print(
-                f"🧩 MATCH [{category}] '{piece_title[:60]}' → "
-                f"{len(candidates)} candidats / {len(top3)} retenus"
-            )
+            print(f"🧩 MATCH [{category}] '{piece_title[:60]}' → {len(candidates)} candidats / {len(top3)} retenus")
         except Exception:
             pass
 
@@ -122,7 +167,7 @@ class ProductMatcherService:
                 "alt2_label": self._format_alt_label(alt2) if alt2 else "",
             }
 
-        # 2) Fallback visuel pédagogique
+        # Fallback visuel pédagogique
         visual = self._find_visual_by_key(visual_key=visual_key, category=category)
         if visual:
             return {
@@ -138,7 +183,6 @@ class ProductMatcherService:
                 "alt2_label": "",
             }
 
-        # 3) Rien
         return {
             "image_url": "",
             "product_url": "",
@@ -175,34 +219,22 @@ class ProductMatcherService:
     # -------------------------
     # Candidate selection / dedupe
     # -------------------------
-    def _pick_top3_valid_candidates(
-        self,
-        candidates: List[Dict[str, Any]],
-        validate_network: bool = False,
-    ) -> List[Dict[str, Any]]:
-        """
-        - utilise buy_url en priorité
-        - déduplique sur buy_url puis product_id puis image_url
-        """
+    def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         seen = set()
 
         for c in candidates or []:
             if not isinstance(c, dict):
                 continue
-
             buy_url = (c.get("buy_url") or "").strip()
             product_id = str(c.get("product_id") or "").strip()
             image_url = (c.get("image_url") or "").strip()
-
             if not buy_url and not product_id and not image_url:
                 continue
-
             key = buy_url or product_id or image_url
             if key in seen:
                 continue
             seen.add(key)
-
             out.append(c)
             if len(out) >= 3:
                 break
@@ -228,12 +260,12 @@ class ProductMatcherService:
             if unicodedata.category(c) != "Mn"
         )
 
+    def _normalize_for_match(self, s: str) -> str:
+        s = self._strip_accents((s or "").lower())
+        s = re.sub(r"\s{2,}", " ", s).strip()
+        return s
+
     def _normalize_kw_for_ilike(self, kw: str) -> str:
-        """
-        Token safe pour PostgREST ilike:
-        - pas d'accents
-        - alnum + tiret + espace (on garde 2 mots max)
-        """
         kw = (kw or "").strip().lower()
         if not kw:
             return ""
@@ -250,25 +282,32 @@ class ProductMatcherService:
         tokens = self.CATEGORY_TOKENS.get(category, [])
         if not tokens:
             return True
-        sc = (row.get("secondary_category") or "").lower()
-        pc = (row.get("primary_category") or "").lower()
+        sc = self._normalize_for_match(row.get("secondary_category") or "")
+        pc = self._normalize_for_match(row.get("primary_category") or "")
         hay = f"{pc} {sc}"
-        return any(t in hay for t in tokens)
+        for t in tokens:
+            tt = self._normalize_for_match(t)
+            if tt and tt in hay:
+                return True
+        return False
 
     # -------------------------
     # Image cache (Supabase Storage)
     # -------------------------
     def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
-        """
-        Retourne une URL publique Supabase Storage si possible (cache),
-        sinon retombe sur l'URL originale.
-        """
         if not image_url:
             return ""
 
+        # Cache mémoire (évite x10 downloads dans un même rapport)
+        if image_url in self._image_cache:
+            return self._image_cache[image_url]
+
+        # Déjà un public supabase
         if "supabase.co/storage/v1/object/public" in image_url:
             url = image_url.strip()
-            return url[:-1] if url.endswith("?") else url
+            out = url[:-1] if url.endswith("?") else url
+            self._image_cache[image_url] = out
+            return out
 
         try:
             product_id = str(affiliate_row.get("product_id") or "")
@@ -276,6 +315,7 @@ class ProductMatcherService:
             key_seed = f"{product_id}|{name}|{image_url}"
             h = hashlib.sha256(key_seed.encode("utf-8")).hexdigest()[:24]
 
+            # extension la plus probable (on forcera content-type si besoin)
             ext = "jpg"
             low = image_url.lower()
             if ".png" in low:
@@ -288,28 +328,38 @@ class ProductMatcherService:
             object_path = f"pdt/{h}.{ext}"
             bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
 
-            # 1) si déjà public, on teste vite fait
-            try:
-                public = bucket.get_public_url(object_path)
-                public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
-                public_url = (public_url or "").strip()
-                if public_url.endswith("?"):
-                    public_url = public_url[:-1]
-                if public_url:
-                    r = httpx.get(
+            # URL publique (même si l’objet n’existe pas encore)
+            public = bucket.get_public_url(object_path)
+            public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
+            public_url = (public_url or "").strip()
+            if public_url.endswith("?"):
+                public_url = public_url[:-1]
+
+            timeout = httpx.Timeout(
+                connect=self.HTTP_CONNECT_TIMEOUT,
+                read=self.HTTP_READ_TIMEOUT,
+                write=self.HTTP_READ_TIMEOUT,
+                pool=self.HTTP_CONNECT_TIMEOUT,
+            )
+
+            # 1) Test rapide si déjà présent
+            if public_url:
+                try:
+                    r0 = httpx.get(
                         public_url,
                         headers={"Range": "bytes=0-0"},
-                        timeout=self.HTTP_TIMEOUT,
+                        timeout=timeout,
                         follow_redirects=True,
                     )
-                    if r.status_code in (200, 206):
+                    if r0.status_code in (200, 206):
+                        self._image_cache[image_url] = public_url
                         return public_url
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-            # 2) télécharger (anti-hotlink)
+            # 2) Télécharger depuis CDN (anti-hotlink)
             headers = {
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                 "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
                 "Referer": "https://www.placedestendances.com/",
@@ -317,50 +367,63 @@ class ProductMatcherService:
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache",
             }
-            r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
-            r.raise_for_status()
 
-            content_type = (r.headers.get("content-type", "") or "").strip()
-            data = r.content
-            if not data or len(data) < 200:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+                r = client.get(image_url, headers=headers)
+                r.raise_for_status()
+
+                # garde-fou taille
+                data = r.content or b""
+                if not data or len(data) < 200:
+                    self._image_cache[image_url] = image_url
+                    return image_url
+                if len(data) > self.MAX_IMAGE_BYTES:
+                    # trop gros -> on n’upload pas (mais on ne crash pas)
+                    self._image_cache[image_url] = image_url
+                    return image_url
+
+                content_type = (r.headers.get("content-type", "") or "").split(";")[0].strip()
+                if not content_type.startswith("image/"):
+                    content_type = f"image/{ext}"
+
+            # 3) Upload (upsert)
+            try:
+                bucket.upload(
+                    path=object_path,
+                    file=data,
+                    file_options={"content-type": content_type, "upsert": True},
+                )
+            except Exception as e:
+                # si upload rate, on retombe sur original
+                print(f"⚠️ Storage upload failed: {e}")
+                self._image_cache[image_url] = image_url
                 return image_url
 
-            # 3) upload (upsert)
-            bucket.upload(
-                path=object_path,
-                file=data,
-                file_options={
-                    "content-type": content_type or f"image/{ext}",
-                    "upsert": True,
-                },
-            )
+            # 4) Reprendre l’URL publique
+            public2 = bucket.get_public_url(object_path)
+            public_url2 = public2.get("publicUrl") if isinstance(public2, dict) else str(public2 or "")
+            public_url2 = (public_url2 or "").strip()
+            if public_url2.endswith("?"):
+                public_url2 = public_url2[:-1]
 
-            # 4) url publique
-            public = bucket.get_public_url(object_path)
-            public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
-            public_url = (public_url or "").strip()
-            if public_url.endswith("?"):
-                public_url = public_url[:-1]
-
-            return public_url or image_url
+            out = public_url2 or image_url
+            self._image_cache[image_url] = out
+            return out
 
         except Exception as e:
             print(f"⚠️ Image cache failed: {e}")
+            self._image_cache[image_url] = image_url
             return image_url
 
     # -------------------------
     # AFFILIATE MATCH (TABLE affiliate_products)
     # -------------------------
-    def _find_affiliate_products(
-        self, piece_title: str, spec: str, category: str, limit: int = 20
-    ) -> List[Dict[str, Any]]:
+    def _find_affiliate_products(self, piece_title: str, spec: str, category: str, limit: int = 20) -> List[Dict[str, Any]]:
         kws = self._extract_keywords(piece_title, spec)
 
+        # On sélectionne le strict nécessaire (plus rapide)
         select_fields = ",".join([
-            "merchant_id",
-            "sid",
             "product_id",
-            "sku",
             "product_name",
             "brand",
             "primary_category",
@@ -374,8 +437,6 @@ class ProductMatcherService:
             "availability",
             "is_deleted",
             "last_seen_at",
-            "created_at",
-            "updated_at",
         ])
 
         collected: List[Dict[str, Any]] = []
@@ -384,9 +445,9 @@ class ProductMatcherService:
         def _add_rows(rows: List[Dict[str, Any]]) -> None:
             nonlocal collected, seen
             for row in rows or []:
-                key = (row.get("buy_url") or "").strip() or str(row.get("product_id") or "").strip()
+                key = (row.get("buy_url") or "").strip() or str(row.get("product_id") or "").strip() or (row.get("image_url") or "").strip()
                 if not key:
-                    key = hashlib.sha256((row.get("image_url") or "").encode("utf-8")).hexdigest()[:12]
+                    continue
                 if key in seen:
                     continue
                 seen.add(key)
@@ -395,18 +456,15 @@ class ProductMatcherService:
                     return
 
         def _base_query():
-            q = self.client.table(self.AFFILIATE_TABLE).select(select_fields)
-            q = q.eq("is_deleted", False)
-            # priorité aux produits vus récemment (si colonne présente)
+            q = self.client.table(self.AFFILIATE_TABLE).select(select_fields).eq("is_deleted", False)
+            # priorise last_seen_at si dispo
             try:
                 q = q.order("last_seen_at", desc=True)
             except Exception:
                 pass
             return q
 
-        # -------------------------
         # PHASE 1: kw + filtre catégorie en Python
-        # -------------------------
         for kw in kws[:3]:
             if len(collected) >= limit:
                 break
@@ -419,14 +477,10 @@ class ProductMatcherService:
                 data = getattr(resp, "data", None) or []
                 filtered = [r for r in data if self._category_match(r, category)]
                 _add_rows(filtered)
-                if filtered:
-                    print(f"✅ KW+CAT [{category}] '{kw_safe}': {len(filtered)}")
             except Exception as e:
                 print(f"⚠️ KW+CAT query failed: {e}")
 
-        # -------------------------
         # PHASE 2: kw sans catégorie
-        # -------------------------
         if len(collected) < 6:
             for kw in kws[:3]:
                 if len(collected) >= limit:
@@ -439,20 +493,17 @@ class ProductMatcherService:
                     resp = q.execute()
                     data = getattr(resp, "data", None) or []
                     _add_rows(data)
-                    if data:
-                        print(f"✅ KW [{category}] '{kw_safe}': {len(data)}")
                 except Exception as e:
                     print(f"⚠️ KW query failed: {e}")
 
-        # -------------------------
-        # PHASE 3: fallback catégorie (secondary_category ilike)
-        # (sur TABLE => OK + index trigram)
-        # -------------------------
+        # PHASE 3: fallback catégorie (secondary_category)
         if len(collected) < 10:
-            for token in (self.CATEGORY_TOKENS.get(category, []) or [])[:2]:
+            tokens = self.CATEGORY_TOKENS.get(category, []) or []
+            # on essaie 2 tokens max
+            for t0 in tokens[:2]:
                 if len(collected) >= limit:
                     break
-                t = self._normalize_kw_for_ilike(token)
+                t = self._normalize_kw_for_ilike(t0)
                 if len(t) < 3:
                     continue
                 try:
@@ -460,19 +511,16 @@ class ProductMatcherService:
                     resp = q.execute()
                     data = getattr(resp, "data", None) or []
                     _add_rows(data)
-                    if data:
-                        print(f"✅ CAT secondary [{category}] '{t}': {len(data)}")
                 except Exception as e:
                     print(f"⚠️ CAT secondary query failed: {e}")
 
-        # -------------------------
         # PHASE 4: fallback primary_category
-        # -------------------------
         if len(collected) < 10:
-            for token in (self.CATEGORY_TOKENS.get(category, []) or [])[:2]:
+            tokens = self.CATEGORY_TOKENS.get(category, []) or []
+            for t0 in tokens[:2]:
                 if len(collected) >= limit:
                     break
-                t = self._normalize_kw_for_ilike(token)
+                t = self._normalize_kw_for_ilike(t0)
                 if len(t) < 3:
                     continue
                 try:
@@ -480,12 +528,9 @@ class ProductMatcherService:
                     resp = q.execute()
                     data = getattr(resp, "data", None) or []
                     _add_rows(data)
-                    if data:
-                        print(f"✅ CAT primary [{category}] '{t}': {len(data)}")
                 except Exception as e:
                     print(f"⚠️ CAT primary query failed: {e}")
 
-        print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
@@ -493,16 +538,19 @@ class ProductMatcherService:
         text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", text)
         text = re.sub(r"\s{2,}", " ", text).strip()
 
-        stop = set([
+        stop = {
             "a", "à", "au", "aux", "de", "des", "du", "en", "et", "ou",
             "un", "une", "avec", "pour", "la", "le", "les", "d", "l",
             "sur", "dans", "sans", "style",
             "matiere", "matières", "coton", "laine", "viscose", "soie",
-        ])
+            # très fréquents inutiles
+            "femme", "homme", "taille", "noir", "blanc",
+        }
 
         tokens = [t.strip() for t in text.split() if t.strip()]
         tokens = [t for t in tokens if t not in stop and len(t) >= 3]
 
+        # patterns utiles
         joined = " ".join(tokens)
         patterns = []
         if "col v" in joined or ("col" in tokens and "v" in tokens):
@@ -538,7 +586,6 @@ class ProductMatcherService:
     def _find_visual_by_key(self, visual_key: str, category: str) -> Optional[Dict[str, Any]]:
         if not visual_key:
             return None
-
         try:
             q = (
                 self.client.table("visuels")
@@ -546,7 +593,6 @@ class ProductMatcherService:
                 .eq("nom_simplifie", visual_key)
                 .limit(1)
             )
-
             expected_type = self.VISUELS_TYPE_MAP.get(category)
             if expected_type:
                 q = q.eq("type_vetement", expected_type)
@@ -566,7 +612,6 @@ class ProductMatcherService:
             )
             data2 = getattr(resp2, "data", None) or []
             return data2[0] if data2 else None
-
         except Exception as e:
             print(f"⚠️ Visual fallback failed (key={visual_key}): {e}")
             return None
