@@ -240,6 +240,13 @@ class ProductMatcherService:
     # Image cache (Supabase Storage)
     # -------------------------
     def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
+        # normalisation URL (évite WAF sur URLs paramétrées)
+        image_url = (image_url or "").strip()
+        if image_url.endswith("?"):
+            image_url = image_url[:-1]
+
+        base_url = image_url.split("?", 1)[0]  # <- CRITIQUE
+
         if not image_url:
             return ""
 
@@ -251,11 +258,12 @@ class ProductMatcherService:
         try:
             product_id = str(affiliate_row.get("product_id") or "")
             name = str(affiliate_row.get("product_name") or "")
-            key_seed = f"{product_id}|{name}|{image_url}"
+            key_seed = f"{product_id}|{name}|{base_url or image_url}"
             h = hashlib.sha256(key_seed.encode("utf-8")).hexdigest()[:24]
 
             ext = "jpg"
-            low = image_url.lower()
+            low = (base_url or image_url).lower()
+
             if ".png" in low:
                 ext = "png"
             elif ".webp" in low:
@@ -287,15 +295,19 @@ class ProductMatcherService:
 
             # télécharger image source
             headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
                 "Referer": "https://www.placedestendances.com/",
-                "Origin": "https://www.placedestendances.com",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             }
-            r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
+
+            # 1) tente d'abord l'URL sans querystring (souvent autorisée)
+            try_url = base_url or image_url
+            r = httpx.get(try_url, headers=headers, timeout=20.0, follow_redirects=True)
+
+            # 2) si échec, tente l'originale (au cas où)
+            if r.status_code >= 400 and try_url != image_url:
+                r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
+
             r.raise_for_status()
 
             content_type = (r.headers.get("content-type", "") or "").strip()
