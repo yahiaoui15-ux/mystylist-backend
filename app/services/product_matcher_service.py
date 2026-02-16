@@ -5,7 +5,6 @@ import hashlib
 import os
 import httpx
 import unicodedata
-from urllib.parse import urlparse
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -18,12 +17,12 @@ class ProductMatcherService:
     1) un produit affilié (TABLE: affiliate_products)
     2) sinon un visuel pédagogique (table `visuels`)
 
-    Fix stable v7:
-    - Toujours la table `affiliate_products` (pas la view)
-    - Évite le pattern instable: ilike('%kw%') + order(last_seen_at.desc)
-      -> c'est ce combo qui déclenche les 500/Cloudflare 1101 de Supabase de façon intermittente
-    - Filtre optionnel primary_category='Femme' (réduit le volume, stabilise)
-    - Retry + backoff sur erreurs réseau / 5xx Supabase
+    Fix stable v8 (PATCH):
+    - Remplace les patterns ilike "%kw%" (dangereux en URL si % non encodé)
+      par le wildcard PostgREST URL-safe "*kw*"
+      => supprime les erreurs Cloudflare 1101 / "JSON could not be generated"
+    - Supprime la PHASE CAT primary (incompatible avec primary_category=eq.Femme + ilike token)
+      qui génère des doublons de paramètres et n'apporte rien.
     """
 
     VISUELS_TYPE_MAP = {
@@ -48,8 +47,6 @@ class ProductMatcherService:
     PDT_PRODUCT_ID_RE = re.compile(r"(\d{6,})", re.IGNORECASE)
     AFFILIATE_HOST_HINTS = ("linksynergy.com", "linkshare.com", "rakuten", "awin")
 
-    # IMPORTANT: tes catégories DB sont FR ("Vêtements~~Pull", "Clothing~~Dresses", etc.)
-    # On garde un set de tokens FR/EN courants, et on match côté Python.
     CATEGORY_TOKENS = {
         "tops": ["top", "tops", "haut", "hauts", "blouse", "chemis", "tee", "t-shirt", "pull", "maille", "sweat"],
         "bottoms": ["bas", "pantalon", "jean", "jupe", "short", "trouser", "pants", "jeans", "skirt", "shorts"],
@@ -206,6 +203,19 @@ class ProductMatcherService:
             kw = kw[: self.MAX_TOKEN_LEN]
         return kw
 
+    def _ilike_pattern(self, token: str) -> str:
+        """
+        PostgREST wildcard URL-safe: '*' (évite les '%' non encodés qui cassent Cloudflare).
+        Ex: ilike.*blouse*
+        """
+        t = (token or "").strip()
+        if not t:
+            return ""
+        # Évite qu'un token contienne déjà des '*' parasites
+        t = t.replace("*", " ").strip()
+        t = re.sub(r"\s{2,}", " ", t)
+        return f"*{t}*"
+
     def _category_match(self, row: Dict[str, Any], category: str) -> bool:
         tokens = self.CATEGORY_TOKENS.get(category, [])
         if not tokens:
@@ -265,7 +275,12 @@ class ProductMatcherService:
                 if public_url.endswith("?"):
                     public_url = public_url[:-1]
                 if public_url:
-                    r = httpx.get(public_url, headers={"Range": "bytes=0-0"}, timeout=self.HTTP_TIMEOUT, follow_redirects=True)
+                    r = httpx.get(
+                        public_url,
+                        headers={"Range": "bytes=0-0"},
+                        timeout=self.HTTP_TIMEOUT,
+                        follow_redirects=True,
+                    )
                     if r.status_code in (200, 206):
                         return public_url
             except Exception:
@@ -314,7 +329,6 @@ class ProductMatcherService:
         q = self.client.table(self.AFFILIATE_TABLE).select(select_fields)
         q = q.eq("is_deleted", False)
         if self.AFFILIATE_PRIMARY_CATEGORY:
-            # réduit énormément le volume => stabilise les ilike
             q = q.eq("primary_category", self.AFFILIATE_PRIMARY_CATEGORY)
         return q
 
@@ -356,7 +370,8 @@ class ProductMatcherService:
 
         # -------------------------
         # PHASE 1: 1 keyword (CAT filtrée côté Python)
-        # IMPORTANT: PAS de order() ici -> évite les 1101/500 Supabase
+        # IMPORTANT: PAS de order() ici
+        # IMPORTANT: wildcard URL-safe "*kw*" (pas "%kw%")
         # -------------------------
         for kw in kws[:1]:
             if len(collected) >= limit:
@@ -365,7 +380,8 @@ class ProductMatcherService:
             if len(kw_safe) < 3:
                 continue
             try:
-                q = self._base_query(select_fields).ilike("product_name", f"%{kw_safe}%").limit(40)
+                pattern = self._ilike_pattern(kw_safe)
+                q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
                 resp = self._execute(q)
                 data = getattr(resp, "data", None) or []
                 filtered = [r for r in data if self._category_match(r, category)]
@@ -386,7 +402,8 @@ class ProductMatcherService:
                 if len(kw_safe) < 3:
                     continue
                 try:
-                    q = self._base_query(select_fields).ilike("product_name", f"%{kw_safe}%").limit(40)
+                    pattern = self._ilike_pattern(kw_safe)
+                    q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
                     resp = self._execute(q)
                     data = getattr(resp, "data", None) or []
                     _add_rows(data)
@@ -396,8 +413,8 @@ class ProductMatcherService:
                     print(f"⚠️ KW query failed: {e}")
 
         # -------------------------
-        # PHASE 3/4: fallback catégorie
-        # Ici on peut se permettre un order(last_seen_at) car le filtre catégorie est + ciblant
+        # PHASE 3: fallback catégorie (secondary_category)
+        # Ici on garde order(last_seen_at) optionnel
         # -------------------------
         def _ordered(q):
             try:
@@ -413,7 +430,8 @@ class ProductMatcherService:
                 if len(t) < 3:
                     continue
                 try:
-                    q = _ordered(self._base_query(select_fields)).ilike("secondary_category", f"%{t}%").limit(40)
+                    pattern = self._ilike_pattern(t)
+                    q = _ordered(self._base_query(select_fields)).ilike("secondary_category", pattern).limit(40)
                     resp = self._execute(q)
                     data = getattr(resp, "data", None) or []
                     _add_rows(data)
@@ -422,22 +440,7 @@ class ProductMatcherService:
                 except Exception as e:
                     print(f"⚠️ CAT secondary query failed: {e}")
 
-        if len(collected) < 10:
-            for token in (self.CATEGORY_TOKENS.get(category, []) or [])[:1]:
-                if len(collected) >= limit:
-                    break
-                t = self._normalize_kw_for_ilike(token)
-                if len(t) < 3:
-                    continue
-                try:
-                    q = _ordered(self._base_query(select_fields)).ilike("primary_category", f"%{t}%").limit(40)
-                    resp = self._execute(q)
-                    data = getattr(resp, "data", None) or []
-                    _add_rows(data)
-                    if data:
-                        print(f"✅ CAT primary [{category}] '{t}': {len(data)}")
-                except Exception as e:
-                    print(f"⚠️ CAT primary query failed: {e}")
+        # PHASE 4 (CAT primary) supprimée: incompatible avec primary_category=eq.Femme + ilike token
 
         print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]
