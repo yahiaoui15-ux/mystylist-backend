@@ -95,9 +95,11 @@ class ProductMatcherService:
             main = top3[0]
             raw_img = (main.get("image_url") or "").strip()
             safe_img = self._ensure_cached_public_image(raw_img, main) if raw_img else ""
+            print("🖼️ IMG raw:", raw_img)
+            print("🖼️ IMG safe:", safe_img)
             alt1 = top3[1] if len(top3) > 1 else None
             alt2 = top3[2] if len(top3) > 2 else None
-
+         
             return {
                 "image_url": safe_img,
                 "product_url": (main.get("buy_url") or main.get("product_url") or "").strip(),
