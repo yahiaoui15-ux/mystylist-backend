@@ -9,6 +9,9 @@ import unicodedata
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.utils.supabase_client import supabase
+from urllib.parse import quote, urlparse
+
+
 
 
 class ProductMatcherService:
@@ -70,7 +73,12 @@ class ProductMatcherService:
                 continue
             p2 = dict(p)
             p2["match"] = self.match_piece(p2, category)
+            m = p2.get("match") or {}
+            p2["image_url"] = (m.get("image_url") or "").strip()
+            p2["product_url"] = (m.get("product_url") or "").strip()
+            p2["source"] = (m.get("source") or "").strip()
             out.append(p2)
+
         return out
 
     def match_piece(self, piece: Dict[str, Any], category: str) -> Dict[str, Any]:
@@ -301,12 +309,25 @@ class ProductMatcherService:
                 "Referer": "https://www.placedestendances.com/",
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             }
+            
+            proxy_target = base_url or image_url
+            try:
+                u = urlparse(proxy_target)
+                # weserv préfère sans schéma
+                target_no_scheme = f"{u.netloc}{u.path}"
+                proxy_url = f"https://images.weserv.nl/?url={quote(target_no_scheme, safe='')}"
+            except Exception:
+                proxy_url = f"https://images.weserv.nl/?url={quote(proxy_target, safe='')}"
 
-            # 1) tente d'abord l'URL sans querystring (souvent autorisée)
             try_url = base_url or image_url
             r = httpx.get(try_url, headers=headers, timeout=20.0, follow_redirects=True)
 
-            # 2) si échec, tente l'originale (au cas où)
+            if r.status_code in (401, 403):
+                r2 = httpx.get(proxy_url, headers={"User-Agent": headers["User-Agent"]}, timeout=20.0, follow_redirects=True)
+                print("🧪 proxy status:", r2.status_code, "proxy_url:", proxy_url)
+                r = r2
+
+            # Optionnel: si proxy KO et image_url ≠ base_url, on tente image_url
             if r.status_code >= 400 and try_url != image_url:
                 r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
 
