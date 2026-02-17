@@ -341,8 +341,12 @@ class ProductMatcherService:
             bucket.upload(
                 path=object_path,
                 file=data,
-                file_options={"content-type": content_type or f"image/{ext}", "upsert": True},
+                file_options={
+                    "content-type": content_type or f"image/{ext}",
+                    "upsert": True,
+                },
             )
+
 
             public = bucket.get_public_url(object_path)
             public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
