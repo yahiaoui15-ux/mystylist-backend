@@ -206,16 +206,32 @@ class PDFDataMapper:
     
     @staticmethod
     def _enrich_associations_with_colors(associations: list, palette: list) -> list:
-        """Enrichit associations avec color_details"""
+        """Enrichit associations avec color_details (priorité à color_details déjà fourni)"""
         enriched = []
-        
+
         for assoc in associations:
-            hex_codes = assoc.get("color_hex", assoc.get("colors", []))
+            # 1) Si le service a déjà injecté color_details (Solution 1 DB), on le respecte
+            existing_details = assoc.get("color_details")
+            if isinstance(existing_details, list) and len(existing_details) > 0:
+                transformed = {
+                    "occasion": assoc.get("occasion", ""),
+                    "description": assoc.get("description", ""),
+                    "colors": assoc.get("colors", []),
+                    "color_hex": assoc.get("color_hex", []),
+                    "color_details": existing_details,
+                    "image_url": assoc.get("image_url"),
+                    "image_filename": assoc.get("image_filename"),
+                }
+                enriched.append(transformed)
+                continue
+
+            # 2) Fallback: ancienne logique (hex->palette)
+            hex_codes = assoc.get("color_hex", [])
             color_names = assoc.get("colors", [])
             color_details = []
-            
-            if assoc.get("color_hex"):
-                for i, hex_code in enumerate(hex_codes):
+
+            if isinstance(hex_codes, list) and hex_codes:
+                for hex_code in hex_codes:
                     found = None
                     for color in palette:
                         if color.get("hex") == hex_code:
@@ -225,23 +241,22 @@ class PDFDataMapper:
                                 "hex": hex_code,
                             }
                             break
-                    
                     if found:
                         color_details.append(found)
-            
+
             transformed = {
                 "occasion": assoc.get("occasion", ""),
                 "description": assoc.get("description", ""),
                 "colors": color_names,
                 "color_hex": hex_codes,
                 "color_details": color_details,
-                "image_url": assoc.get("image_url"),  # ✅ AJOUTER
-                "image_filename": assoc.get("image_filename"),  # ✅ AJOUTER
+                "image_url": assoc.get("image_url"),
+                "image_filename": assoc.get("image_filename"),
             }
             enriched.append(transformed)
-        
+
         return enriched
-    
+
     @staticmethod
     def _transform_nail_colors(nail_colors: list, palette: list) -> list:
         """Transforme nail colors avec enrichissement"""
