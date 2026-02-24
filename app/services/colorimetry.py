@@ -167,6 +167,103 @@ class ColorimetryService:
         "dore": "Doré",
     }
 
+    # ---------------------------------------------------------------------
+    # HEX helpers (DB is truth for pastilles too)
+    # ---------------------------------------------------------------------
+    _COLOR_HEX_BY_TOKEN = {
+        # neutres
+        "noir": "#000000",
+        "blanc": "#FFFFFF",
+        "ivoire": "#FFFFF0",
+        "ecru": "#F5F5DC",
+        "creme": "#FFFDD0",
+        "sable": "#D9CAB3",
+
+        # chauds / bruns
+        "camel": "#C19A6B",
+        "chocolat": "#7B3F00",
+        "cuivre": "#B87333",
+        "bronze": "#CD7F32",
+        "or": "#D4AF37",
+        "orvieilli": "#B08D57",
+
+        # oranges / rouges
+        "terracotta": "#E2725B",
+        "terrecuite": "#E2725B",
+        "rouille": "#B7410E",
+        "bordeaux": "#800020",
+        "brique": "#CB4154",
+
+        # verts
+        "olive": "#808000",
+        "olivefonce": "#556B2F",
+        "vertmousse": "#8A9A5B",
+        "vertsauge": "#708238",
+        "vertdoux": "#A3B18A",
+        "vertdeau": "#40E0D0",
+        "verteau": "#40E0D0",
+        "kaki": "#C3B091",
+
+        # bleus
+        "denim": "#3B4F5A",
+        "denimclair": "#6E7F8D",
+        "marine": "#000080",
+        "bleu": "#0000FF",
+        "bleunuit": "#0B1D39",
+        "bleuglacier": "#BFD7EA",
+        "bleuciel": "#87CEEB",
+        "bleupoudre": "#B0C4DE",
+        "bleuardoise": "#708090",
+        "bleuacier": "#4682B4",
+        "bleuelectrique": "#0077FF",
+
+        # gris
+        "gris": "#808080",
+        "grisclair": "#D3D3D3",
+        "grisfonce": "#4F4F4F",
+        "grisargent": "#C0C0C0",
+        "grisperle": "#D9D9D9",
+        "grisacier": "#708090",
+        "anthracite": "#2F4F4F",
+
+        # violets / prune
+        "violet": "#800080",
+        "violetfonce": "#4B0082",
+        "prune": "#6D071A",
+        "prunedouce": "#7D4E57",
+
+        # jaunes
+        "moutarde": "#E1AD01",
+        "jaunepale": "#FFF2A6",
+        "jaunedoux": "#F7D36A",
+        "ocre": "#CC7722",
+    }
+
+    @classmethod
+    def _norm_db_token(cls, token: str) -> str:
+        """Normalise un token DB pour matcher les slugs 'attachés' / underscore."""
+        if not token:
+            return ""
+        t = str(token).strip().lower()
+        t = t.replace("-", "_").replace(" ", "_")
+        # on supprime _ pour matcher aussi les attachés (olive_fonce == olivefonce)
+        t = t.replace("_", "")
+        return t
+
+    @classmethod
+    def _hex_from_db_token(cls, token: str) -> str:
+        k = cls._norm_db_token(token)
+        if not k:
+            return "#DDDDDD"
+        # match direct
+        if k in cls._COLOR_HEX_BY_TOKEN:
+            return cls._COLOR_HEX_BY_TOKEN[k]
+        # match via clés normalisées (au cas où dict contient underscores dans le futur)
+        for kk, hx in cls._COLOR_HEX_BY_TOKEN.items():
+            if cls._norm_db_token(kk) == k:
+                return hx
+        return "#DDDDDD"
+
     @classmethod
     def _pretty_color_from_db_token(cls, token: str) -> str:
         """
@@ -466,19 +563,17 @@ class ColorimetryService:
                 assoc["colors"] = [self._pretty_color_from_db_token(c) for c in db_colors_raw]
 
                 # 2) construire color_details (hex + displayName)
-                existing_hex = assoc.get("color_hex") or []
-                color_details = []
-                for idx, c in enumerate(db_colors_raw):
-                    hex_val = existing_hex[idx] if idx < len(existing_hex) else "#DDDDDD"
-                    color_details.append({
-                        "hex": hex_val,
+                # ✅ FIX pastilles: HEX doivent suivre la DB (pas GPT)
+                assoc["color_hex"] = [self._hex_from_db_token(c) for c in db_colors_raw]
+
+                assoc["color_details"] = [
+                    {
+                        "hex": self._hex_from_db_token(c),
                         "displayName": self._pretty_color_from_db_token(c),
-                        # (optionnel) garder un "name" exploitable côté mapper si tu veux
-                        "name": str(c).strip().lower().replace(" ", "_").replace("-", "_"),
-                    })
-
-                assoc["color_details"] = color_details
-
+                        "name": self._norm_db_token(c),  # stable même si attaché
+                    }
+                    for c in db_colors_raw
+                ]
                 # (optionnel) debug/trace
                 assoc["colors_db"] = db_colors_raw
 
