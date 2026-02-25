@@ -919,6 +919,13 @@ class PDFDataMapper:
                 enriched_recommandes = visuals_service.fetch_visuals_for_category(category_name, recommandes)
                 categories_data[category_name]["recommandes"] = enriched_recommandes
 
+            if enriched_recommandes:
+                            print(f"🧪 VISUALS CHECK [{category_name}] first:", {
+                                "cut_display": enriched_recommandes[0].get("cut_display"),
+                                "visual_key": enriched_recommandes[0].get("visual_key"),
+                                "image_url": (enriched_recommandes[0].get("image_url") or "")[:80],
+                            })
+
             if a_eviter:
                 print(f"      • {len(a_eviter)} à éviter à enrichir")
                 enriched_a_eviter = visuals_service.fetch_visuals_for_category(category_name, a_eviter)

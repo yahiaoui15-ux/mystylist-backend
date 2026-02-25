@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from functools import lru_cache
 from typing import Dict, Optional
 from app.utils.supabase_client import supabase
@@ -28,47 +30,64 @@ class VisualsService:
         vk = self._slugify_key(visual_key)
         return self._load_map().get(vk)
 
-
-
     def _slugify_key(self, s: str) -> str:
-        """
-        Normalisation légère pour matcher nom_simplifie.
-        Adapte si tes clés Supabase ont une convention différente.
-        """
         s = (s or "").strip().lower()
         s = s.replace("’", "'")
-        # espaces -> underscore
-        s = "_".join(s.split())
+
+        # enlever accents
+        s = unicodedata.normalize("NFKD", s)
+        s = "".join([c for c in s if not unicodedata.combining(c)])
+
+        # tout ce qui n'est pas alphanum -> underscore (gère espaces, tirets, etc.)
+        s = re.sub(r"[^a-z0-9]+", "_", s)
+
+        # underscores multiples
+        s = re.sub(r"_+", "_", s).strip("_")
         return s
 
     def fetch_visuals_for_category(self, category_name: str, recommandes: list) -> list:
-        """
-        Enrichit les items recommandés avec image_url depuis Supabase `visuels`.
-        - recommandes: liste de strings ou dicts
-        Retourne une liste de dicts homogène.
-        """
         out = []
         for item in recommandes or []:
+
             if isinstance(item, str):
                 label = item.strip()
                 key = self._slugify_key(label)
                 out.append({
-                    "label": label,
-                    "image_url": self.get_url(key)
+                    "cut_display": label,
+                    "why": "",
+                    "visual_key": key,
+                    "image_url": self.get_url(key) or ""
                 })
-            elif isinstance(item, dict):
-                label = (item.get("label") or item.get("name") or item.get("titre") or "").strip()
-                if not label:
-                    # si pas de label, on garde l'item tel quel
-                    out.append(item)
-                    continue
-                key = self._slugify_key(item.get("visual_key") or label)
+                continue
+
+            if isinstance(item, dict):
+                # ✅ support OpenAI Part2: cut_display
+                label = (
+                    item.get("cut_display")
+                    or item.get("label")
+                    or item.get("name")
+                    or item.get("titre")
+                    or ""
+                ).strip()
+
                 item2 = dict(item)
-                item2["label"] = label
-                item2["image_url"] = item2.get("image_url") or self.get_url(key)
+                if not label:
+                    # on garde mais on garantit la clé
+                    item2.setdefault("image_url", "")
+                    out.append(item2)
+                    continue
+
+                key_source = item2.get("visual_key") or label
+                key = self._slugify_key(key_source)
+
+                item2["cut_display"] = item2.get("cut_display") or label
+                item2["visual_key"] = item2.get("visual_key") or key
+                item2["image_url"] = item2.get("image_url") or (self.get_url(key) or "")
                 out.append(item2)
-            else:
-                out.append({"label": str(item), "image_url": None})
+                continue
+
+            out.append({"cut_display": str(item), "why": "", "visual_key": "", "image_url": ""})
+
         return out
 
 visuals_service = VisualsService()
