@@ -5,12 +5,14 @@ REPORT GENERATOR v3.2 - Morphologie découpage 2 appels + styling params fix
 """
 
 import asyncio
+
 from app.services.colorimetry import colorimetry_service
 from app.services.morphology import morphology_service
 from app.services.styling import styling_service
 from app.services.visuals import visuals_service
 from app.services.products import products_service
 from app.utils.openai_call_tracker import call_tracker
+from app.utils.supabase_client import supabase
 
 
 class ReportGenerator:
@@ -61,6 +63,14 @@ class ReportGenerator:
             if not styling_result:
                 print("\n⚠️ Erreur styling - continuation avec données vides")
                 styling_result = {}
+            
+            # ✅ STOCKAGE PROFIL IA (DB)
+            self._upsert_user_ai_profile(
+                user_id=user_data.get("user_id"),
+                colorimetry_result=colorimetry_result,
+                morphology_result=morphology_result,
+                styling_result=styling_result
+            )
             
             # PHASE 4: VISUALS + PRODUCTS (parallèle)
             print("\n" + "█"*80)
@@ -122,5 +132,38 @@ class ReportGenerator:
             traceback.print_exc()
             raise
 
+    def _upsert_user_ai_profile(
+        self,
+        user_id: str,
+        colorimetry_result: dict,
+        morphology_result: dict,
+        styling_result: dict
+    ) -> None:
+        """
+        Stocke le profil IA (JSON complets) dans public.user_ai_profiles.
+        Upsert sur user_id = 1 seule ligne par user.
+        """
+        if not user_id:
+            print("⚠️ user_id manquant -> skip upsert user_ai_profiles")
+            return
+
+        # champs dérivés utiles (optionnels)
+        season = (colorimetry_result or {}).get("saison_confirmee")
+        undertone = (colorimetry_result or {}).get("sous_ton_detecte")
+        silhouette = (morphology_result or {}).get("silhouette_type")
+
+        record = {
+            "user_id": user_id,
+            "colorimetry_json": colorimetry_result or {},
+            "morphology_json": morphology_result or {},
+            "styling_json": styling_result or {},
+            "season": season,
+            "undertone": undertone,
+            "silhouette_type": silhouette,
+        }
+
+        client = supabase.get_client()
+        client.table("user_ai_profiles").upsert(record, on_conflict="user_id").execute()
+        print("✅ user_ai_profiles upsert OK")
 
 report_generator = ReportGenerator()

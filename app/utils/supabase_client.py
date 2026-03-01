@@ -61,6 +61,22 @@ class SupabaseClient:
         except Exception as e:
             print(f"❌ Erreur insert {table}: {e}")
             raise
+    
+    def upsert_table(self, table: str, data: dict, on_conflict: str = "user_id"):
+        """
+        Upsert (insert ou update) sur une table.
+        on_conflict: nom de la/les colonne(s) unique(s) pour la résolution de conflit (ex: "user_id")
+        """
+        try:
+            client = self._get_client()
+            if client is None:
+                raise Exception("Client Supabase non initialisé")
+
+            response = client.table(table).upsert(data, on_conflict=on_conflict).execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"❌ Erreur upsert {table}: {e}")
+            raise
 
     def get_client(self):
         """Expose le client Supabase natif (supabase-py)"""
