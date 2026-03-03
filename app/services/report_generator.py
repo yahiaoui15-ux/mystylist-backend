@@ -321,13 +321,22 @@ class ReportGenerator:
             # ---------------------------
             # 2) Morphologie: cuts + matières + motifs
             # ---------------------------
-            morpho_categories = (((morph.get("morpho") or {}).get("categories")) if isinstance(morph.get("morpho"), dict) else None)
+            # ✅ Tes données sont dans morph["recommendations"]
+            morpho_categories = None
+
+            if isinstance(morph.get("recommendations"), dict):
+                morpho_categories = morph.get("recommendations")
+
+            # compat: anciennes structures (au cas où)
+            if morpho_categories is None and isinstance(morph.get("morpho"), dict):
+                morpho_categories = (morph.get("morpho") or {}).get("categories")
+
             if morpho_categories is None:
-                # parfois c'est directement morph["categories"]
                 morpho_categories = morph.get("categories")
 
-            cuts_recommended, cuts_avoid, materials_recommended, pattern_from_morpho = _extract_morpho_cuts(morpho_categories if isinstance(morpho_categories, dict) else {})
-
+            cuts_recommended, cuts_avoid, materials_recommended, pattern_from_morpho = _extract_morpho_cuts(
+                morpho_categories if isinstance(morpho_categories, dict) else {}
+            )
             # ---------------------------
             # 3) Onboarding: brands / pattern_avoid / style_keywords
             # ---------------------------
@@ -360,6 +369,10 @@ class ReportGenerator:
             # ---------------------------
             color_season = color.get("saison_confirmee") or color.get("season")
             undertone = color.get("sous_ton_detecte")
+            body_parts_highlight = morph.get("body_parts_to_highlight") or morph.get("body_parts_highlight") or []
+            body_parts_minimize = morph.get("body_parts_to_minimize") or morph.get("body_parts_minimize") or []
+            body_parts_highlight = body_parts_highlight if isinstance(body_parts_highlight, list) else []
+            body_parts_minimize = body_parts_minimize if isinstance(body_parts_minimize, list) else []
             silhouette_type = (
                 (morph.get("silhouette_type"))
                 or (morph.get("bodyType"))
@@ -381,6 +394,8 @@ class ReportGenerator:
                 "color_season": color_season,
                 "undertone": undertone,
                 "silhouette_type": silhouette_type,
+                "body_parts_highlight": body_parts_highlight,
+                "body_parts_minimize": body_parts_minimize,
 
                 # ✅ Champs nécessaires Edge Function
                 "colors_best": colors_best,               # text[] ou jsonb selon ta table
