@@ -271,63 +271,6 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
         report = await report_generator.generate_complete_report(user_data)
         log(f">>> Rapport IA genere!")
 
-        # =====================================================
-        # ✅ ETAPE 2bis : UPSERT DU PROFIL IA (user_ai_profiles)
-        # =====================================================
-        try:
-            color = report.get("colorimetry", {}) or {}
-            morph = report.get("morphology", {}) or {}
-            style = report.get("styling", {}) or {}
-
-            # Extraction simple (safe) pour filtres UI / scoring
-            palette = color.get("palette_personnalisee", []) or []
-            best_colors = [
-                (c.get("displayName") or c.get("name"))
-                for c in palette
-                if isinstance(c, dict)
-            ]
-            best_colors = [c for c in best_colors if c]
-
-            avoid = color.get("couleurs_eviter", []) or []
-            avoid_colors = [
-                (c.get("displayName") or c.get("name"))
-                for c in avoid
-                if isinstance(c, dict)
-            ]
-            avoid_colors = [c for c in avoid_colors if c]
-
-            # Styles demandés par la cliente (onboarding)
-            onboarding_data = (user_profile.get("onboarding_data") or {})
-            style_preferences = onboarding_data.get("style_preferences", []) or []
-            if not isinstance(style_preferences, list):
-                style_preferences = []
-
-            ai_profile_record = {
-                "user_id": user_id,
-                # JSON complets = source de vérité pour l’Edge Function
-                "colorimetry_json": color,
-                "morphology_json": morph,
-                "style_json": style,
-
-                # Champs “pratiques” (facultatifs mais utiles)
-                "season": color.get("saison_confirmee"),
-                "undertone": color.get("sous_ton_detecte"),
-                "silhouette_type": morph.get("silhouette_type"),
-                "style_preferences": style_preferences,   # si colonne text[] côté table
-                "best_colors": best_colors,              # si colonne text[] / jsonb
-                "avoid_colors": avoid_colors,            # si colonne text[] / jsonb
-
-                "updated_at": datetime.utcnow().isoformat(),
-            }
-
-            # Upsert sur user_id
-            supabase.upsert_table("user_ai_profiles", ai_profile_record, on_conflict="user_id")
-            log(">>> user_ai_profiles upsert OK")
-
-        except Exception as e:
-            # On n'échoue pas la génération de rapport si l'upsert IA rate
-            log(f">>> WARN user_ai_profiles upsert failed (on continue): {e}")
-            
         # PDF - Generer via PDFMonkey
         log(">>> Etape 3: GENERATION PDF...")
         pdf_url_temporary = await pdf_generation.generate_report_pdf(report, user_data)
@@ -366,7 +309,7 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
 
         # Sauvegarde en base
         # ✅ nouveau : stocke les JSON IA (color/morph/style)
-        await supabase_reports.supabase_reports_service.save_report_metadata(
+        await supabase_reports.save_report_metadata(
             user_id=user_id,
             payment_id=payment_id,
             report_data=report,
