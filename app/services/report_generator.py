@@ -6,6 +6,7 @@ REPORT GENERATOR v3.2 - Morphologie découpage 2 appels + styling params fix
 
 import asyncio
 import re
+import json
 
 
 
@@ -209,17 +210,17 @@ class ReportGenerator:
                 terms = re.findall(r"<strong>\s*([^<]+?)\s*</strong>", s, flags=re.IGNORECASE)
                 return _uniq([t for t in terms])
 
-            def _extract_morpho_cuts(morpho_categories: dict) -> tuple[list[str], list[str], list[str], list[str]]:
+            def _extract_morpho_cuts(morpho_categories: dict) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
                 """
                 Retourne:
-                cuts_recommended, cuts_avoid, materials_recommended, pattern_recommended
+                cuts_recommended, cuts_avoid, materials_recommended, patterns_recommended, patterns_avoid
                 """
                 cuts_rec, cuts_avoid = [], []
-                mats_rec, pats_rec = [], []
-                pats_avoid = []
+                mats_rec = []
+                pats_rec, pats_avoid = [], []
 
                 if not isinstance(morpho_categories, dict):
-                    return [], [], [], []
+                    return [], [], [], [], []
 
                 for _, cat in morpho_categories.items():
                     if not isinstance(cat, dict):
@@ -247,9 +248,13 @@ class ReportGenerator:
                         pats_rec.extend(_extract_strong_terms(motifs.get("recommandes")))
                         pats_avoid.extend(_extract_strong_terms(motifs.get("a_eviter")))
 
-                # On fusionne pats_avoid dans pattern_avoid plus bas (avec onboarding)
-                return _uniq(cuts_rec), _uniq(cuts_avoid), _uniq(mats_rec), _uniq(pats_rec + pats_avoid)
-
+                return (
+                    _uniq(cuts_rec),
+                    _uniq(cuts_avoid),
+                    _uniq(mats_rec),
+                    _uniq(pats_rec),
+                    _uniq(pats_avoid),
+                )
             def _extract_style_keywords(style_obj: dict) -> list[str]:
                 """
                 Basé sur payload:
@@ -303,21 +308,46 @@ class ReportGenerator:
 
                 return _uniq(brands)
 
+            def _ensure_list_json(x: Any) -> list:
+                # pour jsonb: accepte list[dict] ou list[str] déjà OK
+                if isinstance(x, list):
+                    return x
+                if isinstance(x, str):
+                    s = x.strip()
+                    if s.startswith("[") and s.endswith("]"):
+                        try:
+                            v = json.loads(s)
+                            return v if isinstance(v, list) else []
+                        except Exception:
+                            return []
+                return []
+
+            def _ensure_list_text(x: Any) -> list[str]:
+                # pour text[]: list[str] uniquement
+                if isinstance(x, list):
+                    return [str(i).strip() for i in x if isinstance(i, (str, int, float)) and str(i).strip()]
+                if isinstance(x, str):
+                    s = x.strip()
+                    if s.startswith("[") and s.endswith("]"):
+                        try:
+                            v = json.loads(s)
+                            if isinstance(v, list):
+                                return [str(i).strip() for i in v if isinstance(i, (str, int, float)) and str(i).strip()]
+                        except Exception:
+                            return []
+                return []
             # ---------------------------
             # 1) Couleurs (best / ok / avoid / keywords)
             # ---------------------------
-            colors_best = _extract_color_names(color.get("palette_personnalisee"))
-            # "ok" = couleurs prudence + génériques (selon ton payload)
-            colors_ok = _extract_color_names(color.get("couleurs_prudence")) + _extract_color_names(color.get("couleurs_generiques"))
-            colors_ok = _uniq(colors_ok)
+            colors_best = _ensure_list_json(color.get("palette_personnalisee"))
+            colors_ok = _ensure_list_json(color.get("couleurs_prudence")) + _ensure_list_json(color.get("couleurs_generiques"))
+            colors_avoid = _ensure_list_json(color.get("couleurs_eviter")) + _ensure_list_json(color.get("unwanted_colors"))
 
-            # avoid = couleurs_eviter + unwanted_colors (payload)
-            colors_avoid = _extract_color_names(color.get("couleurs_eviter")) + _extract_color_names(color.get("unwanted_colors"))
-            colors_avoid = _uniq(colors_avoid)
-
-            # color_keywords = union best/ok (utile pour recherche simple)
-            color_keywords = _uniq(colors_best + colors_ok)
-
+            # keywords text[] dérivés des displayName/name
+            color_keywords = _uniq(
+                _extract_color_names(colors_best) +
+                _extract_color_names(colors_ok)
+            )
             # ---------------------------
             # 2) Morphologie: cuts + matières + motifs
             # ---------------------------
@@ -334,7 +364,7 @@ class ReportGenerator:
             if morpho_categories is None:
                 morpho_categories = morph.get("categories")
 
-            cuts_recommended, cuts_avoid, materials_recommended, pattern_from_morpho = _extract_morpho_cuts(
+            cuts_recommended, cuts_avoid, materials_recommended, patterns_recommended_from_morpho, patterns_avoid_from_morpho = _extract_morpho_cuts(
                 morpho_categories if isinstance(morpho_categories, dict) else {}
             )
             # ---------------------------
@@ -343,6 +373,7 @@ class ReportGenerator:
             preferred_brands = []
             pattern_avoid = []
             style_keywords = []
+            pattern_recommended = []
 
             onboarding = {}
             if user_data:
@@ -362,7 +393,11 @@ class ReportGenerator:
             # Ajoute les marques trouvées dans le texte IA si onboarding incomplet
             preferred_brands = _uniq(preferred_brands + _extract_preferred_brands_from_text(style.get("styling") or style))
             # Ajoute motifs/éviter issus morpho (et éventuellement “imprimés animaliers” depuis IA)
-            pattern_avoid = _uniq(pattern_avoid + pattern_from_morpho)
+            # Motifs recommandés = uniquement morpho (et/ou d'autres sources si tu veux plus tard)
+            pattern_recommended = _uniq(pattern_recommended + patterns_recommended_from_morpho)
+
+            # Motifs à éviter = onboarding + morpho a_eviter
+            pattern_avoid = _uniq(pattern_avoid + patterns_avoid_from_morpho)
 
             # ---------------------------
             # 4) Champs “filtres” de base
@@ -378,6 +413,22 @@ class ReportGenerator:
                 or (morph.get("bodyType"))
                 or ((morph.get("morphology") or {}).get("bodyType") if isinstance(morph.get("morphology"), dict) else None)
             )
+
+            colors_best = _ensure_list_json(colors_best)
+            colors_ok = _ensure_list_json(colors_ok)
+            colors_avoid = _ensure_list_json(colors_avoid)
+            color_keywords = _ensure_list_text(color_keywords)
+
+            cuts_recommended = _ensure_list_json(cuts_recommended)
+            cuts_avoid = _ensure_list_json(cuts_avoid)
+
+            pattern_avoid = _ensure_list_text(pattern_avoid)
+            pattern_recommended = _ensure_list_text(pattern_recommended)
+            style_keywords = _ensure_list_text(style_keywords)
+            preferred_brands = _ensure_list_text(preferred_brands)
+            body_parts_highlight = _ensure_list_text(body_parts_highlight)
+            body_parts_minimize = _ensure_list_text(body_parts_minimize)
+
 
             # ---------------------------
             # Record final (colonne EXACTES)
@@ -408,6 +459,7 @@ class ReportGenerator:
 
                 # motifs/matières: ta table mentionne pattern_avoid; si tu as "materials_*", ajoute
                 "pattern_avoid": pattern_avoid,
+                "pattern_recommended": pattern_recommended,
                 "style_keywords": style_keywords,
                 "preferred_brands": preferred_brands,
 
