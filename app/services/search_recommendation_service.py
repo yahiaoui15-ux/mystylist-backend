@@ -450,7 +450,7 @@ class SearchRecommendationService:
             "image_url": image_url,
             "buy_url": buy_url,
             "product_url": product_url,
-            "score_total": round(total_score, 2),
+            "score_total": round(max(total_score, 0), 2),
             "score_color": round(max(color_score, 0), 2),
             "score_morphology": round(max(morphology_score, 0), 2),
             "score_style": round(max(style_score, 0), 2),
@@ -552,6 +552,7 @@ class SearchRecommendationService:
     def _normalize_category_key(self, raw: str) -> Optional[str]:
         if not raw:
             return None
+
         key = self._normalize_text(raw).replace(" ", "_")
 
         aliases = {
@@ -563,18 +564,27 @@ class SearchRecommendationService:
             "chaussures": "chaussures",
             "accessoires": "accessoires",
             "sacs": "sacs",
-            "vestes_&_manteaux": "vestes_manteaux",
-            "vestes_manteaux": "vestes_manteaux",
-            "vestes_et_manteaux": "vestes_manteaux",
-            "sous-vetements": "sous-vetements",
-            "sous_vetements": "sous-vetements",
-            "maillots_de_bain": "maillots_bain",
-            "maillots_bain": "maillots_bain",
-            "vetements_de_sport": "vetements_sport",
-            "vetements_sport": "vetements_sport",
             "bijoux": "bijoux",
             "tenue_complete": "tenue_complete",
+
+            # IMPORTANT: alignement avec la contrainte DB
+            "vestes_&_manteaux": "vestes",
+            "vestes_manteaux": "vestes",
+            "vestes_et_manteaux": "vestes",
+            "vestes": "vestes",
+
+            "sous-vetements": "lingerie",
+            "sous_vetements": "lingerie",
+            "lingerie": "lingerie",
+
+            "maillots_de_bain": "maillots_bain",
+            "maillots_bain": "maillots_bain",
+
+            "vetements_de_sport": "tenue_sport",
+            "vetements_sport": "tenue_sport",
+            "tenue_sport": "tenue_sport",
         }
+
         return aliases.get(key, key if key in self.ARTICLE_TYPE_TO_SECONDARY_CATEGORIES else None)
 
     def _extract_budget_for_category(self, category_key: str, budgets: Dict[str, Any]) -> Optional[float]:
