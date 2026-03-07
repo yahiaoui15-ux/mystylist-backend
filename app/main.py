@@ -2,6 +2,7 @@ import json
 import uuid
 import sys
 import logging
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 
 import stripe
@@ -35,6 +36,15 @@ def log(message: str):
     sys.stdout.flush()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 # --- Logs au boot pour verifier l'env deploye ---
