@@ -17,7 +17,7 @@ from app.services import (
 )
 from app.services.pdf_storage_manager import PDFStorageManager
 from app.utils.supabase_client import supabase
-
+from app.services.search_recommendation_service import search_recommendation_service
 # =====================================================
 # CONFIGURATION LOGGING FORCE
 # =====================================================
@@ -53,7 +53,6 @@ async def debug_supabase_env():
         "has_service_key": bool(settings.SUPABASE_KEY and len(settings.SUPABASE_KEY) > 20),
     }
 
-
 @app.post("/debug/supabase/write")
 async def debug_supabase_write():
     try:
@@ -75,7 +74,44 @@ async def debug_supabase_write():
     except Exception as e:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
+@app.post("/api/searches/{search_id}/generate-recommendations")
+async def generate_search_recommendations(search_id: str):
+    """
+    Génère les recommandations affiliées pour une recherche sauvegardée.
+    Remplace le pipeline Make.com.
+    """
+    try:
+        log(f"[SEARCH_RECO] Start generation for search_id={search_id}")
+        result = await search_recommendation_service.generate_for_search(search_id)
+        log(f"[SEARCH_RECO] Result for search_id={search_id}: {result}")
 
+        if result.get("status") == "success":
+            return {
+                "ok": True,
+                "search_id": search_id,
+                "run_id": result.get("run_id"),
+                "recommendations_inserted": result.get("recommendations_inserted", 0),
+            }
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "search_id": search_id,
+                "run_id": result.get("run_id"),
+                "error": result.get("error", "unknown_error"),
+            },
+        )
+    except Exception as e:
+        log(f"[SEARCH_RECO] Unhandled exception for search_id={search_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "search_id": search_id,
+                "error": str(e),
+            },
+        )
 # =====================================================
 # WEBHOOK STRIPE - IDEMPOTENT & ACK 200 IMMEDIAT
 # =====================================================
