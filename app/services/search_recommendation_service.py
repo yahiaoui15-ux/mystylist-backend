@@ -349,11 +349,19 @@ class SearchRecommendationService:
 
     def _update_run(self, run_id: str, status: str, error_message: Optional[str]) -> None:
         payload = {
-            "id": run_id,
             "status": status,
             "error_message": error_message,
         }
-        self.supabase.upsert_table("user_search_runs", payload, on_conflict="id")
+
+        response = (
+            self.client.table("user_search_runs")
+            .update(payload)
+            .eq("id", run_id)
+            .execute()
+        )
+
+        if not response or response.data is None:
+            raise Exception(f"Impossible de mettre à jour user_search_runs pour run_id={run_id}")
 
     # =========================
     # Recommendation insert
