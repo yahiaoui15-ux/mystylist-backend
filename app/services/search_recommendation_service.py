@@ -238,7 +238,7 @@ class SearchRecommendationService:
 
             self._update_run(
                 run_id=run_id,
-                status="completed",
+                status="success",
                 error_message=None,
             )
 
