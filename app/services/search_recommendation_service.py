@@ -451,9 +451,9 @@ class SearchRecommendationService:
             "buy_url": buy_url,
             "product_url": product_url,
             "score_total": round(total_score, 2),
-            "score_color": round(color_score, 2),
-            "score_morphology": round(morphology_score, 2),
-            "score_style": round(style_score, 2),
+            "score_color": round(max(color_score, 0), 2),
+            "score_morphology": round(max(morphology_score, 0), 2),
+            "score_style": round(max(style_score, 0), 2),
             "reasons_json": reasons_json,
         }
 
