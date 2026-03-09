@@ -161,6 +161,23 @@ class SearchRecommendationService:
             if not selected_article_types:
                 raise ValueError("La recherche ne contient aucun type d'article sélectionné")
 
+            # MVP: "tenue_complete" = raccourci vers plusieurs catégories concrètes
+            normalized_article_types = [self._normalize_text(x).replace(" ", "_") for x in selected_article_types if x]
+
+            if normalized_article_types == ["tenue_complete"]:
+                selected_article_types = [
+                    "hauts",
+                    "bas",
+                    "robes",
+                    "vestes",
+                    "chaussures",
+                    "sacs",
+                    "accessoires",
+                ]
+            else:
+                # si tenue_complete est combiné avec d'autres catégories, on l'ignore
+                selected_article_types = [x for x in selected_article_types if self._normalize_text(x).replace(" ", "_") != "tenue_complete"]
+
             weights_json = {
                 "budget": 20,
                 "color_best": 30,
@@ -573,7 +590,7 @@ class SearchRecommendationService:
             "accessoires": "accessoires",
             "sacs": "sacs",
             "bijoux": "bijoux",
-            "tenue_complete": "tenue_complete",
+            "tenue_complete": None,
 
             # IMPORTANT: alignement avec la contrainte DB
             "vestes_&_manteaux": "vestes",
