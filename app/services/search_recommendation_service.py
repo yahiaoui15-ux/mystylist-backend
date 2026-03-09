@@ -206,6 +206,7 @@ class SearchRecommendationService:
             )
 
             all_inserted = 0
+            inserted_product_keys = set()
 
             # On efface les recos existantes du run par sécurité si besoin futur
             # Ici pas nécessaire car run neuf.
@@ -250,6 +251,7 @@ class SearchRecommendationService:
                     run_id=run_id,
                     category_key=category_key,
                     scored_rows=top_rows,
+                    inserted_product_keys=inserted_product_keys,
                 )
                 all_inserted += inserted
 
@@ -388,17 +390,24 @@ class SearchRecommendationService:
         run_id: str,
         category_key: str,
         scored_rows: List[Dict[str, Any]],
+        inserted_product_keys: set,
     ) -> int:
         inserted = 0
+        rank = 1
 
-        for idx, row in enumerate(scored_rows, start=1):
+        for row in scored_rows:
+            product_key = f"{row['merchant_id']}::{row['product_id']}"
+
+            if product_key in inserted_product_keys:
+                continue
+
             payload = {
                 "id": str(uuid.uuid4()),
                 "run_id": run_id,
                 "merchant_id": int(row["merchant_id"]),
                 "product_id": str(row["product_id"]),
                 "category_key": category_key,
-                "rank": idx,
+                "rank": rank,
                 "score_total": row["score_total"],
                 "score_color": row["score_color"],
                 "score_morphology": row["score_morphology"],
@@ -413,8 +422,11 @@ class SearchRecommendationService:
                 "reasons_json": row["reasons_json"],
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
+
             self.supabase.insert_table("user_search_recommendations", payload)
+            inserted_product_keys.add(product_key)
             inserted += 1
+            rank += 1
 
         return inserted
 
