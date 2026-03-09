@@ -207,6 +207,7 @@ class SearchRecommendationService:
 
             all_inserted = 0
             inserted_product_keys = set()
+            inserted_family_keys = set()
 
             # On efface les recos existantes du run par sécurité si besoin futur
             # Ici pas nécessaire car run neuf.
@@ -246,12 +247,13 @@ class SearchRecommendationService:
                     )
                 )
 
-                top_rows = scored[:5]
+                top_rows = scored[:20]
                 inserted = self._insert_recommendations(
                     run_id=run_id,
                     category_key=category_key,
                     scored_rows=top_rows,
                     inserted_product_keys=inserted_product_keys,
+                    inserted_family_keys=inserted_family_keys,
                 )
                 all_inserted += inserted
 
@@ -391,14 +393,21 @@ class SearchRecommendationService:
         category_key: str,
         scored_rows: List[Dict[str, Any]],
         inserted_product_keys: set,
+        inserted_family_keys: set,
     ) -> int:
         inserted = 0
         rank = 1
 
         for row in scored_rows:
             product_key = f"{row['merchant_id']}::{row['product_id']}"
+            family_key = self._build_product_family_key(row)
 
+            # 1) doublon exact
             if product_key in inserted_product_keys:
+                continue
+
+            # 2) doublon métier (même produit en tailles différentes, etc.)
+            if family_key in inserted_family_keys:
                 continue
 
             payload = {
@@ -424,7 +433,10 @@ class SearchRecommendationService:
             }
 
             self.supabase.insert_table("user_search_recommendations", payload)
+
             inserted_product_keys.add(product_key)
+            inserted_family_keys.add(family_key)
+
             inserted += 1
             rank += 1
 
@@ -729,5 +741,28 @@ class SearchRecommendationService:
         s = re.sub(r"\s{2,}", " ", s).strip()
         return s
 
+    def _normalize_product_family_text(self, value: str) -> str:
+        s = self._normalize_text(value or "")
+
+        # Supprime les mentions de taille courantes
+        s = re.sub(r"\btaille\s+[a-z0-9/\-]+\b", " ", s)
+
+        # Supprime tailles isolées fréquentes
+        s = re.sub(r"\b(xx?s|xx?l|xs|s|m|l|xl|xxl|3xl|4xl)\b", " ", s)
+
+        # Supprime tailles numériques fréquentes
+        s = re.sub(r"\b(32|34|36|38|40|42|44|46|48|50|52)\b", " ", s)
+
+        # Normalise quelques séparateurs fréquents
+        s = re.sub(r"\bseconde\s+main\b", " ", s)
+
+        # Nettoyage final
+        s = re.sub(r"\s{2,}", " ", s).strip()
+        return s
+
+    def _build_product_family_key(self, row: Dict[str, Any]) -> str:
+        brand = self._normalize_text(str(row.get("brand") or ""))
+        title = self._normalize_product_family_text(str(row.get("title") or row.get("product_name") or ""))
+        return f"{brand}::{title}"
 
 search_recommendation_service = SearchRecommendationService()
