@@ -3,7 +3,7 @@ import uuid
 import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
+from urllib.parse import urlparse, urlunparse
 from app.utils.supabase_client import supabase
 
 
@@ -208,6 +208,7 @@ class SearchRecommendationService:
             all_inserted = 0
             inserted_product_keys = set()
             inserted_family_keys = set()
+            inserted_url_keys = set()
 
             # On efface les recos existantes du run par sécurité si besoin futur
             # Ici pas nécessaire car run neuf.
@@ -254,6 +255,7 @@ class SearchRecommendationService:
                     scored_rows=top_rows,
                     inserted_product_keys=inserted_product_keys,
                     inserted_family_keys=inserted_family_keys,
+                    inserted_url_keys=inserted_url_keys,
                 )
                 all_inserted += inserted
 
@@ -394,6 +396,7 @@ class SearchRecommendationService:
         scored_rows: List[Dict[str, Any]],
         inserted_product_keys: set,
         inserted_family_keys: set,
+        inserted_url_keys: set,
     ) -> int:
         inserted = 0
         rank = 1
@@ -401,13 +404,16 @@ class SearchRecommendationService:
         for row in scored_rows:
             product_key = f"{row['merchant_id']}::{row['product_id']}"
             family_key = self._build_product_family_key(row)
+            url_key = self._canonicalize_product_url(row.get("product_url") or row.get("buy_url") or "")
 
             # 1) doublon exact
             if product_key in inserted_product_keys:
                 continue
 
-            # 2) doublon métier (même produit en tailles différentes, etc.)
             if family_key in inserted_family_keys:
+                continue
+
+            if url_key and url_key in inserted_url_keys:
                 continue
 
             payload = {
@@ -436,6 +442,8 @@ class SearchRecommendationService:
 
             inserted_product_keys.add(product_key)
             inserted_family_keys.add(family_key)
+            if url_key:
+                inserted_url_keys.add(url_key)
 
             inserted += 1
             rank += 1
@@ -764,5 +772,28 @@ class SearchRecommendationService:
         brand = self._normalize_text(str(row.get("brand") or ""))
         title = self._normalize_product_family_text(str(row.get("title") or row.get("product_name") or ""))
         return f"{brand}::{title}"
+
+    def _canonicalize_product_url(self, url: str) -> str:
+        if not url:
+            return ""
+
+        try:
+            parsed = urlparse(url.strip())
+
+            # on garde seulement scheme + netloc + path
+            clean = urlunparse((
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                parsed.path.rstrip("/"),
+                "",
+                "",
+                ""
+            ))
+
+            # normalisation légère
+            clean = clean.replace("http://", "https://")
+            return clean
+        except Exception:
+            return (url or "").strip().lower()
 
 search_recommendation_service = SearchRecommendationService()
