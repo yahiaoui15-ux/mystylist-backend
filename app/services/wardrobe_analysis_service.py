@@ -262,6 +262,20 @@ Format exact attendu :
         detected_colors = self._normalize_color_list(analysis.get("detected_colors"))
         secondary_colors = self._normalize_color_list(analysis.get("secondary_colors"))
         accent_colors = self._normalize_color_list(analysis.get("accent_colors"))
+        
+        # Déduction automatique si GPT ne fournit pas secondary/accent
+        if detected_colors and not secondary_colors and not accent_colors:
+            for c in detected_colors:
+                w = c["weight"]
+                name = c["name"]
+
+                if dominant_color and name == dominant_color:
+                    continue
+
+                if w >= 0.15:
+                    secondary_colors.append(c)
+                else:
+                    accent_colors.append(c)
 
         # Si GPT oublie dominant_color mais detected_colors existe
         if not dominant_color and detected_colors:
