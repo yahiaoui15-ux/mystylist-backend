@@ -4,6 +4,7 @@ import sys
 import logging
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
+from app.services.wardrobe_analysis_service import wardrobe_analysis_service
 
 import stripe
 from fastapi import FastAPI, Request, BackgroundTasks, Header
@@ -119,6 +120,43 @@ async def generate_search_recommendations(search_id: str):
             content={
                 "ok": False,
                 "search_id": search_id,
+                "error": str(e),
+            },
+        )
+
+@app.post("/api/wardrobe/{item_id}/analyze")
+async def analyze_wardrobe_item(item_id: str):
+    """
+    Analyse un vêtement uploadé dans wardrobe_items et remplit les colonnes IA.
+    """
+    try:
+        log(f"[WARDROBE] Start analysis for item_id={item_id}")
+        result = await wardrobe_analysis_service.analyze_item(item_id)
+        log(f"[WARDROBE] Result for item_id={item_id}: {result}")
+
+        if result.get("status") == "success":
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "category_key": result.get("category_key"),
+                "ai_label": result.get("ai_label"),
+            }
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "item_id": item_id,
+                "error": result.get("error", "unknown_error"),
+            },
+        )
+    except Exception as e:
+        log(f"[WARDROBE] Unhandled exception for item_id={item_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "item_id": item_id,
                 "error": str(e),
             },
         )
