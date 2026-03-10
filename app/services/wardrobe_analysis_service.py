@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from app.utils.supabase_client import supabase
 from app.utils.openai_client import openai_client
@@ -12,7 +12,11 @@ class WardrobeAnalysisService:
     Analyse un vêtement uploadé dans wardrobe_items et remplit :
     - category_key
     - subcategory
-    - detected_color
+    - dominant_color
+    - detected_color (compatibilité temporaire = dominant_color)
+    - detected_colors
+    - secondary_colors
+    - accent_colors
     - detected_pattern
     - detected_material
     - detected_style
@@ -37,6 +41,28 @@ class WardrobeAnalysisService:
         "lingerie",
         "accessoires",
         "tenue_sport",
+    }
+
+    ALLOWED_COLOR_NAMES = {
+        "noir",
+        "blanc",
+        "ecru",
+        "beige",
+        "camel",
+        "marron",
+        "gris",
+        "bleu",
+        "marine",
+        "vert",
+        "kaki",
+        "rouge",
+        "rose",
+        "violet",
+        "jaune",
+        "orange",
+        "dore",
+        "argente",
+        "multicolore",
     }
 
     def __init__(self):
@@ -69,7 +95,11 @@ class WardrobeAnalysisService:
                 "status": "completed",
                 "category_key": normalized.get("category_key"),
                 "subcategory": normalized.get("subcategory"),
-                "detected_color": normalized.get("detected_color"),
+                "dominant_color": normalized.get("dominant_color"),
+                "detected_color": normalized.get("detected_color"),  # compatibilité
+                "detected_colors": normalized.get("detected_colors"),
+                "secondary_colors": normalized.get("secondary_colors"),
+                "accent_colors": normalized.get("accent_colors"),
                 "detected_pattern": normalized.get("detected_pattern"),
                 "detected_material": normalized.get("detected_material"),
                 "detected_style": normalized.get("detected_style"),
@@ -89,6 +119,7 @@ class WardrobeAnalysisService:
                 "item_id": item_id,
                 "category_key": normalized.get("category_key"),
                 "ai_label": normalized.get("ai_label"),
+                "dominant_color": normalized.get("dominant_color"),
             }
 
         except Exception as e:
@@ -122,7 +153,7 @@ class WardrobeAnalysisService:
         self.client.table("wardrobe_items").update(payload).eq("id", item_id).execute()
 
     async def _run_ai_analysis(self, image_url: str) -> Dict[str, Any]:
-        prompt = f"""
+        prompt = """
 Tu analyses UNE photo de vêtement portée ou non portée.
 
 Tu dois identifier le vêtement principal visible sur l'image et répondre STRICTEMENT en JSON valide, sans aucun texte autour.
@@ -131,7 +162,21 @@ Contraintes :
 - category_key doit être UNE SEULE valeur parmi :
   ["hauts","bas","robes","vestes","chaussures","sacs","bijoux","maillots_bain","lingerie","accessoires","tenue_sport"]
 - subcategory = sous-type simple et court (ex: "jupe midi plissée", "blazer", "chemise", "jean droit")
-- detected_color = couleur principale dominante du vêtement
+
+Pour les couleurs :
+- dominant_color = couleur la plus visible
+- detected_colors = liste ordonnée des couleurs visibles avec poids décimal entre 0 et 1
+- la somme des poids dans detected_colors doit être proche de 1
+- secondary_colors = couleurs importantes mais non dominantes
+- accent_colors = petites touches visuelles marquantes
+- utilise uniquement des noms de couleurs simples en français, sans nuances marketing
+- couleurs autorisées :
+  ["noir","blanc","ecru","beige","camel","marron","gris","bleu","marine","vert","kaki","rouge","rose","violet","jaune","orange","dore","argente","multicolore"]
+- ne mets pas dominant_color dans secondary_colors
+- n’invente pas de couleurs absentes
+- si une couleur est très minoritaire, mets-la plutôt dans accent_colors
+
+Autres champs :
 - detected_pattern = motif principal s'il y en a un, sinon ""
 - detected_material = matière probable si identifiable, sinon ""
 - detected_style = style mode dominant (ex: chic, casual, bohème, rock, minimaliste, classique, sportswear), sinon ""
@@ -141,10 +186,19 @@ Contraintes :
 - confidence_score = nombre entre 0 et 100
 
 Format exact attendu :
-{{
+{
   "category_key": "",
   "subcategory": "",
-  "detected_color": "",
+  "dominant_color": "",
+  "detected_colors": [
+    {"name": "", "weight": 0.0}
+  ],
+  "secondary_colors": [
+    {"name": "", "weight": 0.0}
+  ],
+  "accent_colors": [
+    {"name": "", "weight": 0.0}
+  ],
   "detected_pattern": "",
   "detected_material": "",
   "detected_style": "",
@@ -152,7 +206,7 @@ Format exact attendu :
   "ai_label": "",
   "ai_description": "",
   "confidence_score": 0
-}}
+}
 """.strip()
 
         openai_client.set_context("wardrobe_analysis", "analyze_item")
@@ -163,7 +217,7 @@ Format exact attendu :
         response = await openai_client.analyze_image(
             image_urls=[image_url],
             prompt=prompt,
-            max_tokens=500,
+            max_tokens=700,
             temperature=0.1,
         )
 
@@ -200,7 +254,35 @@ Format exact attendu :
             raise ValueError(f"category_key invalide après normalisation: {raw_category}")
 
         subcategory = self._clean_text(analysis.get("subcategory"))
-        detected_color = self._clean_text(analysis.get("detected_color"))
+
+        dominant_color = self._normalize_color_name(
+            self._clean_text(analysis.get("dominant_color"))
+        )
+
+        detected_colors = self._normalize_color_list(analysis.get("detected_colors"))
+        secondary_colors = self._normalize_color_list(analysis.get("secondary_colors"))
+        accent_colors = self._normalize_color_list(analysis.get("accent_colors"))
+
+        # Si GPT oublie dominant_color mais detected_colors existe
+        if not dominant_color and detected_colors:
+            dominant_color = detected_colors[0]["name"]
+
+        # Si GPT oublie detected_colors mais dominant_color existe
+        if dominant_color and not detected_colors:
+            detected_colors = [{"name": dominant_color, "weight": 1.0}]
+
+        # Retirer la dominante des secondaires
+        if dominant_color:
+            secondary_colors = [
+                x for x in secondary_colors if x["name"] != dominant_color
+            ]
+
+        # Retirer doublons entre secondary et accent
+        secondary_names = {x["name"] for x in secondary_colors}
+        accent_colors = [
+            x for x in accent_colors if x["name"] not in secondary_names and x["name"] != dominant_color
+        ]
+
         detected_pattern = self._clean_text(analysis.get("detected_pattern"))
         detected_material = self._clean_text(analysis.get("detected_material"))
         detected_style = self._clean_text(analysis.get("detected_style"))
@@ -212,7 +294,11 @@ Format exact attendu :
         cleaned = {
             "category_key": category_key,
             "subcategory": subcategory,
-            "detected_color": detected_color,
+            "dominant_color": dominant_color,
+            "detected_color": dominant_color,  # compatibilité temporaire
+            "detected_colors": detected_colors,
+            "secondary_colors": secondary_colors,
+            "accent_colors": accent_colors,
             "detected_pattern": detected_pattern,
             "detected_material": detected_material,
             "detected_style": detected_style,
@@ -321,6 +407,123 @@ Format exact attendu :
             score = 0.0
         score = max(0.0, min(100.0, score))
         return round(score, 2)
+
+    def _normalize_color_name(self, value: str) -> str:
+        raw = self._clean_text(value).lower()
+        if not raw:
+            return ""
+
+        aliases = {
+            "blanche": "blanc",
+            "blanches": "blanc",
+            "blanc casse": "ecru",
+            "ivoire": "ecru",
+            "ecrue": "ecru",
+            "ecrus": "ecru",
+            "beiges": "beige",
+            "camel clair": "camel",
+            "marrons": "marron",
+            "brun": "marron",
+            "brune": "marron",
+            "grise": "gris",
+            "gris clair": "gris",
+            "gris fonce": "gris",
+            "bleue": "bleu",
+            "bleues": "bleu",
+            "bleu marine": "marine",
+            "navy": "marine",
+            "verte": "vert",
+            "vert olive": "kaki",
+            "kaki olive": "kaki",
+            "rouges": "rouge",
+            "rouge brique": "rouge",
+            "rosee": "rose",
+            "violette": "violet",
+            "jaunes": "jaune",
+            "orangee": "orange",
+            "dorée": "dore",
+            "doré": "dore",
+            "argentée": "argente",
+            "argenté": "argente",
+            "multicolor": "multicolore",
+        }
+
+        slugged = self._slug(raw).replace("_", " ")
+        normalized = aliases.get(slugged, raw)
+        normalized = self._slug(normalized).replace("_", " ")
+
+        if normalized == "bleu marine":
+            normalized = "marine"
+
+        normalized = normalized.replace(" ", "_")
+        normalized = normalized.replace("_", " ").strip()
+
+        final_aliases = {
+            "blanc": "blanc",
+            "ecru": "ecru",
+            "beige": "beige",
+            "camel": "camel",
+            "marron": "marron",
+            "gris": "gris",
+            "bleu": "bleu",
+            "marine": "marine",
+            "vert": "vert",
+            "kaki": "kaki",
+            "rouge": "rouge",
+            "rose": "rose",
+            "violet": "violet",
+            "jaune": "jaune",
+            "orange": "orange",
+            "dore": "dore",
+            "argente": "argente",
+            "noir": "noir",
+            "multicolore": "multicolore",
+        }
+
+        return final_aliases.get(final_aliases.get(normalized, normalized), normalized) if final_aliases.get(normalized, None) else ""
+
+    def _normalize_color_list(self, value: Any) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        if not isinstance(value, list):
+            return out
+
+        seen = set()
+
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+
+            name = self._normalize_color_name(str(item.get("name") or ""))
+            weight = item.get("weight")
+
+            try:
+                weight = float(weight)
+            except Exception:
+                continue
+
+            if not name:
+                continue
+            if name not in self.ALLOWED_COLOR_NAMES:
+                continue
+            if weight <= 0:
+                continue
+            if name in seen:
+                continue
+
+            seen.add(name)
+            out.append({
+                "name": name,
+                "weight": round(weight, 4),
+            })
+
+        out.sort(key=lambda x: x["weight"], reverse=True)
+
+        # borne haute simple
+        for row in out:
+            if row["weight"] > 1:
+                row["weight"] = 1.0
+
+        return out
 
     def _clean_text(self, value: Any) -> str:
         if value is None:
