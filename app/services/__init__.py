@@ -12,6 +12,7 @@ from app.services.colorimetry import colorimetry_service
 from app.services.morphology import morphology_service
 from app.services.styling import styling_service
 from app.services.wardrobe_analysis_service import wardrobe_analysis_service
+from app.services.wardrobe_suggestions_service import wardrobe_suggestions_service
 
 __all__ = [
     "email_service",
@@ -24,4 +25,5 @@ __all__ = [
     "morphology_service",
     "styling_service",
     "wardrobe_analysis_service",
+    "wardrobe_suggestions_service",
 ]

@@ -20,6 +20,7 @@ from app.services import (
 from app.services.pdf_storage_manager import PDFStorageManager
 from app.utils.supabase_client import supabase
 from app.services.search_recommendation_service import search_recommendation_service
+from app.services.wardrobe_suggestions_service import wardrobe_suggestions_service
 # =====================================================
 # CONFIGURATION LOGGING FORCE
 # =====================================================
@@ -152,6 +153,30 @@ async def analyze_wardrobe_item(item_id: str):
         )
     except Exception as e:
         log(f"[WARDROBE] Unhandled exception for item_id={item_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "item_id": item_id,
+                "error": str(e),
+            },
+        )
+        
+@app.post("/api/wardrobe/{item_id}/suggestions")
+async def generate_wardrobe_suggestions(item_id: str):
+    """
+    Génère des suggestions de produits affiliés complémentaires
+    autour d'un vêtement central de la garde-robe.
+    """
+    try:
+        log(f"[WARDROBE_SUGGESTIONS] Start generation for item_id={item_id}")
+        result = await wardrobe_suggestions_service.generate_for_item(item_id)
+        log(f"[WARDROBE_SUGGESTIONS] Result for item_id={item_id}: ok={result.get('ok')}")
+
+        return result
+
+    except Exception as e:
+        log(f"[WARDROBE_SUGGESTIONS] Unhandled exception for item_id={item_id}: {e}")
         return JSONResponse(
             status_code=500,
             content={
