@@ -321,18 +321,22 @@ class SearchRecommendationService:
 
     OFFICE_NEGATIVE_HINTS = {
         "sequins": ["sequin", "sequins", "paillette", "paillete", "paillettes", "strass", "lamé", "lame"],
-        "too_playful_print": ["fleuri", "floral", "imprime", "imprimé", "graphic", "graphique"],
-        "too_evening": ["satin", "dos nu", "bustier"],
+        "too_playful_print": ["fleuri", "floral", "imprime", "imprimé", "graphic", "graphique", "carreaux", "check"],
+        "too_evening": ["satin", "dos nu", "bustier", "taffetas", "brillant", "brillance"],
         "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
+        "too_loose": ["oversize", "ample", "large"],
+        "too_casual_bottoms": ["jean", "denim", "cargo", "jogger", "legging"],
+        "too_bold_bottoms": ["cuir", "simili", "brode", "brodé", "tulle"],
     }
 
     OFFICE_POSITIVE_HINTS = {
         "structured": ["droit", "droite", "tailleur", "structure", "structuré", "structuree"],
         "smart_tops": ["chemise", "blouse", "col bateau", "maille fine"],
-        "smart_bottoms": ["pantalon", "jupe midi", "jupe", "taille haute"],
+        "smart_bottoms": ["pantalon", "jupe midi", "jupe", "taille haute", "cigarette", "droit", "plis"],
         "smart_outerwear": ["blazer", "trench", "manteau"],
         "smart_shoes": ["mocassin", "escarpin", "derby", "ballerine"],
     }
+
     def __init__(self):
         self.supabase = supabase
         self.client = supabase.get_client()
@@ -1105,14 +1109,17 @@ class SearchRecommendationService:
                     reasons.append("top trop délicat pour bureau")
 
             elif category_key == "bas":
-                if subtype in {"pantalon", "jupe"}:
-                    score += 14
-                    reasons.append("bas bureau pertinent")
+                if subtype == "pantalon":
+                    score += 16
+                    reasons.append("pantalon bureau très pertinent")
+                elif subtype == "jupe":
+                    score += 12
+                    reasons.append("jupe bureau pertinente")
                 elif subtype == "jean":
-                    score -= 20
+                    score -= 22
                     reasons.append("jean peu bureau")
                 elif subtype == "short":
-                    score -= 24
+                    score -= 26
                     reasons.append("short/bermuda hors cible bureau")
 
             elif category_key == "vestes":
@@ -1150,8 +1157,11 @@ class SearchRecommendationService:
 
             if main_style == "chic":
                 if category_key == "bas" and subtype == "jean":
-                    score -= 12
+                    score -= 14
                     reasons.append("jean peu chic")
+                if category_key == "bas" and subtype == "short":
+                    score -= 20
+                    reasons.append("short peu chic")
                 if category_key == "hauts" and subtype == "tee_shirt":
                     score -= 10
                     reasons.append("tee-shirt peu chic")
@@ -1167,8 +1177,11 @@ class SearchRecommendationService:
 
             elif main_style == "classique":
                 if category_key == "bas" and subtype == "jean":
-                    score -= 10
+                    score -= 12
                     reasons.append("jean peu classique")
+                if category_key == "bas" and subtype == "short":
+                    score -= 16
+                    reasons.append("short peu classique")
                 if category_key == "chaussures" and subtype == "baskets":
                     score -= 10
                     reasons.append("basket peu classique")
@@ -1203,12 +1216,12 @@ class SearchRecommendationService:
                 score -= 24
                 reasons.append("effet trop soirée")
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_evening"]):
-                score -= 12
+                score -= 14
                 reasons.append("registre trop soirée")
 
         if category_key in {"bas", "robes"}:
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
-                score -= 10
+                score -= 12
                 reasons.append("imprimé peu bureau")
 
         if category_key == "vestes":
@@ -1217,17 +1230,41 @@ class SearchRecommendationService:
                 reasons.append("outerwear trop casual")
 
         if category_key == "hauts":
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_loose"]):
+                score -= 6
+                reasons.append("coupe trop casual")
+
+            if self._contains_any_text(hay, ["chemise", "blouse"]):
+                if not self._contains_any_text(hay, ["imprime", "imprimé", "fleuri", "floral", "carreaux", "check"]):
+                    score += 6
+                    reasons.append("chemise/blouse sobre premium")
+
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_tops"]):
                 score += 6
                 reasons.append("registre bureau")
+
         elif category_key == "bas":
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_bottoms"]):
+                score -= 18
+                reasons.append("bas trop casual")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]):
+                score -= 10
+                reasons.append("matière ou effet trop marqué")
+
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
-                score += 6
+                score += 8
                 reasons.append("bas structuré")
+
+            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit", "jupe midi"]):
+                score += 8
+                reasons.append("forme bureau premium")
+
         elif category_key == "vestes":
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]):
                 score += 8
                 reasons.append("veste structurée")
+
         elif category_key == "chaussures":
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_shoes"]):
                 score += 8
