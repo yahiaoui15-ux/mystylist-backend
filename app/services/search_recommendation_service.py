@@ -326,7 +326,7 @@ class SearchRecommendationService:
         "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
         "too_loose": ["oversize", "ample", "large"],
         "too_casual_bottoms": ["jean", "denim", "cargo", "jogger", "legging"],
-        "too_bold_bottoms": ["cuir", "simili", "brode", "brodé", "tulle"],
+        "too_bold_bottoms": ["cuir", "simili", "vinyle", "croco", "brode", "brodé", "dentelle", "tulle", "filet"],
     }
 
     OFFICE_POSITIVE_HINTS = {
@@ -1221,7 +1221,7 @@ class SearchRecommendationService:
 
         if category_key in {"bas", "robes"}:
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
-                score -= 12
+                score -= 16
                 reasons.append("imprimé peu bureau")
 
         if category_key == "vestes":
@@ -1249,16 +1249,20 @@ class SearchRecommendationService:
                 reasons.append("bas trop casual")
 
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]):
-                score -= 10
+                score -= 18
                 reasons.append("matière ou effet trop marqué")
 
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
-                score += 8
+                score += 12
                 reasons.append("bas structuré")
 
-            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit", "jupe midi"]):
-                score += 8
-                reasons.append("forme bureau premium")
+            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit"]):
+                score += 12
+                reasons.append("pantalon bureau premium")
+
+            elif self._contains_any_text(hay, ["jupe midi"]):
+                score += 6
+                reasons.append("jupe midi acceptable bureau")
 
         elif category_key == "vestes":
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]):
