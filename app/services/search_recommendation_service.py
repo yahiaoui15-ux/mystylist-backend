@@ -326,7 +326,7 @@ class SearchRecommendationService:
         "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
         "too_loose": ["oversize", "ample", "large"],
         "too_casual_bottoms": ["jean", "denim", "cargo", "jogger", "legging"],
-        "too_bold_bottoms": ["cuir", "simili", "vinyle", "croco", "brode", "brodé", "dentelle", "tulle", "filet"],
+        "too_bold_bottoms": ["cuir", "simili", "vinyle", "croco", "brode", "brodé", "dentelle", "tulle", "filet", "délavé", "delave", "washed", "jacquard", "python"],    
     }
 
     OFFICE_POSITIVE_HINTS = {
@@ -1110,10 +1110,10 @@ class SearchRecommendationService:
 
             elif category_key == "bas":
                 if subtype == "pantalon":
-                    score += 16
+                    score += 22
                     reasons.append("pantalon bureau très pertinent")
                 elif subtype == "jupe":
-                    score += 12
+                    score += 8
                     reasons.append("jupe bureau pertinente")
                 elif subtype == "jean":
                     score -= 22
@@ -1219,9 +1219,14 @@ class SearchRecommendationService:
                 score -= 14
                 reasons.append("registre trop soirée")
 
-        if category_key in {"bas", "robes"}:
+        if category_key == "bas":
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
-                score -= 16
+                score -= 20
+                reasons.append("imprimé trop présent pour bureau")
+
+        elif category_key == "robes":
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
+                score -= 12
                 reasons.append("imprimé peu bureau")
 
         if category_key == "vestes":
@@ -1249,12 +1254,16 @@ class SearchRecommendationService:
                 reasons.append("bas trop casual")
 
             if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]):
-                score -= 18
-                reasons.append("matière ou effet trop marqué")
+                score -= 28
+                reasons.append("matière ou effet trop mode pour bureau")
 
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
                 score += 12
                 reasons.append("bas structuré")
+
+            if self._contains_any_text(hay, ["crayon", "midi"]) and self._contains_any_text(hay, ["cuir", "croco", "simili"]):
+                score -= 10
+                reasons.append("jupe crayon trop marquée")
 
             if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit"]):
                 score += 12
