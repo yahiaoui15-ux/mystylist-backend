@@ -117,11 +117,13 @@ class SearchRecommendationService:
             "gilet": ["gilet", "cardigan"],
             "tee_shirt": ["tee-shirt", "tee shirt", "t-shirt", "t shirt"],
             "top": ["top"],
+            "caraco": ["caraco", "camisole", "bretelles fines", "debardeur", "débardeur"],
         },
         "bas": {
             "pantalon": ["pantalon", "tailleur"],
             "jean": ["jean", "denim"],
             "jupe": ["jupe"],
+            "short": ["short", "bermuda"],
         },
         "robes": {
             "robe": ["robe"],
@@ -131,6 +133,8 @@ class SearchRecommendationService:
             "blazer": ["blazer", "tailleur"],
             "veste": ["veste", "blouson"],
             "manteau": ["manteau", "trench"],
+            "doudoune": ["doudoune", "matelassee", "matelassée", "puffer"],
+            "sans_manches": ["sans manches"],
         },
         "chaussures": {
             "baskets": ["basket", "sneaker", "running"],
@@ -315,6 +319,20 @@ class SearchRecommendationService:
         },
     }
 
+    OFFICE_NEGATIVE_HINTS = {
+        "sequins": ["sequin", "sequins", "paillette", "paillete", "paillettes", "strass", "lamé", "lame"],
+        "too_playful_print": ["fleuri", "floral", "imprime", "imprimé", "graphic", "graphique"],
+        "too_evening": ["satin", "dos nu", "bustier"],
+        "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
+    }
+
+    OFFICE_POSITIVE_HINTS = {
+        "structured": ["droit", "droite", "tailleur", "structure", "structuré", "structuree"],
+        "smart_tops": ["chemise", "blouse", "col bateau", "maille fine"],
+        "smart_bottoms": ["pantalon", "jupe midi", "jupe", "taille haute"],
+        "smart_outerwear": ["blazer", "trench", "manteau"],
+        "smart_shoes": ["mocassin", "escarpin", "derby", "ballerine"],
+    }
     def __init__(self):
         self.supabase = supabase
         self.client = supabase.get_client()
@@ -830,6 +848,13 @@ class SearchRecommendationService:
             subtype=subtype,
             search_row=search_row,
         )
+        office_visual_score, office_visual_reason = self._compute_office_visual_penalty(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            search_row=search_row,
+        )
 
         total_score = (
             10
@@ -840,6 +865,7 @@ class SearchRecommendationService:
             + brand_score
             + season_score
             + category_specificity_score
+            + office_visual_score
         )
 
         reasons_json = {
@@ -856,6 +882,7 @@ class SearchRecommendationService:
             "secondary_category": secondary_category,
             "subtype": subtype,
             "extracted_color": extracted_color,
+            "office_visual": office_visual_reason,
         }
 
         return {
@@ -1060,49 +1087,155 @@ class SearchRecommendationService:
         score = 0.0
         reasons: List[str] = []
 
-        if "bureau" in requested_occasions or "travail" in requested_occasions or "pro" in requested_occasions:
+        office_context = any(x in {"bureau", "travail", "pro"} for x in requested_occasions)
+
+        if office_context:
             if category_key == "hauts":
                 if subtype in {"chemise", "blouse"}:
-                    score += 10
+                    score += 16
                     reasons.append("haut bureau pertinent")
+                elif subtype in {"pull", "gilet", "top"}:
+                    score += 6
+                    reasons.append("haut sobre exploitable")
                 elif subtype == "tee_shirt":
-                    score -= 14
+                    score -= 18
                     reasons.append("tee-shirt peu bureau")
+                elif subtype == "caraco":
+                    score -= 22
+                    reasons.append("top trop délicat pour bureau")
+
             elif category_key == "bas":
                 if subtype in {"pantalon", "jupe"}:
-                    score += 10
+                    score += 14
                     reasons.append("bas bureau pertinent")
                 elif subtype == "jean":
-                    score -= 16
+                    score -= 20
                     reasons.append("jean peu bureau")
+                elif subtype == "short":
+                    score -= 24
+                    reasons.append("short/bermuda hors cible bureau")
+
             elif category_key == "vestes":
                 if subtype == "blazer":
-                    score += 12
-                    reasons.append("blazer pertinent")
+                    score += 18
+                    reasons.append("blazer très pertinent")
+                elif subtype in {"veste", "manteau"}:
+                    score += 8
+                    reasons.append("veste bureau pertinente")
+                elif subtype == "doudoune":
+                    score -= 22
+                    reasons.append("doudoune trop casual")
+                elif subtype == "sans_manches":
+                    score -= 18
+                    reasons.append("sans manches peu bureau")
+
             elif category_key == "chaussures":
                 if subtype in {"escarpins", "mocassins", "derbies", "ballerines"}:
-                    score += 10
+                    score += 14
                     reasons.append("chaussure bureau pertinente")
+                elif subtype == "boots":
+                    score += 2
+                    reasons.append("boots acceptables si sobres")
                 elif subtype == "baskets":
-                    score -= 16
+                    score -= 22
                     reasons.append("basket peu bureau")
+
+            elif category_key == "robes":
+                if subtype in {"robe", "combinaison"}:
+                    score += 12
+                    reasons.append("pièce une-pièce pertinente")
 
         if requested_styles:
             main_style = requested_styles[0]
+
             if main_style == "chic":
                 if category_key == "bas" and subtype == "jean":
-                    score -= 10
+                    score -= 12
                     reasons.append("jean peu chic")
                 if category_key == "hauts" and subtype == "tee_shirt":
-                    score -= 8
+                    score -= 10
                     reasons.append("tee-shirt peu chic")
+                if category_key == "hauts" and subtype == "caraco":
+                    score -= 8
+                    reasons.append("caraco moins pertinent")
                 if category_key == "chaussures" and subtype == "baskets":
-                    score -= 12
+                    score -= 14
                     reasons.append("basket peu chic")
+                if category_key == "vestes" and subtype == "doudoune":
+                    score -= 14
+                    reasons.append("doudoune peu chic")
+
+            elif main_style == "classique":
+                if category_key == "bas" and subtype == "jean":
+                    score -= 10
+                    reasons.append("jean peu classique")
+                if category_key == "chaussures" and subtype == "baskets":
+                    score -= 10
+                    reasons.append("basket peu classique")
 
         if reasons:
             return round(score, 2), " / ".join(reasons)
         return 0, "Catégorie/sous-type neutre"
+
+    def _compute_office_visual_penalty(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        search_row: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        requested_occasions = [self._normalize_text(x) for x in (search_row.get("selected_occasions") or []) if x]
+        requested_styles = [self._normalize_text(x) for x in (search_row.get("selected_styles") or []) if x]
+
+        office_context = any(x in {"bureau", "travail", "pro"} for x in requested_occasions)
+        chic_or_classic = any(x in {"chic", "classique", "minimaliste"} for x in requested_styles)
+
+        if not office_context and not chic_or_classic:
+            return 0, "Pas de pénalité visuelle spécifique"
+
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+        score = 0.0
+        reasons: List[str] = []
+
+        if category_key in {"hauts", "bas", "robes"}:
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["sequins"]):
+                score -= 24
+                reasons.append("effet trop soirée")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_evening"]):
+                score -= 12
+                reasons.append("registre trop soirée")
+
+        if category_key in {"bas", "robes"}:
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
+                score -= 10
+                reasons.append("imprimé peu bureau")
+
+        if category_key == "vestes":
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_outerwear"]):
+                score -= 18
+                reasons.append("outerwear trop casual")
+
+        if category_key == "hauts":
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_tops"]):
+                score += 6
+                reasons.append("registre bureau")
+        elif category_key == "bas":
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
+                score += 6
+                reasons.append("bas structuré")
+        elif category_key == "vestes":
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]):
+                score += 8
+                reasons.append("veste structurée")
+        elif category_key == "chaussures":
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_shoes"]):
+                score += 8
+                reasons.append("chaussure habillée")
+
+        if reasons:
+            return round(score, 2), " / ".join(reasons)
+        return 0, "Ajustement visuel neutre"
 
     # =========================
     # Helpers
@@ -1112,6 +1245,10 @@ class SearchRecommendationService:
             return None
         key = self._normalize_text(raw).replace(" ", "_")
         return self.CATEGORY_KEY_NORMALIZATION.get(key, key if key in self.MVP_CATEGORY_TO_SOURCE_SECONDARY else None)
+
+    def _contains_any_text(self, haystack: str, tokens: List[str]) -> bool:
+        h = self._normalize_text(haystack)
+        return any(self._normalize_text(token) in h for token in tokens)
 
     def _extract_budget_for_category(self, category_key: str, budgets: Dict[str, Any]) -> Optional[float]:
         if not budgets:
