@@ -1,6 +1,7 @@
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.utils.supabase_client import supabase
 
@@ -9,6 +10,12 @@ class WardrobeSuggestionsService:
     """
     Génère des suggestions de produits affiliés complémentaires
     autour d'un vêtement central de la garde-robe utilisateur.
+
+    Nouvelle logique :
+    - source de vérité style = affiliate_product_enrichment (style_v6)
+    - hydratation produit via affiliate_products
+    - scope MVP strict : hauts / bas / robes / vestes / chaussures
+    - scoring basé sur cohérence tenue réelle
     """
 
     CATEGORY_LABELS = {
@@ -17,117 +24,214 @@ class WardrobeSuggestionsService:
         "robes": "Robes",
         "vestes": "Vestes",
         "chaussures": "Chaussures",
-        "sacs": "Sacs",
-        "bijoux": "Bijoux",
-        "maillots_bain": "Maillots de bain",
-        "lingerie": "Lingerie",
-        "accessoires": "Accessoires",
-        "tenue_sport": "Tenue sport",
     }
 
     COMPLEMENTARY_CATEGORY_MAP = {
-        "hauts": ["bas", "vestes", "chaussures", "sacs", "accessoires"],
-        "bas": ["hauts", "vestes", "chaussures", "sacs", "accessoires"],
-        "robes": ["vestes", "chaussures", "sacs", "accessoires"],
-        "vestes": ["hauts", "bas", "chaussures", "sacs"],
-        "chaussures": ["hauts", "bas", "robes", "sacs"],
-        "sacs": ["hauts", "bas", "robes", "chaussures"],
-        "bijoux": ["hauts", "bas", "robes", "chaussures"],
-        "accessoires": ["hauts", "bas", "robes", "chaussures"],
-        "maillots_bain": ["accessoires", "sacs"],
-        "lingerie": ["accessoires"],
-        "tenue_sport": ["chaussures", "accessoires"],
+        "hauts": ["bas", "vestes", "chaussures"],
+        "bas": ["hauts", "vestes", "chaussures"],
+        "robes": ["vestes", "chaussures"],
+        "vestes": ["hauts", "bas", "chaussures"],
+        "chaussures": ["hauts", "bas", "robes", "vestes"],
     }
 
-    ARTICLE_TYPE_TO_SECONDARY_CATEGORIES = {
-        "hauts": [
+    MVP_CATEGORY_TO_SOURCE_SECONDARY = {
+        "hauts": {
             "Vêtements~~Top & Blouse",
-            "Vêtements~~Tee-Shirt",
             "Vêtements~~Chemise",
             "Vêtements~~Pull",
+            "Vêtements~~Tee-Shirt",
             "Vêtements~~Gilet",
             "Clothing~~Shirts & Tops",
-        ],
-        "bas": [
+        },
+        "bas": {
             "Vêtements~~Pantalon",
             "Vêtements~~Jean",
             "Vêtements~~Jupe",
-            "Vêtements~~Short & Bermuda",
             "Clothing~~Pants",
             "Clothing~~Skirts",
-            "Clothing~~Shorts",
-        ],
-        "robes": [
+        },
+        "robes": {
             "Vêtements~~Robe",
             "Clothing~~Dresses",
-        ],
-        "chaussures": [
-            "Chaussures",
-            "Chaussures~~Baskets",
-            "Chaussures~~Boots & Bottines",
-            "Chaussures~~Sandales",
-            "Chaussures~~Escarpins",
-            "Chaussures~~Ballerines",
-            "Chaussures~~Mocassins",
-            "Footwear~~Chaussures",
-            "Footwear~~Sneakers",
-        ],
-        "accessoires": [
-            "Accessoires~~Sacs",
-            "Accessoires~~Bijoux",
-            "Accessoires~~Ceinture",
-            "Accessoires~~Ceintures",
-            "Accessoires~~Echarpe",
-            "Accessoires~~Echarpe & Foulard",
-            "Maroquinerie~~Sacs",
-            "Maroquinerie~~Cabas",
-        ],
-        "sacs": [
-            "Accessoires~~Sacs",
-            "Maroquinerie~~Sacs",
-            "Maroquinerie~~Cabas",
-        ],
-        "vestes": [
+            "Vêtements~~Combinaison",
+        },
+        "vestes": {
             "Vêtements~~Veste & Blouson",
             "Vêtements~~Manteau",
-            "Vêtements~~Gilet",
-            "Clothing~~Outerwear",
             "Clothing~~Outerwear~~Coats & Jackets",
-        ],
-        "lingerie": [
-            "Vêtements~~Underwear",
-            "Vêtements~~Sous-Vêtements",
-            "Lingerie~~Lingerie",
-            "Clothing~~Underwear & Socks~~Lingerie",
-            "Clothing~~Underwear & Socks~~Bras",
-            "Clothing~~Underwear & Socks~~Underwear",
-        ],
-        "maillots_bain": [
-            "Vêtements~~Maillot de bain",
-            "Clothing~~Swimwear",
-        ],
-        "tenue_sport": [
-            "Sport~~Legging",
-            "Sport~~Tee-shirts & Débardeurs",
-            "Sport~~Brassières",
-            "Clothing~~Activewear",
-        ],
-        "bijoux": [
-            "Accessoires~~Bijoux",
-        ],
+        },
+        "chaussures": {
+            "Chaussures~~Baskets",
+            "Footwear~~Sneakers",
+            "Chaussures~~Boots & Bottines",
+            "Chaussures~~Bottes",
+            "Chaussures~~Sandales",
+            "Chaussures~~Escarpins",
+            "Chaussures~~Mocassins",
+            "Chaussures~~Derbies",
+            "Chaussures~~Ballerines",
+        },
     }
 
-    STYLE_HINTS = {
-        "minimaliste": ["uni", "simple", "epure", "épuré", "droit", "classique"],
-        "romantique": ["dentelle", "fluide", "volant", "fleur", "plisse", "plissé"],
-        "classique": ["tailleur", "droit", "chemise", "blazer", "intemporel"],
-        "casual": ["tee", "t-shirt", "jean", "maille", "pull", "basket"],
-        "chic": ["blazer", "robe", "escarpin", "tailleur", "manteau"],
-        "boheme": ["imprime", "imprimé", "fluide", "long", "brode", "brodé"],
-        "rock": ["cuir", "noir", "boot", "bottine", "metal", "métal"],
-        "vintage": ["retro", "rétro", "col", "taille haute", "plisse", "plissé"],
-        "moderne": ["oversize", "structure", "droit", "minimal"],
-        "sportswear": ["legging", "sport", "sweat", "activewear", "basket"],
+    CATEGORY_SUBTYPE_HINTS = {
+        "hauts": {
+            "chemise": ["chemise"],
+            "blouse": ["blouse"],
+            "pull": ["pull", "maille"],
+            "gilet": ["gilet", "cardigan"],
+            "tee_shirt": ["tee-shirt", "tee shirt", "t-shirt", "t shirt"],
+            "top": ["top"],
+            "caraco": ["caraco", "camisole", "bretelles fines", "debardeur", "débardeur"],
+        },
+        "bas": {
+            "pantalon": ["pantalon", "tailleur"],
+            "jean": ["jean", "denim"],
+            "jupe": ["jupe"],
+            "short": ["short", "bermuda"],
+        },
+        "robes": {
+            "robe": ["robe"],
+            "combinaison": ["combinaison", "jumpsuit"],
+        },
+        "vestes": {
+            "blazer": ["blazer", "tailleur"],
+            "veste": ["veste", "blouson"],
+            "manteau": ["manteau", "trench"],
+            "doudoune": ["doudoune", "matelassee", "matelassée", "puffer"],
+            "sans_manches": ["sans manches"],
+        },
+        "chaussures": {
+            "baskets": ["basket", "sneaker", "running"],
+            "boots": ["boots", "bottine", "bottes"],
+            "sandales": ["sandale"],
+            "escarpins": ["escarpin", "heel", "heels"],
+            "mocassins": ["mocassin", "loafer"],
+            "derbies": ["derby"],
+            "ballerines": ["ballerine"],
+        },
+    }
+
+    STYLE_COMPATIBILITY_MATRIX = {
+        "chic": {
+            "chic": 34,
+            "classique": 26,
+            "minimaliste": 18,
+            "moderne": 12,
+            "romantique": 8,
+            "vintage": 3,
+            "rock": -4,
+            "boheme": -10,
+            "casual": -14,
+            "sportswear": -24,
+        },
+        "classique": {
+            "classique": 34,
+            "chic": 22,
+            "minimaliste": 18,
+            "moderne": 8,
+            "casual": 4,
+            "vintage": 4,
+            "romantique": 2,
+            "rock": -8,
+            "boheme": -10,
+            "sportswear": -18,
+        },
+        "casual": {
+            "casual": 30,
+            "sportswear": 14,
+            "classique": 8,
+            "minimaliste": 5,
+            "moderne": 5,
+            "rock": 4,
+            "boheme": 2,
+            "romantique": 0,
+            "vintage": 0,
+            "chic": -6,
+        },
+        "sportswear": {
+            "sportswear": 32,
+            "casual": 16,
+            "moderne": 8,
+            "rock": 4,
+            "classique": -8,
+            "chic": -14,
+            "boheme": -12,
+            "romantique": -14,
+            "minimaliste": -2,
+            "vintage": -4,
+        },
+        "boheme": {
+            "boheme": 30,
+            "romantique": 16,
+            "vintage": 8,
+            "chic": 4,
+            "casual": 2,
+            "classique": -4,
+            "minimaliste": -8,
+            "moderne": -8,
+            "rock": -6,
+            "sportswear": -16,
+        },
+        "romantique": {
+            "romantique": 30,
+            "boheme": 16,
+            "chic": 10,
+            "classique": 8,
+            "vintage": 6,
+            "minimaliste": -2,
+            "casual": -4,
+            "moderne": -4,
+            "rock": -12,
+            "sportswear": -16,
+        },
+        "rock": {
+            "rock": 30,
+            "moderne": 12,
+            "casual": 8,
+            "chic": 2,
+            "sportswear": 2,
+            "classique": -6,
+            "boheme": -8,
+            "romantique": -10,
+            "minimaliste": 0,
+            "vintage": 4,
+        },
+        "minimaliste": {
+            "minimaliste": 30,
+            "classique": 22,
+            "chic": 18,
+            "moderne": 14,
+            "casual": 6,
+            "romantique": -2,
+            "boheme": -10,
+            "rock": -4,
+            "sportswear": -8,
+            "vintage": -4,
+        },
+        "moderne": {
+            "moderne": 30,
+            "minimaliste": 18,
+            "chic": 12,
+            "classique": 10,
+            "rock": 8,
+            "casual": 6,
+            "sportswear": 2,
+            "boheme": -8,
+            "romantique": -6,
+            "vintage": 2,
+        },
+        "vintage": {
+            "vintage": 30,
+            "romantique": 12,
+            "boheme": 10,
+            "classique": 6,
+            "rock": 4,
+            "chic": 2,
+            "casual": 2,
+            "minimaliste": -6,
+            "moderne": -4,
+            "sportswear": -10,
+        },
     }
 
     NEUTRAL_COLORS = {
@@ -139,25 +243,21 @@ class WardrobeSuggestionsService:
         "bleu", "marine", "vert", "kaki", "rouge", "rose", "violet",
         "jaune", "orange", "dore", "argente", "multicolore"
     ]
+
     CATEGORY_FIT_SCORES = {
-        "hauts": {"bas": 32, "vestes": 18, "chaussures": 14, "sacs": 10, "accessoires": 8},
-        "bas": {"hauts": 32, "vestes": 18, "chaussures": 14, "sacs": 10, "accessoires": 8},
-        "robes": {"vestes": 22, "chaussures": 20, "sacs": 12, "accessoires": 10},
-        "vestes": {"hauts": 16, "bas": 18, "chaussures": 12, "sacs": 8},
-        "chaussures": {"hauts": 10, "bas": 10, "robes": 10, "vestes": 8, "sacs": 8},
-        "sacs": {"hauts": 8, "bas": 8, "robes": 8, "chaussures": 8},
-        "accessoires": {"hauts": 6, "bas": 6, "robes": 6, "chaussures": 6},
-        "bijoux": {"hauts": 6, "robes": 6, "vestes": 4},
-        "maillots_bain": {"accessoires": 8, "sacs": 8},
-        "lingerie": {"accessoires": 4},
-        "tenue_sport": {"chaussures": 10, "accessoires": 6},
+        "hauts": {"bas": 34, "vestes": 18, "chaussures": 16},
+        "bas": {"hauts": 34, "vestes": 18, "chaussures": 16},
+        "robes": {"vestes": 22, "chaussures": 22},
+        "vestes": {"hauts": 16, "bas": 18, "chaussures": 12},
+        "chaussures": {"hauts": 10, "bas": 10, "robes": 12, "vestes": 8},
     }
 
     FORBIDDEN_CATEGORY_TARGETS = {
-        "hauts": {"hauts", "robes", "lingerie", "maillots_bain"},
-        "bas": {"bas", "robes", "lingerie", "maillots_bain"},
-        "robes": {"robes", "hauts", "bas", "lingerie", "maillots_bain"},
-        "vestes": {"vestes", "robes", "lingerie", "maillots_bain"},
+        "hauts": {"hauts", "robes"},
+        "bas": {"bas", "robes"},
+        "robes": {"robes", "hauts", "bas"},
+        "vestes": {"vestes", "robes"},
+        "chaussures": {"chaussures"},
     }
 
     WINTER_HINTS = {
@@ -183,6 +283,35 @@ class WardrobeSuggestionsService:
         "lin", "debardeur", "débardeur", "sandale", "maillot", "crochet", "dentelle", "voile"
     }
 
+    PATTERN_NEUTRAL_VALUES = {"", "uni", "plain", "solide", "solid"}
+    STRONG_PATTERNS = {
+        "floral", "fleuri", "pois", "rayures", "rayure", "animal", "leopard",
+        "léopard", "zebre", "zèbre", "carreaux", "check", "imprime", "imprimé",
+        "graphic", "graphique"
+    }
+
+    OFFICE_NEGATIVE_HINTS = {
+        "sequins": ["sequin", "sequins", "paillette", "paillete", "paillettes", "strass", "lamé", "lame"],
+        "too_playful_print": ["fleuri", "floral", "imprime", "imprimé", "graphic", "graphique", "carreaux", "check"],
+        "too_evening": ["satin", "dos nu", "bustier", "taffetas", "brillant", "brillance"],
+        "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
+        "too_loose": ["oversize", "ample", "large"],
+        "too_casual_bottoms": ["jean", "denim", "cargo", "jogger", "legging"],
+        "too_bold_bottoms": [
+            "cuir", "simili", "vinyle", "croco",
+            "brode", "brodé", "dentelle",
+            "tulle", "filet", "délavé", "delave",
+            "washed", "jacquard", "python"
+        ],
+    }
+
+    OFFICE_POSITIVE_HINTS = {
+        "smart_tops": ["chemise", "blouse", "col bateau", "maille fine"],
+        "smart_bottoms": ["pantalon", "jupe midi", "jupe", "taille haute", "cigarette", "droit", "plis"],
+        "smart_outerwear": ["blazer", "trench", "manteau"],
+        "smart_shoes": ["mocassin", "escarpin", "derby", "ballerine"],
+    }
+
     def __init__(self):
         self.supabase = supabase
         self.client = supabase.get_client()
@@ -203,9 +332,14 @@ class WardrobeSuggestionsService:
         if not ai_profile:
             raise ValueError(f"user_ai_profiles introuvable pour user_id={user_id}")
 
-        central_category = item.get("category_key")
-        if not central_category:
-            raise ValueError("category_key manquant sur wardrobe_item")
+        central_category = self._normalize_text(str(item.get("category_key") or ""))
+        if central_category not in self.COMPLEMENTARY_CATEGORY_MAP:
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "central_item": self._build_central_item_payload(item),
+                "suggestions_by_category": [],
+            }
 
         target_categories = self.COMPLEMENTARY_CATEGORY_MAP.get(central_category, [])
         if not target_categories:
@@ -216,17 +350,17 @@ class WardrobeSuggestionsService:
                 "suggestions_by_category": [],
             }
 
-        inserted_product_keys = set()
-        inserted_family_keys = set()
-        inserted_url_keys = set()
+        inserted_product_keys: Set[str] = set()
+        inserted_family_keys: Set[str] = set()
+        inserted_url_keys: Set[str] = set()
         brand_counter: Dict[str, int] = {}
 
         suggestions_by_category = []
 
         for category_key in target_categories:
-            candidates = self._fetch_candidates_for_category(category_key=category_key, limit=250)
+            candidates = self._fetch_candidates_for_category(category_key=category_key, limit=260)
 
-            scored = []
+            scored: List[Dict[str, Any]] = []
             for row in candidates:
                 scored_row = self._score_product_for_wardrobe(
                     product=row,
@@ -307,40 +441,173 @@ class WardrobeSuggestionsService:
         return response.data[0] if response.data else None
 
     def _fetch_candidates_for_category(self, category_key: str, limit: int = 250) -> List[Dict[str, Any]]:
-        secondary_categories = self.ARTICLE_TYPE_TO_SECONDARY_CATEGORIES.get(category_key, [])
-        if not secondary_categories:
+        allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
+        if not allowed_secondaries:
             return []
 
-        collected: List[Dict[str, Any]] = []
-        seen: set = set()
+        enrichment_rows = self._fetch_enrichment_rows_for_category(
+            category_key=category_key,
+            allowed_secondaries=allowed_secondaries,
+            limit=max(limit * 2, 250),
+        )
+        if not enrichment_rows:
+            return []
 
-        for secondary in secondary_categories:
+        product_rows = self._fetch_affiliate_products_for_enrichments(enrichment_rows)
+        if not product_rows:
+            return []
+
+        product_map = {
+            (int(r["merchant_id"]), str(r["product_id"])): r
+            for r in product_rows
+            if r.get("merchant_id") is not None and r.get("product_id") is not None
+        }
+
+        merged: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+
+        for e in enrichment_rows:
+            merchant_id = e.get("merchant_id")
+            product_id = e.get("product_id")
+            if merchant_id is None or product_id is None:
+                continue
+
+            key_tuple = (int(merchant_id), str(product_id))
+            p = product_map.get(key_tuple)
+            if not p:
+                continue
+
+            uniq = f"{merchant_id}::{product_id}"
+            if uniq in seen:
+                continue
+            seen.add(uniq)
+
+            merged.append({
+                "merchant_id": merchant_id,
+                "product_id": product_id,
+                "sid": p.get("sid") or e.get("sid"),
+                "product_name": p.get("product_name") or e.get("source_product_name"),
+                "brand": p.get("brand") or e.get("source_brand"),
+                "primary_category": p.get("primary_category") or e.get("source_primary_category"),
+                "secondary_category": p.get("secondary_category") or e.get("source_secondary_category"),
+                "product_url": (p.get("product_url") or "").strip(),
+                "image_url": (p.get("image_url") or "").strip(),
+                "buy_url": (p.get("buy_url") or "").strip(),
+                "price": p.get("price"),
+                "sale_price": p.get("sale_price"),
+                "currency": p.get("currency"),
+                "availability": p.get("availability"),
+                "is_deleted": p.get("is_deleted"),
+                "last_seen_at": p.get("last_seen_at"),
+                "keywords": p.get("keywords"),
+                "style_primary": e.get("style_primary"),
+                "style_tags": e.get("style_tags") or [],
+                "style_scores_json": e.get("style_scores_json") or {},
+                "confidence_score": e.get("confidence_score"),
+                "source_product_name": e.get("source_product_name"),
+                "source_brand": e.get("source_brand"),
+                "source_primary_category": e.get("source_primary_category"),
+                "source_secondary_category": e.get("source_secondary_category"),
+                "source_keywords": e.get("source_keywords"),
+                "source_description": e.get("source_description"),
+                "secondary_category_levels": e.get("secondary_category_levels") or [],
+                "classifier_version": e.get("classifier_version"),
+                "classifier_meta_json": e.get("classifier_meta_json") or {},
+                "signals_json": e.get("signals_json") or {},
+            })
+
+            if len(merged) >= limit:
+                break
+
+        return merged
+
+    def _fetch_enrichment_rows_for_category(
+        self,
+        category_key: str,
+        allowed_secondaries: List[str],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        collected: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+
+        for secondary in allowed_secondaries:
             try:
                 response = (
-                    self.client.table("affiliate_products")
+                    self.client.table("affiliate_product_enrichment")
                     .select(
-                        "merchant_id,product_id,product_name,brand,primary_category,"
-                        "secondary_category,product_url,image_url,buy_url,price,currency,"
-                        "availability,is_deleted,last_seen_at"
+                        "merchant_id,product_id,sid,style_primary,style_tags,style_scores_json,"
+                        "confidence_score,source_product_name,source_brand,source_primary_category,"
+                        "source_secondary_category,source_keywords,source_description,"
+                        "secondary_category_levels,classifier_version,classifier_meta_json,signals_json"
                     )
-                    .eq("is_deleted", False)
-                    .eq("primary_category", "Femme")
-                    .eq("secondary_category", secondary)
-                    .limit(60)
+                    .eq("classifier_version", "style_v6")
+                    .eq("source_secondary_category", secondary)
+                    .limit(min(120, limit))
                     .execute()
                 )
 
                 rows = response.data or []
                 for row in rows:
-                    key = f"{row.get('merchant_id')}::{row.get('product_id')}"
-                    if key in seen:
+                    if self._normalize_text(str(row.get("source_primary_category") or "")) != "femme":
                         continue
-                    seen.add(key)
+
+                    product_key = f"{row.get('merchant_id')}::{row.get('product_id')}"
+                    if product_key in seen:
+                        continue
+                    seen.add(product_key)
                     collected.append(row)
+
                     if len(collected) >= limit:
                         return collected
+
             except Exception as e:
-                print(f"⚠️ Erreur fetch catégorie {secondary}: {e}")
+                print(f"⚠️ Erreur fetch enrichment {secondary}: {e}")
+
+        return collected
+
+    def _fetch_affiliate_products_for_enrichments(self, enrichment_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        by_merchant: Dict[int, List[str]] = defaultdict(list)
+
+        for row in enrichment_rows:
+            merchant_id = row.get("merchant_id")
+            product_id = row.get("product_id")
+            if merchant_id is None or product_id is None:
+                continue
+            by_merchant[int(merchant_id)].append(str(product_id))
+
+        collected: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+
+        for merchant_id, product_ids in by_merchant.items():
+            unique_ids = list(dict.fromkeys(product_ids))
+            chunks = [unique_ids[i:i + 150] for i in range(0, len(unique_ids), 150)]
+
+            for chunk in chunks:
+                try:
+                    response = (
+                        self.client.table("affiliate_products")
+                        .select(
+                            "merchant_id,sid,product_id,product_name,brand,primary_category,"
+                            "secondary_category,product_url,image_url,buy_url,price,sale_price,"
+                            "currency,availability,keywords,is_deleted,last_seen_at"
+                        )
+                        .eq("merchant_id", merchant_id)
+                        .eq("is_deleted", False)
+                        .eq("primary_category", "Femme")
+                        .in_("product_id", chunk)
+                        .execute()
+                    )
+
+                    rows = response.data or []
+                    for row in rows:
+                        key = f"{row.get('merchant_id')}::{row.get('product_id')}"
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        collected.append(row)
+
+                except Exception as e:
+                    print(f"⚠️ Erreur fetch affiliate_products merchant={merchant_id}: {e}")
 
         return collected
 
@@ -358,7 +625,13 @@ class WardrobeSuggestionsService:
         title = (product.get("product_name") or "").strip()
         brand = (product.get("brand") or "").strip()
         secondary_category = (product.get("secondary_category") or "").strip()
-        price = self._safe_float(product.get("price"))
+        source_description = (product.get("source_description") or "").strip()
+        style_primary = self._normalize_text(str(product.get("style_primary") or ""))
+        style_tags = self._normalize_text_list(product.get("style_tags"))
+        style_scores_json = product.get("style_scores_json") or {}
+        confidence_score = self._safe_float(product.get("confidence_score")) or 0.0
+
+        price = self._safe_float(product.get("sale_price")) or self._safe_float(product.get("price"))
         currency = self._normalize_currency(product.get("currency"))
         image_url = (product.get("image_url") or "").strip()
         buy_url = (product.get("buy_url") or "").strip()
@@ -370,12 +643,12 @@ class WardrobeSuggestionsService:
             return None
 
         extracted_color = self._extract_color_from_title(title)
+        subtype = self._infer_subtype(category_key, title, secondary_category)
 
         category_fit_score, category_fit_reason = self._compute_category_fit_score(
             central_category=str(wardrobe_item.get("category_key") or ""),
             target_category=category_key,
         )
-
         if category_fit_score <= -900:
             return None
 
@@ -383,12 +656,14 @@ class WardrobeSuggestionsService:
             wardrobe_item=wardrobe_item,
             title=title,
             secondary_category=secondary_category,
+            source_description=source_description,
         )
 
         texture_score, texture_reason = self._compute_texture_weight_score(
             wardrobe_item=wardrobe_item,
             title=title,
             secondary_category=secondary_category,
+            source_description=source_description,
         )
 
         color_score, color_reason = self._compute_wardrobe_color_score(
@@ -398,8 +673,12 @@ class WardrobeSuggestionsService:
         )
 
         style_score, style_reason = self._compute_style_score(
-            title=title,
-            secondary_category=secondary_category,
+            style_primary=style_primary,
+            style_tags=style_tags,
+            style_scores_json=style_scores_json,
+            confidence_score=confidence_score,
+            category_key=category_key,
+            subtype=subtype,
             wardrobe_item=wardrobe_item,
             ai_profile=ai_profile,
         )
@@ -407,7 +686,34 @@ class WardrobeSuggestionsService:
         morphology_score, morphology_reason = self._compute_morphology_score(
             title=title,
             secondary_category=secondary_category,
+            source_description=source_description,
             ai_profile=ai_profile,
+        )
+
+        pattern_score, pattern_reason = self._compute_pattern_harmony_score(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            wardrobe_item=wardrobe_item,
+        )
+
+        visual_balance_score, visual_balance_reason = self._compute_visual_balance_score(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            subtype=subtype,
+            wardrobe_item=wardrobe_item,
+        )
+
+        office_score, office_reason = self._compute_office_context_score(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            subtype=subtype,
+            wardrobe_item=wardrobe_item,
         )
 
         brand_score, brand_reason = self._compute_brand_score(brand, ai_profile)
@@ -424,16 +730,22 @@ class WardrobeSuggestionsService:
             + color_score
             + style_score
             + morphology_score
+            + pattern_score
+            + visual_balance_score
+            + office_score
             + brand_score
             + diversity_penalty
         )
 
         reasons = [
+            category_fit_reason,
+            style_reason,
+            pattern_reason,
+            visual_balance_reason,
+            office_reason,
+            color_reason,
             seasonality_reason,
             texture_reason,
-            category_fit_reason,
-            color_reason,
-            style_reason,
             morphology_reason,
             brand_reason,
             diversity_reason,
@@ -458,6 +770,9 @@ class WardrobeSuggestionsService:
             "score_category_fit": category_fit_score,
             "score_seasonality": seasonality_score,
             "score_texture": texture_score,
+            "score_pattern": pattern_score,
+            "score_visual_balance": visual_balance_score,
+            "score_office": office_score,
             "score_diversity_penalty": diversity_penalty,
         }
 
@@ -467,7 +782,9 @@ class WardrobeSuggestionsService:
         wardrobe_item: Dict[str, Any],
         ai_profile: Dict[str, Any],
     ) -> Tuple[float, str]:
-        dominant = self._normalize_text(str(wardrobe_item.get("dominant_color") or wardrobe_item.get("detected_color") or ""))
+        dominant = self._normalize_text(str(
+            wardrobe_item.get("dominant_color") or wardrobe_item.get("detected_color") or ""
+        ))
         secondary_colors = self._extract_color_names_from_json_list(wardrobe_item.get("secondary_colors"))
         accent_colors = self._extract_color_names_from_json_list(wardrobe_item.get("accent_colors"))
 
@@ -476,89 +793,112 @@ class WardrobeSuggestionsService:
         avoid = self._extract_profile_color_names(ai_profile.get("colors_avoid"))
 
         if not extracted_color:
-            return 5, "Couleur non détectée, score neutre"
+            return 4, "Couleur non détectée, score neutre"
 
         c = self._normalize_text(extracted_color)
 
         if c in avoid:
             return -35, f"Couleur peu favorable pour votre palette : {extracted_color}"
 
-        # Rappel direct couleur secondaire du vêtement central
         if c in secondary_colors:
             if c in best:
-                return 24, f"Rappel élégant d’une couleur du vêtement central, favorable à votre palette"
-            return 18, f"Rappel harmonieux d’une couleur du vêtement central"
-            
-        # Accent discret
+                return 24, "Rappel élégant d’une couleur du vêtement central"
+            return 18, "Rappel harmonieux d’une couleur du vêtement central"
+
         if c in accent_colors:
             if c in best:
-                return 18, f"Belle reprise d’une couleur d’accent compatible avec votre palette"
-            return 12, f"Reprise d’une couleur d’accent du vêtement central"
-            
-        # Même couleur dominante = possible mais un peu moins intéressant
+                return 18, "Belle reprise d’une couleur d’accent"
+            return 12, "Reprise d’une couleur d’accent du vêtement central"
+
         if dominant and c == dominant:
             if c in best:
-                return 24, f"Ton sur ton cohérent avec le vêtement central et favorable à votre palette"
-            return 16, f"Ton sur ton cohérent avec le vêtement central"
+                return 22, "Ton sur ton cohérent avec le vêtement central"
+            return 15, "Ton sur ton cohérent avec le vêtement central"
 
-        # Neutres qui équilibrent une pièce forte
         if c in self.NEUTRAL_COLORS:
             if c in best:
-                return 30, f"Neutre chic qui équilibre bien le vêtement central et convient à votre palette"
+                return 28, "Neutre chic qui équilibre bien le vêtement central"
             if c in ok:
-                return 22, f"Neutre équilibrant pour accompagner le vêtement central"
-            return 20, f"Neutre facile à associer au vêtement central"
+                return 22, "Neutre équilibrant pour accompagner le vêtement central"
+            return 20, "Neutre facile à associer au vêtement central"
 
-        # Couleur favorable au profil, même sans rappel direct
         if c in best:
-            return 22, f"Couleur très favorable pour votre palette"
+            return 20, "Couleur très favorable pour votre palette"
         if c in ok:
-            return 10, f"Couleur compatible avec votre palette"
+            return 10, "Couleur compatible avec votre palette"
 
-        return 0, f"Couleur sans lien fort détecté avec le vêtement central"
+        return 0, "Couleur sans lien fort détecté avec le vêtement central"
 
     def _compute_style_score(
         self,
-        title: str,
-        secondary_category: str,
+        style_primary: str,
+        style_tags: List[str],
+        style_scores_json: Dict[str, Any],
+        confidence_score: float,
+        category_key: str,
+        subtype: str,
         wardrobe_item: Dict[str, Any],
         ai_profile: Dict[str, Any],
     ) -> Tuple[float, str]:
-        hay = self._normalize_text(f"{title} {secondary_category}")
-
         wardrobe_style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
         profile_styles = [self._normalize_text(x) for x in (ai_profile.get("style_keywords") or []) if x]
 
-        target_styles = []
+        target_styles: List[str] = []
         if wardrobe_style:
             target_styles.append(wardrobe_style)
-        target_styles.extend(profile_styles)
+        for style in profile_styles:
+            if style and style not in target_styles:
+                target_styles.append(style)
 
-        matched_tokens: List[str] = []
-        score = 0
+        if not target_styles:
+            if style_primary:
+                return round(min(max(confidence_score, 0.0), 1.0) * 6, 2), f"Style V6 détecté: {style_primary}"
+            return 0, "Aucun style cible explicite"
 
-        for style in target_styles:
-            hints = self.STYLE_HINTS.get(style, [])
-            for hint in hints:
-                if self._normalize_text(hint) in hay:
-                    matched_tokens.append(f"{style}:{hint}")
-                    score += 8
-                    break
+        score = 0.0
+        reasons: List[str] = []
 
-        score = min(score, 22)
+        for target_style in target_styles[:3]:
+            compat = self.STYLE_COMPATIBILITY_MATRIX.get(target_style, {})
+            base = compat.get(style_primary, 0)
+            if base:
+                score += base
+                reasons.append(f"{target_style}→{style_primary}")
 
-        if matched_tokens:
-            return score, f"Style cohérent avec votre vêtement et votre univers"
+            if target_style in style_tags:
+                score += 8
+                reasons.append(f"tag:{target_style}")
 
-        return 0, "Pas d’indice de style fort détecté"
+            raw_style_score = self._safe_float(style_scores_json.get(target_style))
+            if raw_style_score is not None:
+                score += min(raw_style_score * 2.2, 10)
+
+        confidence_bonus = min(max(confidence_score, 0.0), 1.0) * 10.0
+        score += confidence_bonus
+        reasons.append(f"conf:{round(confidence_bonus, 1)}")
+
+        # Ajustements spécifiques tenue
+        if wardrobe_style in {"chic", "classique", "minimaliste"}:
+            if category_key == "chaussures" and subtype == "baskets":
+                score -= 16
+            if category_key == "vestes" and subtype == "doudoune":
+                score -= 18
+            if category_key == "hauts" and subtype in {"tee_shirt", "caraco"}:
+                score -= 10
+            if category_key == "bas" and subtype == "jean":
+                score -= 16
+
+        reason = " / ".join(reasons[:4]) if reasons else f"Style V6 principal: {style_primary or 'n/a'}"
+        return round(score, 2), reason
 
     def _compute_morphology_score(
         self,
         title: str,
         secondary_category: str,
+        source_description: str,
         ai_profile: Dict[str, Any],
     ) -> Tuple[float, str]:
-        hay = self._normalize_text(f"{title} {secondary_category}")
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
 
         recommended = self._extract_string_list(ai_profile.get("cuts_recommended"))
         avoided = self._extract_string_list(ai_profile.get("cuts_avoid"))
@@ -567,9 +907,9 @@ class WardrobeSuggestionsService:
         negative_matches = [cut for cut in avoided if self._token_match(cut, hay)]
 
         if negative_matches:
-            return -15, f"Coupe moins favorable pour votre morphologie"
+            return -12, "Coupe moins favorable pour votre morphologie"
         if positive_matches:
-            return 15, f"Coupe bien adaptée à votre morphologie"
+            return 12, "Coupe bien adaptée à votre morphologie"
 
         return 0, "Pas d’indice morphologique explicite détecté"
 
@@ -579,7 +919,7 @@ class WardrobeSuggestionsService:
 
         for p in preferred:
             if p and p in b:
-                return 12, f"Marque appréciée"
+                return 10, "Marque appréciée"
 
         return 0, "Marque non préférée"
 
@@ -602,6 +942,7 @@ class WardrobeSuggestionsService:
         wardrobe_item: Dict[str, Any],
         title: str,
         secondary_category: str,
+        source_description: str,
     ) -> Tuple[float, str]:
         central_season = self._normalize_text(str(wardrobe_item.get("detected_season") or ""))
         central_hay = self._normalize_text(
@@ -609,7 +950,7 @@ class WardrobeSuggestionsService:
             f"{wardrobe_item.get('subcategory') or ''} "
             f"{wardrobe_item.get('detected_material') or ''}"
         )
-        product_hay = self._normalize_text(f"{title} {secondary_category}")
+        product_hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
 
         product_is_winter = self._contains_any(product_hay, self.WINTER_HINTS)
         product_is_summer = self._contains_any(product_hay, self.SUMMER_HINTS)
@@ -617,14 +958,14 @@ class WardrobeSuggestionsService:
         central_is_summer = central_season == "ete" or self._contains_any(central_hay, self.SUMMER_HINTS)
 
         if central_is_winter and product_is_summer:
-            return -35, "Article trop estival pour accompagner ce vêtement"
+            return -30, "Article trop estival pour accompagner ce vêtement"
         if central_is_summer and product_is_winter:
-            return -28, "Article trop hivernal pour accompagner ce vêtement"
+            return -26, "Article trop hivernal pour accompagner ce vêtement"
 
         if central_is_winter and product_is_winter:
-            return 18, "Bonne cohérence saisonnière avec le vêtement central"
+            return 16, "Bonne cohérence saisonnière avec le vêtement central"
         if central_is_summer and product_is_summer:
-            return 18, "Bonne cohérence saisonnière avec le vêtement central"
+            return 16, "Bonne cohérence saisonnière avec le vêtement central"
 
         if central_season in {"printemps", "automne"}:
             if self._contains_any(product_hay, self.MIDSEASON_HINTS):
@@ -637,13 +978,14 @@ class WardrobeSuggestionsService:
         wardrobe_item: Dict[str, Any],
         title: str,
         secondary_category: str,
+        source_description: str,
     ) -> Tuple[float, str]:
         central_hay = self._normalize_text(
             f"{wardrobe_item.get('ai_label') or ''} "
             f"{wardrobe_item.get('subcategory') or ''} "
             f"{wardrobe_item.get('detected_material') or ''}"
         )
-        product_hay = self._normalize_text(f"{title} {secondary_category}")
+        product_hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
 
         central_heavy = self._contains_any(central_hay, self.HEAVY_TEXTURE_HINTS)
         central_light = self._contains_any(central_hay, self.LIGHT_TEXTURE_HINTS)
@@ -651,16 +993,216 @@ class WardrobeSuggestionsService:
         product_light = self._contains_any(product_hay, self.LIGHT_TEXTURE_HINTS)
 
         if central_heavy and product_light:
-            return -18, "Matière trop légère par rapport au vêtement central"
+            return -14, "Matière trop légère par rapport au vêtement central"
         if central_light and product_heavy:
-            return -10, "Matière visuellement plus lourde que le vêtement central"
+            return -12, "Matière visuellement plus lourde que le vêtement central"
 
         if central_heavy and product_heavy:
-            return 12, "Belle cohérence de matière et de structure"
+            return 10, "Belle cohérence de matière et de structure"
         if central_light and product_light:
             return 10, "Belle cohérence de légèreté"
 
         return 0, "Cohérence de matière neutre"
+
+    def _compute_pattern_harmony_score(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        central_pattern = self._normalize_text(str(wardrobe_item.get("detected_pattern") or ""))
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+
+        product_is_patterned = self._contains_any(hay, self.STRONG_PATTERNS)
+        central_is_patterned = bool(central_pattern and central_pattern not in self.PATTERN_NEUTRAL_VALUES)
+
+        if not central_is_patterned and not product_is_patterned:
+            return 4, "Sobriété visuelle cohérente"
+
+        if central_is_patterned:
+            if not product_is_patterned:
+                return 18, "La pièce complémentaire laisse respirer le vêtement central"
+            return -22, "Motif sur motif trop chargé"
+
+        if not central_is_patterned and product_is_patterned:
+            if category_key in {"vestes", "chaussures"}:
+                return -4, "Motif présent mais encore gérable"
+            return 2, "Pièce expressive possible"
+
+        return 0, "Compatibilité de motif neutre"
+
+    def _compute_visual_balance_score(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        subtype: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        central_pattern = self._normalize_text(str(wardrobe_item.get("detected_pattern") or ""))
+        central_style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+
+        score = 0.0
+        reasons: List[str] = []
+
+        central_is_patterned = bool(central_pattern and central_pattern not in self.PATTERN_NEUTRAL_VALUES)
+
+        if central_is_patterned and category_key in {"vestes", "chaussures", "hauts", "bas"}:
+            if self._contains_any(hay, self.STRONG_PATTERNS):
+                score -= 18
+                reasons.append("concurrence visuelle avec la pièce centrale")
+            else:
+                score += 10
+                reasons.append("bonne sobriété autour de la pièce centrale")
+
+        if central_style in {"chic", "classique", "minimaliste"}:
+            if category_key == "vestes":
+                if subtype == "blazer":
+                    score += 14
+                    reasons.append("veste structurée très cohérente")
+                elif subtype == "doudoune":
+                    score -= 18
+                    reasons.append("outerwear trop casual")
+            elif category_key == "chaussures":
+                if subtype in {"escarpins", "mocassins", "derbies", "ballerines"}:
+                    score += 10
+                    reasons.append("chaussure habillée cohérente")
+                elif subtype == "baskets":
+                    score -= 16
+                    reasons.append("basket peu cohérente avec la pièce centrale")
+            elif category_key == "bas":
+                if subtype == "jean":
+                    score -= 12
+                    reasons.append("bas trop casual")
+            elif category_key == "hauts":
+                if subtype in {"chemise", "blouse", "pull"}:
+                    score += 6
+                    reasons.append("haut équilibré")
+                elif subtype in {"tee_shirt", "caraco"}:
+                    score -= 10
+                    reasons.append("haut trop casual ou trop léger")
+
+        if reasons:
+            return round(score, 2), " / ".join(reasons)
+        return 0, "Équilibre visuel neutre"
+
+    def _compute_office_context_score(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        subtype: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        central_style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
+        if central_style not in {"chic", "classique", "minimaliste"}:
+            return 0, "Pas de contexte bureau spécifique"
+
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+        score = 0.0
+        reasons: List[str] = []
+
+        if category_key == "hauts":
+            if subtype in {"chemise", "blouse"}:
+                score += 16
+                reasons.append("haut bureau très pertinent")
+            elif subtype in {"pull", "gilet", "top"}:
+                score += 6
+                reasons.append("haut exploitable")
+            elif subtype == "tee_shirt":
+                score -= 18
+                reasons.append("tee-shirt peu bureau")
+            elif subtype == "caraco":
+                score -= 22
+                reasons.append("caraco trop délicat pour bureau")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_loose"]):
+                score -= 6
+                reasons.append("coupe trop casual")
+
+            if self._contains_any_text(hay, ["chemise", "blouse"]):
+                if not self._contains_any_text(hay, ["imprime", "imprimé", "fleuri", "floral", "carreaux", "check"]):
+                    score += 6
+                    reasons.append("chemise/blouse sobre premium")
+
+        elif category_key == "bas":
+            if subtype == "pantalon":
+                score += 22
+                reasons.append("pantalon bureau très pertinent")
+            elif subtype == "jupe":
+                score += 8
+                reasons.append("jupe bureau pertinente")
+            elif subtype == "jean":
+                score -= 22
+                reasons.append("jean peu bureau")
+            elif subtype == "short":
+                score -= 26
+                reasons.append("short hors cible bureau")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_bottoms"]):
+                score -= 18
+                reasons.append("bas trop casual")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]):
+                score -= 28
+                reasons.append("matière ou effet trop mode pour bureau")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
+                score -= 20
+                reasons.append("imprimé trop présent pour bureau")
+
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
+                score += 12
+                reasons.append("bas structuré")
+
+            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit"]):
+                score += 12
+                reasons.append("pantalon bureau premium")
+            elif self._contains_any_text(hay, ["jupe midi"]):
+                score += 6
+                reasons.append("jupe midi acceptable bureau")
+
+            if self._contains_any_text(hay, ["crayon", "midi"]) and self._contains_any_text(hay, ["cuir", "croco", "simili"]):
+                score -= 10
+                reasons.append("jupe crayon trop marquée")
+
+        elif category_key == "vestes":
+            if subtype == "blazer":
+                score += 18
+                reasons.append("blazer très pertinent")
+            elif subtype in {"veste", "manteau"}:
+                score += 8
+                reasons.append("veste bureau pertinente")
+            elif subtype == "doudoune":
+                score -= 22
+                reasons.append("doudoune trop casual")
+            elif subtype == "sans_manches":
+                score -= 18
+                reasons.append("sans manches peu bureau")
+
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_outerwear"]):
+                score -= 18
+                reasons.append("outerwear trop casual")
+
+        elif category_key == "chaussures":
+            if subtype in {"escarpins", "mocassins", "derbies", "ballerines"}:
+                score += 14
+                reasons.append("chaussure bureau pertinente")
+            elif subtype == "boots":
+                score += 2
+                reasons.append("boots acceptables si sobres")
+            elif subtype == "baskets":
+                score -= 22
+                reasons.append("basket peu bureau")
+
+        if reasons:
+            return round(score, 2), " / ".join(reasons)
+        return 0, "Compatibilité bureau neutre"
 
     def _compute_diversity_penalty(self, brand: str, brand_counter: Dict[str, int]) -> Tuple[float, str]:
         b = self._normalize_text(brand)
@@ -680,9 +1222,9 @@ class WardrobeSuggestionsService:
     def _dedupe_scored_rows(
         self,
         scored_rows: List[Dict[str, Any]],
-        inserted_product_keys: set,
-        inserted_family_keys: set,
-        inserted_url_keys: set,
+        inserted_product_keys: Set[str],
+        inserted_family_keys: Set[str],
+        inserted_url_keys: Set[str],
         brand_counter: Dict[str, int],
         limit: int = 8,
     ) -> List[Dict[str, Any]]:
@@ -700,14 +1242,15 @@ class WardrobeSuggestionsService:
             if url_key and url_key in inserted_url_keys:
                 continue
 
+            brand_key = self._normalize_text(str(row.get("brand") or ""))
+            if brand_counter.get(brand_key, 0) >= 2:
+                continue
+
             inserted_product_keys.add(product_key)
             inserted_family_keys.add(family_key)
             if url_key:
                 inserted_url_keys.add(url_key)
-            brand_key = self._normalize_text(str(row.get("brand") or ""))
 
-            if brand_counter.get(brand_key, 0) >= 2:
-                continue
             out.append(row)
             brand_counter[brand_key] = brand_counter.get(brand_key, 0) + 1
 
@@ -727,25 +1270,38 @@ class WardrobeSuggestionsService:
             "category_key": item.get("category_key"),
             "dominant_color": item.get("dominant_color") or item.get("detected_color"),
             "secondary_colors": item.get("secondary_colors") or [],
+            "accent_colors": item.get("accent_colors") or [],
+            "detected_pattern": item.get("detected_pattern") or "",
+            "detected_style": item.get("detected_style") or "",
+            "detected_season": item.get("detected_season") or "",
         }
 
     # =========================
     # Helpers
     # =========================
-    def _contains_any(self, haystack: str, hints: set) -> bool:
+    def _contains_any(self, haystack: str, hints: Set[str]) -> bool:
         h = self._normalize_text(haystack)
         return any(self._normalize_text(token) in h for token in hints)
 
+    def _contains_any_text(self, haystack: str, tokens: List[str]) -> bool:
+        h = self._normalize_text(haystack)
+        return any(self._normalize_text(token) in h for token in tokens)
+
     def _pick_best_reason(self, reasons: List[str]) -> str:
         priority_markers = [
-            "coherence saisonniere",
-            "coherence de matiere",
+            "laisse respirer",
+            "sobriete",
+            "catégorie complémentaire",
             "categorie complementaire",
-            "neutre chic",
+            "chaussure habillee",
+            "chaussure bureau",
+            "veste structuree",
+            "blazer",
+            "pantalon bureau",
             "rappel elegant",
-            "style coherent",
-            "coupe bien adaptee",
-            "marque appreciee",
+            "neutre chic",
+            "style",
+            "coupe",
         ]
 
         normalized_reasons = [(r, self._normalize_text(r)) for r in reasons if r]
@@ -844,6 +1400,11 @@ class WardrobeSuggestionsService:
         s = re.sub(r"\s{2,}", " ", s).strip()
         return s
 
+    def _normalize_text_list(self, value: Any) -> List[str]:
+        rows = self._ensure_list(value)
+        out = [self._normalize_text(str(x)) for x in rows if isinstance(x, str) and str(x).strip()]
+        return list(dict.fromkeys(out))
+
     def _normalize_product_family_text(self, value: str) -> str:
         s = self._normalize_text(value or "")
         s = re.sub(r"\btaille\s+[a-z0-9/\-]+\b", " ", s)
@@ -876,6 +1437,17 @@ class WardrobeSuggestionsService:
             return clean
         except Exception:
             return (url or "").strip().lower()
+
+    def _infer_subtype(self, category_key: str, title: str, secondary_category: str) -> str:
+        hay = self._normalize_text(f"{title} {secondary_category}")
+        rules = self.CATEGORY_SUBTYPE_HINTS.get(category_key, {})
+
+        for subtype, tokens in rules.items():
+            for token in tokens:
+                if self._normalize_text(token) in hay:
+                    return subtype
+
+        return "other"
 
 
 wardrobe_suggestions_service = WardrobeSuggestionsService()
