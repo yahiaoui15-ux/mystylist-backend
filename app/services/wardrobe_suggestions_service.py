@@ -482,6 +482,9 @@ class WardrobeSuggestionsService:
                 continue
             seen.add(uniq)
 
+            if not self._has_usable_image(p):
+                continue
+
             merged.append({
                 "merchant_id": merchant_id,
                 "product_id": product_id,
@@ -600,6 +603,9 @@ class WardrobeSuggestionsService:
 
                     rows = response.data or []
                     for row in rows:
+                        if not self._has_usable_image(row):
+                            continue
+
                         key = f"{row.get('merchant_id')}::{row.get('product_id')}"
                         if key in seen:
                             continue
@@ -634,6 +640,8 @@ class WardrobeSuggestionsService:
         price = self._safe_float(product.get("sale_price")) or self._safe_float(product.get("price"))
         currency = self._normalize_currency(product.get("currency"))
         image_url = (product.get("image_url") or "").strip()
+        if not self._has_usable_image(product):
+            return None
         buy_url = (product.get("buy_url") or "").strip()
         product_url = (product.get("product_url") or "").strip()
         merchant_id = product.get("merchant_id")
@@ -1231,6 +1239,8 @@ class WardrobeSuggestionsService:
         out = []
 
         for row in scored_rows:
+            if not self._has_usable_image(row):
+                continue
             product_key = f"{row['merchant_id']}::{row['product_id']}"
             family_key = self._build_product_family_key(row)
             url_key = self._canonicalize_product_url(row.get("product_url") or row.get("buy_url") or "")
@@ -1282,6 +1292,35 @@ class WardrobeSuggestionsService:
     def _contains_any(self, haystack: str, hints: Set[str]) -> bool:
         h = self._normalize_text(haystack)
         return any(self._normalize_text(token) in h for token in hints)
+
+    def _has_usable_image(self, row: Dict[str, Any]) -> bool:
+        image_url = (str(row.get("image_url") or "")).strip()
+        if not image_url:
+            return False
+
+        low = image_url.lower()
+
+        # placeholders / valeurs vides fréquentes
+        if low in {"null", "none", "nan", "/placeholder.svg", "placeholder.svg"}:
+            return False
+
+        # on ne garde que des urls http(s) plausibles
+        if not (low.startswith("http://") or low.startswith("https://")):
+            return False
+
+        # évite les urls manifestement cassées
+        bad_tokens = [
+            "placeholder",
+            "undefined",
+            "notfound",
+            "no-image",
+            "no_image",
+            "missing",
+        ]
+        if any(token in low for token in bad_tokens):
+            return False
+
+        return True
 
     def _contains_any_text(self, haystack: str, tokens: List[str]) -> bool:
         h = self._normalize_text(haystack)
