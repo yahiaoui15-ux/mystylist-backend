@@ -473,15 +473,17 @@ class WardrobeSuggestionsService:
             "user_id": user_id,
             "central_item": central_item,
             "suggestions_by_category": suggestions_by_category,
+            "algorithm_version": "v1",
+            "refresh_count": 0,
             "generated_at": now_iso,
             "updated_at": now_iso,
         }
 
-        self.client.table("wardrobe_item_suggestions").upsert(
+        self.client.table("wardrobe_suggestions_cache").upsert(
             payload,
             on_conflict="wardrobe_item_id"
         ).execute()
-        
+
     # =========================
     # Fetch data
     # =========================
@@ -1452,7 +1454,7 @@ class WardrobeSuggestionsService:
             raise ValueError(f"wardrobe_item introuvable: {item_id}")
 
         response = (
-            self.client.table("wardrobe_item_suggestions")
+            self.client.table("wardrobe_suggestions_cache")
             .select("*")
             .eq("wardrobe_item_id", item_id)
             .limit(1)
@@ -1465,7 +1467,7 @@ class WardrobeSuggestionsService:
                 "ok": True,
                 "found": False,
                 "item_id": item_id,
-                "central_item": self._build_central_item_payload(item),
+                "central_item": row.get("central_item") or self._build_central_item_payload(item),
                 "suggestions_by_category": [],
             }
 
