@@ -816,8 +816,8 @@ class WardrobeSuggestionsService:
             brand_reason,
             diversity_reason,
             shoe_reason,
-            statement_reason
-            stylist_brain_reason
+            statement_reason,
+            stylist_brain_reason,
         ]
         reason = self._pick_best_reason(reasons)
 
@@ -842,6 +842,10 @@ class WardrobeSuggestionsService:
             "score_pattern": pattern_score,
             "score_visual_balance": visual_balance_score,
             "score_office": office_score,
+            "score_shoe": shoe_score,
+            "score_statement": statement_score,
+            "score_stylist_brain": stylist_brain_score,
+            "score_brand": brand_score,
             "score_diversity_penalty": diversity_penalty,
         }
 
