@@ -2,7 +2,7 @@ import re
 import unicodedata
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
-
+from datetime import datetime, timezone
 from app.utils.supabase_client import supabase
 
 
@@ -443,13 +443,45 @@ class WardrobeSuggestionsService:
             group for group in suggestions_by_category if group["items"]
         ]
 
-        return {
+        final_payload = {
             "ok": True,
             "item_id": item_id,
             "central_item": self._build_central_item_payload(item),
             "suggestions_by_category": suggestions_by_category,
         }
 
+        self._save_generated_suggestions(
+            item_id=item_id,
+            user_id=user_id,
+            central_item=final_payload["central_item"],
+            suggestions_by_category=suggestions_by_category,
+        )
+
+        return final_payload
+
+    def _save_generated_suggestions(
+        self,
+        item_id: str,
+        user_id: str,
+        central_item: Dict[str, Any],
+        suggestions_by_category: List[Dict[str, Any]],
+    ) -> None:
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        payload = {
+            "wardrobe_item_id": item_id,
+            "user_id": user_id,
+            "central_item": central_item,
+            "suggestions_by_category": suggestions_by_category,
+            "generated_at": now_iso,
+            "updated_at": now_iso,
+        }
+
+        self.client.table("wardrobe_item_suggestions").upsert(
+            payload,
+            on_conflict="wardrobe_item_id"
+        ).execute()
+        
     # =========================
     # Fetch data
     # =========================
@@ -1414,6 +1446,41 @@ class WardrobeSuggestionsService:
             return -10, "Marque déjà très présente"
         return -18, "Marque surreprésentée"
 
+    async def get_saved_suggestions_for_item(self, item_id: str) -> Dict[str, Any]:
+        item = self._get_wardrobe_item(item_id)
+        if not item:
+            raise ValueError(f"wardrobe_item introuvable: {item_id}")
+
+        response = (
+            self.client.table("wardrobe_item_suggestions")
+            .select("*")
+            .eq("wardrobe_item_id", item_id)
+            .limit(1)
+            .execute()
+        )
+
+        rows = response.data or []
+        if not rows:
+            return {
+                "ok": True,
+                "found": False,
+                "item_id": item_id,
+                "central_item": self._build_central_item_payload(item),
+                "suggestions_by_category": [],
+            }
+
+        row = rows[0]
+
+        return {
+            "ok": True,
+            "found": True,
+            "item_id": item_id,
+            "central_item": self._build_central_item_payload(item),
+            "suggestions_by_category": row.get("suggestions_by_category") or [],
+            "generated_at": row.get("generated_at"),
+            "updated_at": row.get("updated_at"),
+        }
+   
     # =========================
     # Dedupe
     # =========================

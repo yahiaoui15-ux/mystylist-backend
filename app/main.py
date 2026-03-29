@@ -161,12 +161,50 @@ async def analyze_wardrobe_item(item_id: str):
                 "error": str(e),
             },
         )
-        
+
+@app.get("/api/wardrobe/{item_id}/suggestions")
+async def get_wardrobe_suggestions(item_id: str):
+    """
+    Retourne les suggestions déjà générées pour un vêtement central,
+    sans relancer une nouvelle génération.
+    """
+    try:
+        log(f"[WARDROBE_SUGGESTIONS] Fetch existing suggestions for item_id={item_id}")
+        result = await wardrobe_suggestions_service.get_saved_suggestions_for_item(item_id)
+        log(
+            f"[WARDROBE_SUGGESTIONS] Existing suggestions result for item_id={item_id}: "
+            f"ok={result.get('ok')} found={result.get('found')}"
+        )
+
+        if result.get("ok") and result.get("found"):
+            return result
+
+        return JSONResponse(
+            status_code=404,
+            content={
+                "ok": False,
+                "item_id": item_id,
+                "error": "suggestions_not_found",
+            },
+        )
+
+    except Exception as e:
+        log(f"[WARDROBE_SUGGESTIONS] GET exception for item_id={item_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "item_id": item_id,
+                "error": str(e),
+            },
+        )  
+
 @app.post("/api/wardrobe/{item_id}/suggestions")
 async def generate_wardrobe_suggestions(item_id: str):
     """
-    Génère des suggestions de produits affiliés complémentaires
-    autour d'un vêtement central de la garde-robe.
+    Régénère les suggestions de produits affiliés complémentaires
+    autour d'un vêtement central de la garde-robe
+    et remplace la version sauvegardée.
     """
     try:
         log(f"[WARDROBE_SUGGESTIONS] Start generation for item_id={item_id}")
