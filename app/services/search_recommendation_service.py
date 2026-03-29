@@ -906,6 +906,74 @@ class SearchRecommendationService:
             "reasons_json": reasons_json,
         }
 
+    async def get_saved_recommendations_for_search(self, search_id: str) -> Dict[str, Any]:
+        search_row = self._get_search(search_id)
+        if not search_row:
+            raise ValueError(f"user_searches introuvable: {search_id}")
+
+        latest_run_response = (
+            self.client.table("v_user_search_latest_run")
+            .select("*")
+            .eq("search_id", search_id)
+            .limit(1)
+            .execute()
+        )
+
+        latest_runs = latest_run_response.data or []
+        if not latest_runs:
+            return {
+                "ok": True,
+                "found": False,
+                "search_id": search_id,
+                "recommendations_by_category": [],
+            }
+
+        latest_run = latest_runs[0]
+        run_id = latest_run.get("run_id") or latest_run.get("id")
+        if not run_id:
+            return {
+                "ok": True,
+                "found": False,
+                "search_id": search_id,
+                "recommendations_by_category": [],
+            }
+
+        recommendations_response = (
+            self.client.table("user_search_recommendations")
+            .select("*")
+            .eq("run_id", run_id)
+            .execute()
+        )
+
+        recommendation_rows = recommendations_response.data or []
+        if not recommendation_rows:
+            return {
+                "ok": True,
+                "found": False,
+                "search_id": search_id,
+                "run_id": run_id,
+                "recommendations_by_category": [],
+            }
+
+        recommendations_by_category = self._group_saved_recommendations(recommendation_rows)
+
+        return {
+            "ok": True,
+            "found": True,
+            "search_id": search_id,
+            "run_id": run_id,
+            "generated_at": latest_run.get("created_at"),
+            "updated_at": latest_run.get("created_at"),
+            "search": {
+                "id": search_row.get("id"),
+                "title": search_row.get("title"),
+                "style": search_row.get("style"),
+                "season": search_row.get("season"),
+                "occasion": search_row.get("occasion"),
+            },
+            "recommendations_by_category": recommendations_by_category,
+        }
+
     def _compute_color_score(self, extracted_color: Optional[str], ai_profile: Dict[str, Any]) -> Tuple[float, str]:
         if not extracted_color:
             return 0, "Couleur non détectée dans le titre produit"
@@ -1454,5 +1522,53 @@ class SearchRecommendationService:
 
         return "other"
 
+    def _get_search(self, search_id: str) -> Optional[Dict[str, Any]]:
+        response = self.supabase.query(
+            "user_searches",
+            select_fields="*",
+            filters={"id": search_id},
+        )
+        return response.data[0] if response.data else None
+
+    def _group_saved_recommendations(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        grouped: Dict[str, Dict[str, Any]] = {}
+
+        for row in rows:
+            category_key = str(row.get("category_key") or "").strip().lower()
+            if not category_key:
+                continue
+
+            if category_key not in grouped:
+                grouped[category_key] = {
+                    "category_key": category_key,
+                    "category_label": category_key.capitalize(),
+                    "items": [],
+                }
+
+            reasons_json = row.get("reasons_json") or {}
+
+            # 👉 On récupère UNE raison propre pour le front
+            reason = (
+                reasons_json.get("category")
+                or reasons_json.get("style")
+                or reasons_json.get("color")
+                or ""
+            )
+
+            grouped[category_key]["items"].append({
+                "id": str(row.get("id")),
+                "product_id": str(row.get("product_id")),
+                "title": row.get("title") or "",
+                "brand": row.get("brand") or "",
+                "image_url": row.get("image_url") or "",
+                "price": float(row.get("price")) if row.get("price") else None,
+                "currency": row.get("currency") or "EUR",
+                "buy_url": row.get("buy_url") or "",
+                "product_url": row.get("product_url") or "",
+                "score_total": float(row.get("score_total") or 0),
+                "reason": reason,
+            })
+
+        return list(grouped.values())
 
 search_recommendation_service = SearchRecommendationService()
