@@ -312,6 +312,35 @@ class WardrobeSuggestionsService:
         "smart_shoes": ["mocassin", "escarpin", "derby", "ballerine"],
     }
 
+    LIGHT_SHOE_HINTS = {
+        "sandale", "escarpin", "ballerine", "mocassin", "slingback", "babies"
+    }
+
+    HEAVY_SHOE_HINTS = {
+        "botte", "boots", "boot", "fourree", "fourré", "fourrure", "moon boot",
+        "apres ski", "après ski", "pluie", "rain", "sherpa", "neige"
+    }
+
+    STATEMENT_HINTS = {
+        "leopard", "léopard", "python", "zebre", "zèbre", "animal",
+        "sequins", "paillette", "paillettes", "strass",
+        "patchwork", "multicolore", "metal", "métal",
+        "verni", "vinyle", "croco", "jacquard",
+        "brode", "brodé", "dentelle", "transparence", "transparent"
+    }
+
+    SOFT_STATEMENT_HINTS = {
+        "brode", "brodé", "dentelle", "fleuri", "floral"
+    }
+
+    CATEGORY_ROLE_WEIGHTS = {
+        "hauts": {"should_be_quiet_if_central_is_strong": 12},
+        "bas": {"should_be_quiet_if_central_is_strong": 12},
+        "vestes": {"should_be_quiet_if_central_is_strong": 14},
+        "chaussures": {"should_be_quiet_if_central_is_strong": 10},
+    }
+
+    SUMMER_CENTRAL_CATEGORIES = {"robes"}
     def __init__(self):
         self.supabase = supabase
         self.client = supabase.get_client()
@@ -724,6 +753,32 @@ class WardrobeSuggestionsService:
             wardrobe_item=wardrobe_item,
         )
 
+        shoe_score, shoe_reason = self._compute_shoe_seasonality_score(
+            category_key=category_key,
+            subtype=subtype,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            wardrobe_item=wardrobe_item,
+        )
+
+        statement_score, statement_reason = self._compute_statement_balance_score(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            wardrobe_item=wardrobe_item,
+        )
+
+        stylist_brain_score, stylist_brain_reason = self._compute_stylist_brain_score(
+            category_key=category_key,
+            title=title,
+            secondary_category=secondary_category,
+            source_description=source_description,
+            subtype=subtype,
+            wardrobe_item=wardrobe_item,
+        )
+
         brand_score, brand_reason = self._compute_brand_score(brand, ai_profile)
 
         diversity_penalty, diversity_reason = self._compute_diversity_penalty(
@@ -741,8 +796,11 @@ class WardrobeSuggestionsService:
             + pattern_score
             + visual_balance_score
             + office_score
+            + shoe_score
             + brand_score
             + diversity_penalty
+            + statement_score
+            + stylist_brain_score
         )
 
         reasons = [
@@ -757,6 +815,9 @@ class WardrobeSuggestionsService:
             morphology_reason,
             brand_reason,
             diversity_reason,
+            shoe_reason,
+            statement_reason
+            stylist_brain_reason
         ]
         reason = self._pick_best_reason(reasons)
 
@@ -1212,6 +1273,131 @@ class WardrobeSuggestionsService:
             return round(score, 2), " / ".join(reasons)
         return 0, "Compatibilité bureau neutre"
 
+    def _compute_shoe_seasonality_score(
+        self,
+        category_key: str,
+        subtype: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        if category_key != "chaussures":
+            return 0, "Pas de règle chaussures spécifique"
+
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+        is_summer_central = self._is_summer_central_piece(wardrobe_item)
+        central_style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
+
+        score = 0.0
+        reasons: List[str] = []
+
+        heavy_shoe = subtype == "boots" or self._contains_any_text(hay, list(self.HEAVY_SHOE_HINTS))
+        light_shoe = subtype in {"sandales", "escarpins", "ballerines", "mocassins"} or self._contains_any_text(hay, list(self.LIGHT_SHOE_HINTS))
+
+        if is_summer_central:
+            if heavy_shoe:
+                score -= 28
+                reasons.append("chaussure trop hivernale pour une tenue estivale")
+            if light_shoe:
+                score += 14
+                reasons.append("chaussure légère cohérente avec la tenue")
+
+        if central_style in {"chic", "classique", "minimaliste"}:
+            if subtype in {"escarpins", "ballerines", "mocassins"}:
+                score += 10
+                reasons.append("chaussure chic portable")
+            elif subtype == "baskets":
+                score -= 12
+                reasons.append("basket moins élégante")
+            elif subtype == "boots" and is_summer_central:
+                score -= 8
+                reasons.append("boots lourdes pour ce registre")
+
+        if reasons:
+            return round(score, 2), " / ".join(reasons)
+        return 0, "Compatibilité chaussures neutre"
+
+    def _compute_statement_balance_score(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+        central_is_statement = self._central_piece_is_statement(wardrobe_item)
+
+        product_is_statement = self._contains_any_text(hay, list(self.STATEMENT_HINTS))
+        product_is_soft_statement = self._contains_any_text(hay, list(self.SOFT_STATEMENT_HINTS))
+
+        if not central_is_statement and not product_is_statement:
+            return 4, "Bonne sobriété d’ensemble"
+
+        if central_is_statement:
+            if product_is_statement:
+                return -22, "Deux pièces fortes entrent en concurrence"
+            if product_is_soft_statement:
+                return -8, "Pièce encore un peu expressive"
+            return 14, "La pièce complémentaire laisse la vedette au vêtement central"
+
+        if not central_is_statement and product_is_statement:
+            if category_key in {"vestes", "hauts"}:
+                return -6, "Pièce forte mais encore portable"
+            return -2, "Pièce expressive"
+
+        return 0, "Équilibre statement neutre"
+
+    def _compute_stylist_brain_score(
+        self,
+        category_key: str,
+        title: str,
+        secondary_category: str,
+        source_description: str,
+        subtype: str,
+        wardrobe_item: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
+        central_is_statement = self._central_piece_is_statement(wardrobe_item)
+        central_style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
+
+        score = 0.0
+        reasons: List[str] = []
+
+        product_is_statement = self._contains_any_text(hay, list(self.STATEMENT_HINTS))
+        product_is_patterned = self._contains_any(hay, self.STRONG_PATTERNS)
+
+        if central_is_statement:
+            quiet_bonus = self.CATEGORY_ROLE_WEIGHTS.get(category_key, {}).get("should_be_quiet_if_central_is_strong", 0)
+
+            if not product_is_statement and not product_is_patterned:
+                score += quiet_bonus
+                reasons.append("la pièce complémentaire laisse respirer la tenue")
+
+            if category_key == "vestes" and subtype == "blazer":
+                score += 8
+                reasons.append("blazer structure bien la silhouette")
+
+            if category_key == "chaussures" and subtype in {"ballerines", "mocassins", "escarpins"}:
+                score += 8
+                reasons.append("chaussure sobre qui équilibre la tenue")
+
+        else:
+            if category_key == "vestes" and subtype == "blazer":
+                score += 6
+                reasons.append("blazer apporte de la structure")
+            if category_key == "bas" and subtype == "pantalon" and central_style in {"chic", "classique", "minimaliste"}:
+                score += 8
+                reasons.append("pantalon structuré très portable")
+            if category_key == "hauts" and subtype in {"chemise", "blouse"} and central_style in {"boheme", "romantique"}:
+                score += 6
+                reasons.append("haut cohérent avec un registre féminin portable")
+
+        if reasons:
+            return round(score, 2), " / ".join(reasons)
+        return 0, "Équilibre styliste neutre"
+
     def _compute_diversity_penalty(self, brand: str, brand_counter: Dict[str, int]) -> Tuple[float, str]:
         b = self._normalize_text(brand)
         count = brand_counter.get(b, 0)
@@ -1476,6 +1662,41 @@ class WardrobeSuggestionsService:
             return clean
         except Exception:
             return (url or "").strip().lower()
+
+    def _central_piece_is_statement(self, wardrobe_item: Dict[str, Any]) -> bool:
+        pattern = self._normalize_text(str(wardrobe_item.get("detected_pattern") or ""))
+        style = self._normalize_text(str(wardrobe_item.get("detected_style") or ""))
+        material = self._normalize_text(str(wardrobe_item.get("detected_material") or ""))
+        label = self._normalize_text(str(wardrobe_item.get("ai_label") or ""))
+        subcategory = self._normalize_text(str(wardrobe_item.get("subcategory") or ""))
+
+        hay = f"{pattern} {style} {material} {label} {subcategory}"
+
+        if pattern and pattern not in self.PATTERN_NEUTRAL_VALUES:
+            return True
+
+        if self._contains_any_text(hay, list(self.STATEMENT_HINTS)):
+            return True
+
+        return False
+
+    def _is_summer_central_piece(self, wardrobe_item: Dict[str, Any]) -> bool:
+        category_key = self._normalize_text(str(wardrobe_item.get("category_key") or ""))
+        season = self._normalize_text(str(wardrobe_item.get("detected_season") or ""))
+        material = self._normalize_text(str(wardrobe_item.get("detected_material") or ""))
+        subcategory = self._normalize_text(str(wardrobe_item.get("subcategory") or ""))
+        label = self._normalize_text(str(wardrobe_item.get("ai_label") or ""))
+
+        hay = f"{category_key} {season} {material} {subcategory} {label}"
+
+        if season == "ete":
+            return True
+        if category_key in self.SUMMER_CENTRAL_CATEGORIES:
+            return True
+        if self._contains_any_text(hay, ["ete", "été", "sandale", "lin", "leger", "léger", "sans manches"]):
+            return True
+
+        return False
 
     def _infer_subtype(self, category_key: str, title: str, secondary_category: str) -> str:
         hay = self._normalize_text(f"{title} {secondary_category}")
