@@ -282,7 +282,140 @@ class PDFDataMapper:
                 transformed.append(found)
         
         return transformed
-    
+
+# ═══════════════════════════════════════════════════════════════
+    # MAPPING KEYWORD → nom_simplifie (basé sur vraies données Supabase)
+    # Table visuels : 36 images disponibles
+    # ═══════════════════════════════════════════════════════════════
+    MORPHO_MVP_KEYWORD_MAP = {
+        "haut": [
+            (["col en v", "col v", "encolure en v", "decollete en v", "cache-coeur", "cache coeur", "blouse", "chemisier"], "encolure_en_v"),
+            (["encolure bateau", "col bateau"], "encolure_bateau"),
+            (["encolure carree", "col carre", "col carré"], "encolure_carree"),
+            (["manches bouffantes", "bouffantes", "bouffant"], "manches_bouffantes"),
+            (["chauve-souris", "chauve souris", "chauve_souris"], "manches_chauve_souris"),
+            (["top fluide", "blouse fluide", "chemise fluide"], "top_fluide"),
+            (["fluide"], "top_fluide"),
+            (["col roule", "col roul", "col roulé"], "pull_col_roul"),
+            (["pull", "sweat"], "pull_col_roul"),
+            (["epaulettes", "epaulette", "epaule structuree", "epaule structure"], "haut_epaulettes"),
+            (["peplum", "cintree", "cintre"], "haut_cintre"),
+            (["gilet"], "gilet_long"),
+            (["debardeur"], "debardeur_long"),
+        ],
+        "bas": [
+            (["jupe crayon", "crayon taille haute", "crayon"], "jupe_crayon"),
+            (["jupe trapeze", "trapeze"], "jupe_trapeze"),
+            (["jupe patineuse", "patineuse"], "jupe_patineuse"),
+            (["palazzo", "evase", "evasee", "large", "ample"], "pantalon_flare"),
+            (["flare"], "pantalon_flare"),
+            (["bootcut"], "pantalon_bootcut"),
+            (["droit taille", "droit", "chino", "cigarette"], "pantalon_droit"),
+            (["slim", "skinny"], "jean_slim"),
+            (["carotte"], "pantalon_carotte"),
+            (["short"], "short_taille_haute"),
+            (["jean"], "jean_slim"),
+        ],
+        "robe": [
+            (["portefeuille"], "robe_portefeuille"),
+            (["empire"], "robe_empire"),
+            (["patineuse"], "robe_patineuse"),
+            (["bustier"], "robe_bustier"),
+            (["chemise"], "robe_chemise"),
+            (["droite"], "robe_droite"),
+        ],
+        "veste": [
+            (["blazer", "cintree", "cintre"], "blazer_cintre"),
+            (["courte"], "veste_courte"),
+            (["trench", "mi-long", "mi long", "long"], "veste_mi_longue"),
+            (["oversized", "oversize"], "veste_oversized"),
+        ],
+        "accessoire": [
+            (["ceinture fine"], "ceinture_fine"),
+            (["ceinture large"], "ceinture_large"),
+            (["ceinture moyenne"], "ceinture_moyenne"),
+            (["ceinture obi"], "ceinture_obi"),
+            (["ceinture tressee", "ceinture tress", "ceinture tressée"], "ceinture_tressee"),
+            (["ceinture"], "ceinture_fine"),   # fallback générique
+        ],
+    }
+
+    @staticmethod
+    def _normalize_for_matching(s: str) -> str:
+        """Supprime accents + met en minuscule pour matching robuste."""
+        s = s.lower()
+        for fr, en in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),
+                       ('î','i'),('ï','i'),('ô','o'),('û','u'),('ù','u'),('ü','u'),('ç','c')]:
+            s = s.replace(fr, en)
+        return s
+
+    @staticmethod
+    def _find_visual_key_for_piece(name: str, supabase_category: str) -> str:
+        """Retourne le nom_simplifie Supabase correspondant au nom de pièce, ou '' si aucun match."""
+        if not name:
+            return ""
+        name_norm = PDFDataMapper._normalize_for_matching(name)
+        for keywords, visual_key in PDFDataMapper.MORPHO_MVP_KEYWORD_MAP.get(supabase_category, []):
+            if any(kw in name_norm for kw in keywords):
+                return visual_key
+        return ""
+
+    @staticmethod
+    def _enrich_mvp_essentials_with_visuals(essentials: dict) -> dict:
+        """
+        Enrichit chaque item de morphology_mvp.essentials avec visual_url
+        depuis la table Supabase visuels via keyword matching sur le nom.
+
+        Mapping catégories MVP → catégories Supabase :
+          tops             → haut
+          bottoms          → bas
+          dresses_jackets  → robe puis veste (fallback)
+          shoes_accessories→ accessoire
+        """
+        CATEGORY_MAP = {
+            "tops":              ["haut"],
+            "bottoms":           ["bas"],
+            "dresses_jackets":   ["robe", "veste"],   # essaie robe d'abord, puis veste
+            "shoes_accessories": ["accessoire"],
+        }
+
+        enriched = {}
+
+        for mvp_cat, supabase_cats in CATEGORY_MAP.items():
+            items = PDFDataMapper._safe_list(essentials.get(mvp_cat, []))
+            enriched_items = []
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+
+                name = item.get("name", "")
+                visual_key = ""
+
+                # Tente chaque catégorie Supabase dans l'ordre
+                for supabase_cat in supabase_cats:
+                    visual_key = PDFDataMapper._find_visual_key_for_piece(name, supabase_cat)
+                    if visual_key:
+                        break
+
+                # Récupère l'URL via visuals_service
+                visual_url = ""
+                if visual_key:
+                    try:
+                        visual_url = visuals_service.get_url(visual_key) or ""
+                    except Exception as e:
+                        print(f"⚠️ visuals_service.get_url('{visual_key}'): {e}")
+
+                enriched_item = {**item, "visual_key": visual_key, "visual_url": visual_url}
+                enriched_items.append(enriched_item)
+
+                status = "✅" if visual_url else "⚠️ NO IMG"
+                print(f"   {status} MVP [{mvp_cat}] '{name}' → key='{visual_key}'")
+
+            enriched[mvp_cat] = enriched_items
+
+        return enriched
+
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """Prépare variables Liquid pour PDFMonkey - VERSION CORRIGÉE"""
@@ -561,9 +694,13 @@ class PDFDataMapper:
             },
             
             # ✅ PAGES 9-15: Morpho categories
-            # ✅ NOUVELLE SECTION MORPHOLOGIE MVP
+            # ✅ Enrichissement visuels pédagogiques pour morphologie MVP
+            print("\n🎨 Enrichissement visuels MVP morphologie...")
+            essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
+            essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
+ 
             "morphology_mvp": {
-                "essentials": PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {})),
+                "essentials": essentials_enriched,
                 "avoid": PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
                 "outfit_formulas": PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", [])),
                 "shopping_priorities": PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
