@@ -416,6 +416,76 @@ class PDFDataMapper:
 
         return enriched
 
+   @staticmethod
+    def _guess_supabase_cats_for_piece(name: str) -> list:
+        """Devine la(les) catégorie(s) Supabase pour un nom de pièce de formule."""
+        n = PDFDataMapper._normalize_for_matching(name)
+        if any(k in n for k in ["robe", "combinaison"]):
+            return ["robe"]
+        if any(k in n for k in ["blazer", "veste", "trench", "cardigan", "manteau"]):
+            return ["veste"]
+        if any(k in n for k in ["jupe", "pantalon", "jean", "legging", "short", "palazzo"]):
+            return ["bas"]
+        if any(k in n for k in ["ceinture", "collier", "sac", "foulard", "accessoire"]):
+            return ["accessoire"]
+        # Par défaut: tenter haut
+        return ["haut", "veste"]
+ 
+    @staticmethod
+    def _enrich_outfit_formulas_with_visuals(outfit_formulas: list) -> list:
+        """
+        Transforme chaque formula.pieces de list[str] en list[dict]:
+          {"name": str, "visual_key": str, "visual_url": str}
+        Permet d'afficher les visuels illustratifs dans la page 10.
+        """
+        enriched_formulas = []
+ 
+        for formula in outfit_formulas:
+            if not isinstance(formula, dict):
+                continue
+ 
+            pieces_raw = PDFDataMapper._safe_list(formula.get("pieces", []))
+            enriched_pieces = []
+ 
+            for piece in pieces_raw:
+                if not isinstance(piece, str):
+                    # Déjà enrichi (dict) — on le garde tel quel
+                    if isinstance(piece, dict):
+                        enriched_pieces.append(piece)
+                    continue
+ 
+                name = piece.strip()
+                visual_key = ""
+                visual_url = ""
+ 
+                # Deviner la catégorie Supabase depuis le nom
+                cats = PDFDataMapper._guess_supabase_cats_for_piece(name)
+                for cat in cats:
+                    visual_key = PDFDataMapper._find_visual_key_for_piece(name, cat)
+                    if visual_key:
+                        break
+ 
+                if visual_key:
+                    try:
+                        visual_url = visuals_service.get_url(visual_key) or ""
+                    except Exception as e:
+                        print(f"⚠️  formula visual get_url('{visual_key}'): {e}")
+ 
+                enriched_pieces.append({
+                    "name": name,
+                    "visual_key": visual_key,
+                    "visual_url": visual_url,
+                })
+ 
+                status = "✅" if visual_url else ("🔑" if visual_key else "⚠️ ")
+                print(f"   {status} FORMULA '{formula.get('occasion','')}' '{name}' → '{visual_key}'")
+ 
+            enriched_formulas.append({**formula, "pieces": enriched_pieces})
+ 
+        return enriched_formulas
+ 
+ 
+
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """Prépare variables Liquid pour PDFMonkey - VERSION CORRIGÉE"""
@@ -634,10 +704,11 @@ class PDFDataMapper:
                 "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFreides", "")),
             }
         }
-        # ✅ Enrichissement visuels pédagogiques pour morphologie MVP
-        print("\n🎨 Enrichissement visuels MVP morphologie...")
-        essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
-        essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
+
+        # ✅ Enrichissement formules de tenues avec visuels
+        print("\n🎨 Enrichissement formules de tenues...")
+        outfit_formulas_raw = PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", []))
+        outfit_formulas_enriched = PDFDataMapper._enrich_outfit_formulas_with_visuals(outfit_formulas_raw)
         
         # BUILD LIQUID DATA
         liquid_data = {
@@ -702,8 +773,14 @@ class PDFDataMapper:
             "morphology_mvp": {
                 "essentials": essentials_enriched,
                 "avoid": PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
-                "outfit_formulas": PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", [])),
+                "outfit_formulas": outfit_formulas_enriched,
                 "shopping_priorities": PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
+                "style_notes": PDFDataMapper._safe_dict(morphology_mvp.get("style_notes", {
+                    "matieres_recommandees": [],
+                    "motifs_recommandes": [],
+                    "matieres_eviter": [],
+                    "motifs_eviter": [],
+                })),
             },
             
             "morphology_highlights": morphology_raw.get("highlights", {
