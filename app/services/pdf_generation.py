@@ -54,138 +54,128 @@ class PDFGenerationService:
         """
         Génère un PDF via PDFMonkey
         Attend que le document soit généré avant de retourner l'URL
-        
-        Args:
-            report_data: Rapport généré par report_generator
-            user_data: Données utilisateur
-            document_name: Nom optionnel du document
-        
-        Returns:
-            str: URL du PDF généré
         """
         try:
             print("🎨 Génération PDF via PDFMonkey...")
-            
-            # Mapper les données au format PDFMonkey
+
             liquid_variables = PDFDataMapper.prepare_liquid_variables(
                 report_data,
                 user_data
             )
-            
-            # DEBUG: Afficher les variables Liquid
-            print(f"📊 Variables Liquid (premiers 15 champs):")
+
+            print("📊 Variables Liquid (premiers 15 champs):")
             for i, (key, value) in enumerate(liquid_variables.items()):
                 if i < 15:
                     val_str = str(value)[:100] if not isinstance(value, list) else f"[list of {len(value)} items]"
                     print(f"   {key}: {val_str}")
-            
-            # 🔧 CORRECTION: Structure CORRECTE pour PDFMonkey API v1
-            # D'après la documentation PDFMonkey:
-            # 1. Wrapper tout dans "document": {...}
-            # 2. Utiliser "payload" au lieu de "data"
-            # 3. Ajouter "status": "pending" pour générer immédiatement
+
             payload = {
                 "document": {
                     "document_template_id": self.template_id,
-                    "payload": liquid_variables,  # ← CORRIGÉ: "data" → "payload"
-                    "status": "pending"  # ← AJOUTÉ: force generation
+                    "payload": liquid_variables,
+                    "status": "pending"
                 }
             }
-            
-            print(f"📤 Envoi à PDFMonkey...")
-            
-            # DEBUG: Afficher le payload
-            print(f"📤 Payload à envoyer:")
-            import json
-            print(f"   {json.dumps(payload, indent=2)[:500]}")
-            
+
+            print("📤 Envoi à PDFMonkey...")
             print(f"   Template ID: {self.template_id}")
             print(f"   Data fields: {len(liquid_variables)} champs")
-            
-            # Appel API PDFMonkey - Créer le document
-            async with httpx.AsyncClient(timeout=60.0) as client:
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            timeout = httpx.Timeout(90.0, connect=20.0)
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                # 1) Création du document
                 response = await client.post(
                     f"{self.base_url}/documents",
                     json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    timeout=60.0
+                    headers=headers
                 )
-            
-            if response.status_code not in [200, 201]:
-                error_text = response.text
-                print(f"❌ Erreur PDFMonkey {response.status_code}: {error_text}")
-                print("⚠️ PDFMonkey timeout, tentative récupération différée")
-                return f"{self.base_url}/documents/{document_id}/download"
 
-            
-            result = response.json()
-            print(f"✅ Réponse PDFMonkey reçue")
-            print(f"🔍 Response complète: {result}")
-            
-            # Extraire l'ID du document
-            document_id = None
-            if "document" in result and isinstance(result["document"], dict):
-                document_id = result["document"].get("id")
+                if response.status_code not in [200, 201]:
+                    error_text = response.text
+                    print(f"❌ Erreur PDFMonkey {response.status_code}: {error_text}")
+                    raise Exception(f"PDFMonkey POST failed: {response.status_code} - {error_text}")
+
+                result = response.json()
+                print("✅ Réponse PDFMonkey reçue")
+                print(f"🔍 Response complète: {result}")
+
+                document = result.get("document", {}) if isinstance(result, dict) else {}
+                document_id = document.get("id")
+                initial_status = document.get("status")
+
+                if not document_id:
+                    raise Exception("PDFMonkey n'a pas retourné d'ID de document")
+
                 print(f"   Document ID: {document_id}")
-                print(f"   Status initial: {result['document'].get('status', 'unknown')}")
-            
-            if not document_id:
-                raise Exception("PDFMonkey n'a pas retourné d'ID de document")
-            
-            # ⏳ ATTENDRE que le document soit généré (status = success)
-            print(f"⏳ Attente de la génération du PDF par PDFMonkey...")
-            max_attempts = 30
-            attempt = 0
-            pdf_url = None
-            
-            while attempt < max_attempts:
-                # Récupérer le status du document via GET
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    status_response = await client.get(
-                        f"{self.base_url}/documents/{document_id}",
-                        headers={
-                            "Authorization": f"Bearer {self.api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        timeout=30.0
-                    )
-                
-                if status_response.status_code == 200:
-                    status_result = status_response.json()
-                    doc = status_result.get("document", {})
-                    status = doc.get("status")
-                    
-                    print(f"   Tentative {attempt+1}/{max_attempts} - Status: {status}")
-                    
-                    if status == "success":
-                        pdf_url = doc.get("download_url")
-                        print(f"   ✅ Document généré avec succès!")
-                        print(f"   Download URL: {pdf_url}")
-                        break
-                    elif status == "processing" or status == "generating":
-                        # Attendre 500ms avant de réessayer
-                        await asyncio.sleep(0.5)
-                        attempt += 1
-                    else:
-                        print(f"   ⚠️  Status inattendu: {status}")
-                        print(f"   Document data: {doc}")
-                        break
-                else:
-                    print(f"   ⚠️  Erreur lors de la vérification du status: {status_response.status_code}")
-                    break
-            
-            if not pdf_url:
-                print(f"⚠️  PDF non disponible après {max_attempts} tentatives")
-                # Construire l'URL alternative si status check a échoué
-                pdf_url = f"https://api.pdfmonkey.io/api/v1/documents/{document_id}/download"
-                print(f"   URL alternative: {pdf_url}")
-            
-            print(f"✅ PDF généré: {pdf_url[:80]}...")
-            return pdf_url
-            
+                print(f"   Status initial: {initial_status}")
+
+                # Si jamais PDFMonkey renvoie déjà le download_url
+                if initial_status == "success" and document.get("download_url"):
+                    pdf_url = document["download_url"]
+                    print(f"✅ PDF déjà disponible: {pdf_url}")
+                    return pdf_url
+
+                # 2) Polling robuste
+                print("⏳ Attente de la génération du PDF par PDFMonkey...")
+
+                max_attempts = 40
+                sleep_seconds = 2.0
+                consecutive_errors = 0
+
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        status_response = await client.get(
+                            f"{self.base_url}/documents/{document_id}",
+                            headers=headers
+                        )
+
+                        if status_response.status_code != 200:
+                            print(f"   ⚠️ Tentative {attempt}/{max_attempts} - HTTP {status_response.status_code}")
+                            consecutive_errors += 1
+                        else:
+                            status_result = status_response.json()
+                            doc = status_result.get("document", {}) if isinstance(status_result, dict) else {}
+                            status = doc.get("status")
+                            download_url = doc.get("download_url")
+                            failure_cause = doc.get("failure_cause")
+
+                            print(f"   Tentative {attempt}/{max_attempts} - Status: {status}")
+
+                            if status == "success" and download_url:
+                                print("   ✅ Document généré avec succès")
+                                print(f"   Download URL: {download_url}")
+                                return download_url
+
+                            if status in ["failed", "error"]:
+                                raise Exception(f"PDFMonkey rendering failed: {failure_cause or 'unknown failure'}")
+
+                            if status in ["pending", "processing", "generating", None]:
+                                consecutive_errors = 0
+                            else:
+                                print(f"   ⚠️ Status inattendu: {status}")
+                                print(f"   Document data: {doc}")
+
+                    except httpx.TimeoutException as e:
+                        consecutive_errors += 1
+                        print(f"   ⚠️ Tentative {attempt}/{max_attempts} - Timeout pendant le polling: {e}")
+
+                    except httpx.HTTPError as e:
+                        consecutive_errors += 1
+                        print(f"   ⚠️ Tentative {attempt}/{max_attempts} - Erreur HTTP pendant le polling: {e}")
+
+                    if consecutive_errors >= 5:
+                        raise Exception("Trop d'erreurs consécutives pendant le polling PDFMonkey")
+
+                    await asyncio.sleep(sleep_seconds)
+
+                raise Exception(f"PDF non disponible après {max_attempts} tentatives pour document_id={document_id}")
+
         except Exception as e:
             print(f"❌ Erreur génération PDF: {e}")
             raise
