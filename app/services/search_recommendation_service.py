@@ -98,6 +98,14 @@ class SearchRecommendationService:
         "vetements_de_sport": None,
     }
 
+    CATEGORY_LABELS = {
+        "hauts": "Hauts",
+        "bas": "Bas",
+        "robes": "Robes",
+        "vestes": "Vestes",
+        "chaussures": "Chaussures",
+    }
+
     COLOR_WORDS = [
         "noir", "blanc", "bleu", "rose", "rouge", "vert", "jaune",
         "orange", "marron", "beige", "gris", "violet", "prune",
@@ -942,6 +950,8 @@ class SearchRecommendationService:
             self.client.table("user_search_recommendations")
             .select("*")
             .eq("run_id", run_id)
+            .order("category_key")
+            .order("rank")
             .execute()
         )
 
@@ -1522,14 +1532,6 @@ class SearchRecommendationService:
 
         return "other"
 
-    def _get_search(self, search_id: str) -> Optional[Dict[str, Any]]:
-        response = self.supabase.query(
-            "user_searches",
-            select_fields="*",
-            filters={"id": search_id},
-        )
-        return response.data[0] if response.data else None
-
     def _group_saved_recommendations(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         grouped: Dict[str, Dict[str, Any]] = {}
 
@@ -1541,7 +1543,7 @@ class SearchRecommendationService:
             if category_key not in grouped:
                 grouped[category_key] = {
                     "category_key": category_key,
-                    "category_label": category_key.capitalize(),
+                    "category_label": self.CATEGORY_LABELS.get(category_key, category_key.capitalize()),
                     "items": [],
                 }
 
