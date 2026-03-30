@@ -1,5 +1,16 @@
+"""
+MORPHOLOGY PART 2 - MVP
+Objectif:
+- Générer une section morphologie courte, premium et actionnable
+- Pas de matières
+- Pas de motifs
+- Pas de pièges
+- Pas de catégories détaillées sur 7 pages
+IMPORTANT: JSON STRICT, aucune prose.
+"""
+
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """
-Vous êtes un moteur de génération JSON strict pour une API.
+Vous êtes un expert français en morphologie et stylisme.
 Vous devez produire UNIQUEMENT un JSON strict valide, sans texte avant ou après.
 
 REGLES JSON ABSOLUES:
@@ -7,130 +18,90 @@ REGLES JSON ABSOLUES:
 - Aucune virgule finale.
 - Aucune valeur null.
 - Aucune clé supplémentaire.
-- Aucune apostrophe (') dans les strings.
-- AUCUN saut de ligne dans les strings (toutes les valeurs sur une seule ligne).
-- Pas de Markdown, pas de HTML, pas de caractères décoratifs.
+- Aucune apostrophe dans les strings.
+- AUCUN saut de ligne dans les strings.
+- Pas de Markdown, pas de HTML, pas d emojis.
 
 OBJECTIF:
-Produire un JSON 100% parseable pour alimenter un rapport PDF.
-PART 2 = PIECES UNIQUEMENT (recommandes + a_eviter). Aucune matiere, aucun motif, aucun piege.
+Produire un JSON 100% parseable pour alimenter un rapport PDF MVP.
+Le ton doit être concret, premium, utile et personnalisé.
+Les recommandations doivent être réalistes, élégantes et actionnables.
 """
+
 MORPHOLOGY_PART2_USER_PROMPT = """
 Silhouette: {silhouette_type}
 Objectifs styling: {styling_objectives}
 A valoriser: {body_parts_to_highlight}
 A minimiser: {body_parts_to_minimize}
 
-Genere UNIQUEMENT le JSON ci-dessous, en respectant exactement la structure, les cles et le nombre d elements.
+Genere UNIQUEMENT le JSON ci-dessous, en respectant exactement la structure, les clés et le nombre d éléments.
 
 CONTRAINTES DE CONTENU:
-- Toutes les strings <= 80 caracteres.
+- Toutes les strings <= 110 caracteres.
 - Style concis, concret, sans blabla.
 - Interdit: phrases generiques du type "Coupe adaptee a votre silhouette".
-- Interdit: doublons exacts de cut_display dans une meme liste.
-- Chaque item = 1 piece ou 1 type de coupe concret.
-- "recommandes": EXACTEMENT 4 items par categorie.
-- "a_eviter": EXACTEMENT 3 items par categorie.
+- Interdit: doublons exacts.
+- Interdit: leggings, t shirt loose, cardigan oversize, blazer oversize, robe informe.
+- Chaque item doit etre elegant, portable et cohérent avec une cliente qui paie pour un rapport premium.
 - Aucun saut de ligne dans les strings.
-- Aucune apostrophe (') dans les strings.
+- Aucune apostrophe dans les strings.
+- Zero texte hors JSON.
 
 JSON ATTENDU:
 
 {{
-  "hauts": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
+  "essentials": {{
+    "tops": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
     ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
+    "bottoms": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "dresses_jackets": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "shoes_accessories": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
     ]
   }},
-  "bas": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }},
-  "robes": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }},
-  "vestes": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }},
-  "maillot_lingerie": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }},
-  "chaussures": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }},
-  "accessoires": {{
-    "recommandes": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ],
-    "a_eviter": [
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}},
-      {{"cut_display": "", "why": ""}}
-    ]
-  }}
+  "avoid": [
+    {{"name": "", "why": ""}},
+    {{"name": "", "why": ""}},
+    {{"name": "", "why": ""}}
+  ],
+  "outfit_formulas": [
+    {{
+      "occasion": "Quotidien",
+      "pieces": ["", "", "", ""],
+      "why_it_works": ""
+    }},
+    {{
+      "occasion": "Travail",
+      "pieces": ["", "", "", ""],
+      "why_it_works": ""
+    }},
+    {{
+      "occasion": "Sortie",
+      "pieces": ["", "", "", ""],
+      "why_it_works": ""
+    }}
+  ],
+  "shopping_priorities": ["", "", "", "", ""]
 }}
 
 RAPPEL FINAL:
 - Zero texte hors JSON.
-- Aucune cle ajoutee.
+- Aucune clé ajoutée.
+- 3 items exacts par sous-categorie essentials.
+- 3 items exacts dans avoid.
+- 3 formules exactes.
+- 5 priorités shopping exactes.
 """

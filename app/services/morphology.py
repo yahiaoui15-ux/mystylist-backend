@@ -12,7 +12,6 @@ from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
 from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
-from app.prompts.morphology_part3_prompt import MORPHOLOGY_PART3_SYSTEM_PROMPT, MORPHOLOGY_PART3_USER_PROMPT
 
 
 def normalize_french(text: str) -> str:
@@ -153,47 +152,41 @@ class MorphologyService:
         return list(merged.values())
     
     async def analyze(self, user_data: dict) -> dict:
-        """Analyse morphologie EN 2 APPELS SÉQUENTIELS"""
-        print("\n" + "="*80)
-        print("💪 PHASE MORPHOLOGIE v5.2 (2 appels + génération highlights/minimizes)")
-        print("="*80)
-        
+        """Analyse morphologie MVP EN 2 APPELS SÉQUENTIELS"""
+        print("\n" + "=" * 80)
+        print("💪 PHASE MORPHOLOGIE MVP (2 appels)")
+        print("=" * 80)
+
         body_photo_url = user_data.get("body_photo_url")
         if not body_photo_url:
             print("❌ Pas de photo du corps fournie")
             return {}
-        
-        # Récupérer les morphology_goals du onboarding
+
         print("\n📋 RÉCUPÉRATION MORPHOLOGY GOALS DU ONBOARDING")
         profile = user_data.get("profile", {})
         onboarding_data = profile.get("onboarding_data", {})
         morphology_goals = onboarding_data.get("morphology_goals", {})
-        
+
         onboarding_highlight_parts = morphology_goals.get("body_parts_to_highlight", [])
         onboarding_minimize_parts = morphology_goals.get("body_parts_to_minimize", [])
-        
+
         print(f"   • À valoriser (onboarding): {onboarding_highlight_parts}")
         print(f"   • À minimiser (onboarding): {onboarding_minimize_parts}")
-        
+
         part1_result = {}
         part2_result = {}
-        merged_recommendations = {}
 
         try:
-            # ========================================================================
+            # ====================================================================
             # APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE (VISION)
-            # ========================================================================
-            print("\n" + "█"*80)
+            # ====================================================================
+            print("\n" + "█" * 80)
             print("█ APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE + BODY ANALYSIS (VISION)")
-            print("█"*80)
-            
-            print("\n📋 AVANT APPEL:")
-            print("   • Type: OpenAI Vision API (gpt-4-turbo)")
-            print("   • Max tokens: 800")
-            
+            print("█" * 80)
+
             self.openai.set_context("Morphology Part 1", "PART 1: Silhouette")
             self.openai.set_system_prompt(MORPHOLOGY_PART1_SYSTEM_PROMPT)
-            
+
             user_prompt_part1 = self.safe_format(
                 MORPHOLOGY_PART1_USER_PROMPT,
                 body_photo_url=body_photo_url,
@@ -202,328 +195,93 @@ class MorphologyService:
                 hip_circumference=user_data.get("hip_circumference", 0),
                 bust_circumference=user_data.get("bust_circumference", 0)
             )
-            
-            print("\n🤖 APPEL OPENAI EN COURS...")
+
             response_part1 = await self.openai.analyze_image(
                 image_urls=[body_photo_url],
                 prompt=user_prompt_part1,
-                # ✅ ne pas forcer gpt-4-turbo ici (vision)
                 max_tokens=800
             )
-            print("✅ RÉPONSE REÇUE")
-            
+
             content_part1 = response_part1.get("content", "")
-            
-            print("\n📝 RÉPONSE BRUTE COMPLÈTE (Part 1) - {} chars:".format(len(content_part1)))
-            print("="*80)
-            print(content_part1[:1000] if len(content_part1) > 1000 else content_part1)
-            print("="*80)
-            
-            # PARSING PART 1
-            print("\n🔍 PARSING JSON PART 1:")
             content_part1_clean = self.clean_json_string(content_part1)
-            
+
             try:
                 part1_result = json.loads(content_part1_clean)
-                print("   ✅ Parsing réussi!")
-                print("      • Silhouette: {}".format(part1_result.get('silhouette_type', 'N/A')))
-                
-            except json.JSONDecodeError as e:
-                print(f"   ❌ Erreur parsing JSON: {str(e)}")
+            except json.JSONDecodeError:
                 json_match = re.search(r'\{.*\}', content_part1_clean, re.DOTALL)
                 if json_match:
                     try:
                         part1_result = json.loads(json_match.group())
-                        print("   ✅ Extraction JSON réussie!")
-                    except:
-                        print("   ❌ Extraction aussi échouée")
+                    except Exception:
                         part1_result = {}
                 else:
                     part1_result = {}
-            
-            # ========================================================================
-            # APPEL 2/2: MORPHOLOGY PART 2 - RECOMMANDATIONS (TEXT)
-            # ========================================================================
-            print("\n" + "█"*80)
-            print("█ APPEL 2/2: MORPHOLOGY PART 2 - RECOMMANDATIONS STYLING (TEXT)")
-            print("█"*80)
-            
-            if part1_result and part1_result.get("silhouette_type"):
-                silhouette = part1_result.get("silhouette_type")
-                styling_objectives = part1_result.get("styling_objectives", [])
-            else:
-                silhouette = "O"
-                styling_objectives = ["Optimal"]
-            
-            objectives_str = ", ".join(styling_objectives) if styling_objectives else "Optimize"
-            
-            print("\n📋 AVANT APPEL:")
-            print("   • Silhouette: {}".format(silhouette))
-            
-            self.openai.set_context("Morphology Part 2", "PART 2: Recommandations")
+
+            silhouette = part1_result.get("silhouette_type") or "O"
+            styling_objectives = part1_result.get("styling_objectives", []) or ["Harmoniser la silhouette"]
+            body_parts_highlight = part1_result.get("body_parts_to_highlight", []) or []
+            body_parts_minimize = part1_result.get("body_parts_to_minimize", []) or []
+
+            # ====================================================================
+            # APPEL 2/2: MORPHOLOGY PART 2 - MVP ACTIONNABLE
+            # ====================================================================
+            print("\n" + "█" * 80)
+            print("█ APPEL 2/2: MORPHOLOGY PART 2 - RECOMMANDATIONS MVP")
+            print("█" * 80)
+
+            self.openai.set_context("Morphology Part 2", "PART 2: Morphology MVP")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
-            
+
             user_prompt_part2 = self.safe_format(
                 MORPHOLOGY_PART2_USER_PROMPT,
                 silhouette_type=silhouette,
-                styling_objectives=objectives_str
+                styling_objectives=", ".join(styling_objectives),
+                body_parts_to_highlight=", ".join(body_parts_highlight),
+                body_parts_to_minimize=", ".join(body_parts_minimize),
             )
-            
-            print("\n🤖 APPEL OPENAI EN COURS...")
-            print("\n" + "=" * 80)
-            print("DEBUG MORPHOLOGY PART 2 - PROMPT ENVOYÉ À OPENAI")
-            print("- SYSTEM (preview 200 chars) ----------------------------")
-            try:
-                print(MORPHOLOGY_PART2_SYSTEM_PROMPT[:200])
-            except Exception:
-                print("⚠️ Impossible d'afficher le system prompt Part 2")
-            print("- USER (preview 400 chars) ------------------------------")
-            print(user_prompt_part2[:400])
-            print("=" * 80 + "\n")
 
             response_part2 = await self.openai.call_chat(
                 prompt=user_prompt_part2,
                 model="gpt-4-turbo",
-                max_tokens=2500  # ✅ Augmenté de 800 → 2000 pour éviter la troncature
+                max_tokens=1800
             )
-            print("✅ RÉPONSE REÇUE")
-            
-            content_part2 = response_part2.get("content", "")
-            
-            print("\n📝 RÉPONSE BRUTE COMPLÈTE (Part 2) - {} chars:".format(len(content_part2)))
-            print("="*80)
-            print(content_part2[:1000] if len(content_part2) > 1000 else content_part2)
-            print("="*80)
-            
-            # PARSING PART 2 - ULTRA-ROBUSTE (ANTI NEWLINES + EXTRACTION + LOGS)
-            print("\n🔍 PARSING JSON PART 2:")
-            content_part2_clean = self.clean_json_string(content_part2)
 
-            # 1) Anti-retours ligne DANS les strings JSON (cause #1 de tes JSONDecodeError)
+            content_part2 = response_part2.get("content", "")
+            content_part2_clean = self.clean_json_string(content_part2)
             content_part2_clean = self.sanitize_json_multiline_strings(content_part2_clean)
 
-            # 2) Extraction brute du JSON (évite texte parasite si le modèle dérape)
             s = content_part2_clean.find("{")
             e = content_part2_clean.rfind("}") + 1
             if s != -1 and e > s:
-                content_part2_clean_extracted = content_part2_clean[s:e]
-            else:
-                content_part2_clean_extracted = content_part2_clean
+                content_part2_clean = content_part2_clean[s:e]
 
-            # 3) Best-effort repair local (virgules finales, accolades manquantes)
-            content_part2_clean_extracted = self._repair_broken_json(content_part2_clean_extracted)
-
-            print(f"   • Longueur réponse (clean): {len(content_part2_clean_extracted)} chars")
-            print(f"   • Fin de réponse (200 derniers chars): {content_part2_clean_extracted[-200:]}")
+            content_part2_clean = self._repair_broken_json(content_part2_clean)
 
             try:
-                part2_result = json.loads(content_part2_clean_extracted)
-                print("   ✅ Parsing réussi!")
-
-                # ✅ NORMALISATION PART 2: si pas de wrapper "recommendations", on l'ajoute
-                if isinstance(part2_result, dict) and "recommendations" not in part2_result:
-                    if any(k in part2_result for k in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]):
-                        part2_result = {"recommendations": part2_result}
-
+                part2_result = json.loads(content_part2_clean)
+                print("   ✅ Parsing Part 2 réussi")
             except json.JSONDecodeError as e:
-
-                print("   ⚠️ JSON invalide → tentative correction OpenAI")
-                print(f"   ❌ JSONDecodeError: line={e.lineno} col={e.colno} pos={e.pos}")
-
-                excerpt = content_part2_clean_extracted[max(0, e.pos-200): e.pos+200]
-                # rendre visibles les retours ligne éventuels
-                excerpt_visible = excerpt.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-                print(f"   🔎 Extrait autour erreur (visible): {excerpt_visible}")
-
+                print(f"   ⚠️ JSON Part 2 invalide: {e}")
                 try:
                     part2_result = await self.force_valid_json(
-                        content_part2_clean_extracted,
-                        context="Morphology Part 2"
+                        content_part2_clean,
+                        context="Morphology Part 2 MVP"
                     )
-                    print("   ✅ JSON corrigé par OpenAI")
-
+                    print("   ✅ JSON Part 2 corrigé par OpenAI")
                 except Exception as fix_err:
-                    print(f"   ❌ Correction échouée → fallback (err={fix_err})")
-                    try:
-                        part2_result = self._generate_default_recommendations(silhouette)
-                    except Exception as fallback_err:
-                        print(f"   ❌ Fallback impossible (_generate_default_recommendations): {fallback_err}")
-                        part2_result = {"recommendations": {}}
+                    print(f"   ❌ Correction Part 2 échouée: {fix_err}")
+                    part2_result = self._generate_default_morphology_mvp(silhouette)
 
-            # LOG POST-PARSING: vérifier la structure (évite les trous silencieux)
-            rec = (part2_result or {}).get("recommendations", {})
-            if isinstance(rec, dict):
-                for cat in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
-                    c = rec.get(cat, {}) if isinstance(rec.get(cat, {}), dict) else {}
-                    n_rec = len(c.get("recommandes", []) or [])
-                    n_avoid = len(c.get("pieces_a_eviter", c.get("a_eviter", [])) or [])
-                    print(f"   • PART2[{cat}] recommendés={n_rec} / a_eviter={n_avoid}")
-            else:
-                print("   ⚠️ PART2: recommendations n'est pas un dict → risque de trous")
-
-            # ========================================================================
-            # MORPHOLOGY PART 3 - DÉTAILS DE STYLING (MATIERES + MOTIFS + PIÈGES)
-            # ========================================================================
-            print("\n" + "="*80)
-            print("🔍 MORPHOLOGIE PART 3 - DÉTAILS DE STYLING")
-            print("="*80)
-
-            print("\n📋 AVANT APPEL:")
-            print("   • Silhouette: {}".format(silhouette))
-            print("   • Type: OpenAI Chat API")
-            print("   • Max tokens: 1800")
-
-            self.openai.set_context("Morphology Part 3", "PART 3: Détails Styling")
-            self.openai.set_system_prompt(MORPHOLOGY_PART3_SYSTEM_PROMPT)
-
-            # Préparer le user prompt Part 3
-            styling_objectives_str = ", ".join(styling_objectives) if styling_objectives else "Optimal"
-            body_parts_highlight = part1_result.get("body_parts_to_highlight", [])
-            body_parts_minimize = part1_result.get("body_parts_to_minimize", [])
-
-            highlight_str = ", ".join(body_parts_highlight) if body_parts_highlight else "Général"
-            minimize_str = ", ".join(body_parts_minimize) if body_parts_minimize else "Général"
-
-            user_prompt_part3 = self.safe_format(
-                MORPHOLOGY_PART3_USER_PROMPT,
-                silhouette_type=silhouette,
-                styling_objectives=styling_objectives_str,
-                body_parts_to_highlight=highlight_str,
-                body_parts_to_minimize=minimize_str
-            )
-
-            print("\n🤖 APPEL OPENAI EN COURS...")
+            # ====================================================================
+            # FUSION ONBOARDING + OPENAI POUR PAGE 8
+            # ====================================================================
             print("\n" + "=" * 80)
-            print("DEBUG MORPHOLOGY PART 3 - PROMPT ENVOYÉ À OPENAI")
-            print("- SYSTEM (preview 200 chars) ----------------------------")
-            try:
-                print(MORPHOLOGY_PART3_SYSTEM_PROMPT[:200])
-            except Exception:
-                print("⚠️ Impossible d'afficher le system prompt Part 3")
-            print("- USER (preview 400 chars) ------------------------------")
-            print(user_prompt_part3[:400])
-            print("=" * 80 + "\n")
-
-
-            response_part3 = await self.openai.call_chat(
-                prompt=user_prompt_part3,
-                model="gpt-4-turbo",
-                max_tokens=2500  # ✅ Pour générer les 7 pièges
-            )
-            print("✅ RÉPONSE REÇUE")
-
-            content_part3 = response_part3.get("content", "")
-
-            print("\n📝 RÉPONSE BRUTE COMPLÈTE (Part 3) - {} chars:".format(len(content_part3)))
-            print("="*80)
-            print(content_part3[:1000] if len(content_part3) > 1000 else content_part3)
-            print("="*80)
-
-            # PARSING PART 3
-            print("\n🔍 PARSING JSON PART 3:")
-            content_part3_clean = self.clean_json_string(content_part3)
-            content_part3_clean = self.sanitize_json_multiline_strings(content_part3_clean)
-
-            try:
-                # 1) Tentative parsing direct
-                part3_result = json.loads(content_part3_clean)
-                print("   ✅ Parsing réussi!")
-
-                # ✅ Normalisation si le modèle a renvoyé "recommendations" au lieu de "details"
-                if isinstance(part3_result, dict) and "details" not in part3_result:
-                    if "recommendations" in part3_result and isinstance(part3_result["recommendations"], dict):
-                        part3_result["details"] = part3_result["recommendations"]
-
-
-            except json.JSONDecodeError:
-                print("   ⚠️ JSON invalide → tentative extraction brute")
-
-                # 2) Tentative extraction brute du JSON entre première { et dernière }
-                start = content_part3_clean.find("{")
-                end = content_part3_clean.rfind("}") + 1
-
-                if start != -1 and end > start:
-                    extracted = content_part3_clean[start:end]
-                    extracted = self.sanitize_json_multiline_strings(extracted)
-                    try:
-                        part3_result = json.loads(extracted)
-                        print("   ✅ Extraction JSON réussie!")
-                    except json.JSONDecodeError:
-                        print("   ⚠️ Extraction échouée → tentative correction OpenAI")
-                        try:
-                            part3_result = await self.force_valid_json(
-                                extracted,
-                                context="Morphology Part 3"
-                            )
-                            print("   ✅ JSON corrigé par OpenAI")
-                        except Exception:
-                            print("   ❌ Correction échouée → fallback")
-                            part3_result = {"details": {}}
-                else:
-                    print("   ⚠️ Aucun bloc JSON détecté → tentative correction OpenAI")
-                    try:
-                        part3_result = await self.force_valid_json(
-                            content_part3_clean,
-                            context="Morphology Part 3"
-                        )
-                        print("   ✅ JSON corrigé par OpenAI")
-                    except Exception:
-                        print("   ❌ Correction échouée → fallback")
-                        part3_result = {"details": {}}
-
-            # ============================
-            # NORMALISATION PART 3 (ANTI-VIDE)
-            # ============================
-            expected_cats = ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]
-
-            # Cas 1: catégories à la racine
-            if isinstance(part3_result, dict) and "details" not in part3_result:
-                if any(k in part3_result for k in expected_cats):
-                    part3_result = {"details": {k: part3_result.get(k, {}) for k in expected_cats}}
-
-                # Cas 2: bloc générique à la racine
-                elif any(k in part3_result for k in ["matieres", "motifs", "pieges"]):
-                    generic_block = {
-                        "matieres": part3_result.get("matieres", []),
-                        "motifs": part3_result.get("motifs", {}),
-                        "pieges": part3_result.get("pieges", [])
-                    }
-                    part3_result = {"details": {k: generic_block for k in expected_cats}}
-
-            # Sécuriser la structure
-            if not isinstance(part3_result, dict):
-                part3_result = {"details": {}}
-
-            if "details" not in part3_result or not isinstance(part3_result["details"], dict):
-                part3_result["details"] = {}
-
-            for cat in expected_cats:
-                if cat not in part3_result["details"] or not isinstance(part3_result["details"][cat], dict):
-                    part3_result["details"][cat] = {}
-                part3_result["details"][cat].setdefault("matieres", [])
-                part3_result["details"][cat].setdefault("motifs", {"recommandes": [], "a_eviter": []})
-                part3_result["details"][cat].setdefault("pieges", [])
-
-            details = part3_result.get("details", {})
-            print("      • Catégories trouvées: {}".format(list(details.keys())))
-
-                
-            # ========================================================================
-            # FUSION ONBOARDING + OPENAI + GÉNÉRATION HIGHLIGHTS/MINIMIZES
-            # ========================================================================
-            print("\n" + "="*80)
             print("🔗 FUSION ONBOARDING + OPENAI")
-            print("="*80)
-            
-            # Part 1 retourne body_parts_to_highlight/minimize (listes simples)
+            print("=" * 80)
+
             openai_highlight_parts = part1_result.get("body_parts_to_highlight", [])
             openai_minimize_parts = part1_result.get("body_parts_to_minimize", [])
-            
-            print("\n   OpenAI recommande:")
-            print(f"   • À valoriser: {openai_highlight_parts}")
-            print(f"   • À minimiser: {openai_minimize_parts}")
-            
-            # Fusionner les parties (déduplication)
+
             merged_highlight_parts = self.merge_body_parts(
                 onboarding_highlight_parts,
                 openai_highlight_parts
@@ -532,410 +290,47 @@ class MorphologyService:
                 onboarding_minimize_parts,
                 openai_minimize_parts
             )
-            
-            print("\n   Après fusion (union unique):")
-            print(f"   • À valoriser: {merged_highlight_parts}")
-            print(f"   • À minimiser: {merged_minimize_parts}")
-            
-            # Extraire silhouette_explanation comme explanation personnalisée
+
             silhouette_explanation = part1_result.get("silhouette_explanation", "")
-            
-            # VÉRIFIER SI OPENAI A DÉJÀ RETOURNÉ highlights et minimizes
-            print("\n✅ VÉRIFICATION: OpenAI a-t-il fourni highlights/minimizes ?")
+
             openai_highlights = part1_result.get("highlights", {})
             openai_minimizes = part1_result.get("minimizes", {})
-            
+
             has_openai_highlights = bool(openai_highlights and openai_highlights.get("announcement"))
             has_openai_minimizes = bool(openai_minimizes and openai_minimizes.get("announcement"))
-            
-            print(f"   • OpenAI highlights fournis: {has_openai_highlights}")
-            print(f"   • OpenAI minimizes fournis: {has_openai_minimizes}")
-            
-            # Construire les données finales pour Page 8
+
             if has_openai_highlights:
-                # Utiliser les données d'OpenAI directement (AVEC TIPS !)
-                print("   → Utilisation des données OpenAI pour highlights")
-                tips_text = ""
-                if openai_highlights.get("tips"):
-                    tips_text = "\n\nASPECTS À VALORISER (conseils):\n" + "\n".join([f"• {tip}" for tip in openai_highlights.get("tips", [])])
-                
                 highlights_data = {
                     "announcement": openai_highlights.get("announcement", ""),
                     "explanation": openai_highlights.get("explanation", ""),
                     "tips": openai_highlights.get("tips", []),
-                    "full_text": f"ANNONCE: {openai_highlights.get('announcement', '')}\n\nEXPLICATION: {openai_highlights.get('explanation', '')}{tips_text}"
+                    "full_text": ""
                 }
             else:
-                # Générer en interne (fallback)
-                print("   → Génération interne des données pour highlights")
                 highlights_data = self._format_highlights_for_page8(
                     parties=merged_highlight_parts,
                     silhouette_explanation=silhouette_explanation,
                     onboarding_parties=onboarding_highlight_parts,
                     openai_parties=openai_highlight_parts
                 )
-            
+                highlights_data.setdefault("tips", [])
+
             if has_openai_minimizes:
-                # Utiliser les données d'OpenAI directement (AVEC TIPS !)
-                print("   → Utilisation des données OpenAI pour minimizes")
-                tips_text = ""
-                if openai_minimizes.get("tips"):
-                    tips_text = "\n\nASPECTS À MINIMISER (conseils):\n" + "\n".join([f"• {tip}" for tip in openai_minimizes.get("tips", [])])
-                
                 minimizes_data = {
                     "announcement": openai_minimizes.get("announcement", ""),
                     "explanation": openai_minimizes.get("explanation", ""),
                     "tips": openai_minimizes.get("tips", []),
-                    "full_text": f"ANNONCE: {openai_minimizes.get('announcement', '')}\n\nEXPLICATION: {openai_minimizes.get('explanation', '')}{tips_text}"
+                    "full_text": ""
                 }
             else:
-                # Générer en interne (fallback)
-                print("   → Génération interne des données pour minimizes")
                 minimizes_data = self._format_minimizes_for_page8(
                     parties=merged_minimize_parts,
                     silhouette_explanation=silhouette_explanation,
                     onboarding_parties=onboarding_minimize_parts,
                     openai_parties=openai_minimize_parts
                 )
-            
-            print("\n✅ Highlights générés:")
-            print(f"   • Parties: {merged_highlight_parts}")
-            
-            print("\n✅ Minimizes générés:")
-            print(f"   • Parties: {merged_minimize_parts}")
-            
-            
-            # ========================================================================
-            # FUSION PART 2 + PART 3 (Ajouter les matieres, motifs, pieges)
-            # ========================================================================
-            print("\n" + "="*80)
-            print("🔗 FUSION PART 2 + PART 3")
-            print("="*80)
+                minimizes_data.setdefault("tips", [])
 
-            recommendations_part2 = part2_result.get("recommendations", {})
-            details_part3 = part3_result.get("details", {})
-
-            # Fusionner les deux pour chaque catégorie
-            merged_recommendations = {}
-            for category in ["hauts", "bas", "robes", "vestes", "maillot_lingerie", "chaussures", "accessoires"]:
-                part2_cat = recommendations_part2.get(category, {})
-                part3_cat = details_part3.get(category, {})
-                
-                merged = {
-                    "introduction": part2_cat.get("introduction", ""),
-                    "recommandes": part2_cat.get("recommandes", []),
-                    "a_eviter": part2_cat.get("pieces_a_eviter", part2_cat.get("a_eviter", [])),
-                    "matieres": part3_cat.get("matieres", part2_cat.get("matieres", "")),
-                    "motifs": part3_cat.get("motifs", part2_cat.get("motifs", {})),
-                    "pieges": part3_cat.get("pieges", []),  # ✅ Des Part 3!
-                    "visuels": []
-                }
-                
-                # ======================================================
-                # PATCH D — INTRODUCTION MÉTIER PAR CATÉGORIE (ANTI-VIDE)
-                # ======================================================
-
-                default_intros = {
-                    "vestes": "Les vestes jouent un rôle clé dans la structuration de votre silhouette. Bien choisies, elles apportent de l’équilibre et de l’allure.",
-                    "maillot_lingerie": "Les sous-vêtements et maillots constituent la base invisible de votre silhouette. Leur coupe influence directement le rendu des vêtements.",
-                    "chaussures": "Les chaussures complètent la silhouette et influencent la perception des proportions. Leur forme et leur structure sont déterminantes.",
-                    "accessoires": "Les accessoires finalisent une tenue et orientent le regard. Bien proportionnés, ils renforcent l’harmonie globale."
-                }
-
-                if not merged.get("introduction") or len(merged["introduction"].strip()) < 40:
-                    merged["introduction"] = default_intros.get(
-                        category,
-                        "Ces recommandations sont adaptées à votre morphologie afin de créer un ensemble cohérent."
-                    )
-
-                # ======================================================
-                # FALLBACK ANTI-SECTIONS VIDES (MORPHOLOGY)
-                # ======================================================
-
-                if not merged["recommandes"]:
-                    merged["recommandes"] = [
-                        {
-                            "cut_display": "Coupe adaptée à votre silhouette",
-                            "why": "Cette coupe permet d’équilibrer les volumes et de valoriser votre morphologie."
-                        }
-                    ]
-
-                if not merged["a_eviter"]:
-                    merged["a_eviter"] = [
-                        {
-                            "cut_display": "Coupe non structurée",
-                            "why": "Elle risque de déséquilibrer visuellement la silhouette."
-                        }
-                    ]
-
-                if not merged["pieges"]:
-                    merged["pieges"] = [
-                        "Éviter les volumes excessifs qui cassent l’équilibre naturel de la silhouette."
-                    ]
-
-                # ======================================================
-                # PATCH C-2 — DENSITÉ MINIMALE LISTES (ANTI-PAGES PAUVRES)
-                # ======================================================
-
-                def ensure_min_items(items, category, mode, min_items=4):
-                    if len(items) >= min_items:
-                        return items
-
-                    fallback = {
-                        "hauts": {
-                            "recommandes": [
-                                {"cut_display": "Haut structuré", "why": "Structure le haut du corps"},
-                                {"cut_display": "Détails verticaux", "why": "Allonge visuellement la silhouette"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Haut trop ample", "why": "Déséquilibre la carrure"},
-                            ],
-                        },
-                        "bas": {
-                            "recommandes": [
-                                {"cut_display": "Coupe droite", "why": "Équilibre les volumes"},
-                                {"cut_display": "Taille bien positionnée", "why": "Structure la silhouette"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Coupe trop moulante", "why": "Accentue les déséquilibres"},
-                            ],
-                        },
-                        "robes": {
-                            "recommandes": [
-                                {"cut_display": "Robe structurée", "why": "Soutient les lignes naturelles"},
-                                {"cut_display": "Taille marquée", "why": "Rééquilibre les proportions"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Robe informe", "why": "Efface la silhouette"},
-                            ],
-                        },
-                        "vestes": {
-                            "recommandes": [
-                                {"cut_display": "Veste cintrée", "why": "Structure le buste"},
-                                {"cut_display": "Épaules définies", "why": "Renforcent l’équilibre visuel"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Veste trop large", "why": "Manque de tenue"},
-                            ],
-                        },
-                    }
-
-                    extras = fallback.get(category, {}).get(mode, [])
-                    needed = max(0, min_items - len(items))
-                    return items + extras[:needed]
-
-
-                merged["recommandes"] = ensure_min_items(
-                    merged["recommandes"], category, "recommandes"
-                )
-
-                merged["a_eviter"] = ensure_min_items(
-                    merged["a_eviter"], category, "a_eviter"
-                )
-
-                # ======================================================
-                # PATCH B — DENSIFICATION RECOMMANDATIONS / A ÉVITER
-                # ======================================================
-
-                def enrich_list(items, category, mode):
-                    fallback = {
-                        "hauts": {
-                            "recommandes": [
-                                {"cut_display": "Haut structuré", "why": "Structure le haut du corps"},
-                                {"cut_display": "Détails verticaux", "why": "Allonge visuellement la silhouette"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Haut trop ample", "why": "Alourdit la carrure"},
-                            ],
-                        },
-                        "robes": {
-                            "recommandes": [
-                                {"cut_display": "Robe fluide structurée", "why": "Suit les lignes naturelles"},
-                                {"cut_display": "Taille marquée", "why": "Rééquilibre les volumes"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Robe droite rigide", "why": "Efface la silhouette"},
-                            ],
-                        },
-                        "vestes": {
-                            "recommandes": [
-                                {"cut_display": "Veste cintrée", "why": "Structure le buste"},
-                                {"cut_display": "Épaule définie", "why": "Renforce l’équilibre visuel"},
-                            ],
-                            "a_eviter": [
-                                {"cut_display": "Veste informe", "why": "Manque de structure"},
-                            ],
-                        },
-                    }
-
-                    if len(items) >= 4:
-                        return items
-
-                    extra = fallback.get(category, {}).get(mode, [])
-                    return items + extra[: max(0, 4 - len(items))]
-
-
-                merged["recommandes"] = enrich_list(
-                    merged["recommandes"], category, "recommandes"
-                )
-
-                merged["a_eviter"] = enrich_list(
-                    merged["a_eviter"], category, "a_eviter"
-                )
-
-                # ======================================================
-                # PATCH C2 — FORMAT PDFMONKEY (RICH + STABLE)
-                # Objectif:
-                # - garder un JSON Part 3 "court" (listes de mots)
-                # - enrichir en phrases côté Python (zéro risque de JSON invalide dû aux longues phrases)
-                # - rendre lisible: retours ligne + item en gras
-                # ======================================================
-
-                def _clean_txt(s: str) -> str:
-                    if not isinstance(s, str):
-                        return ""
-                    return (
-                        s.replace("\n", " ")
-                         .replace("\r", " ")
-                         .replace("\t", " ")
-                         .replace("•", "")
-                         .strip()
-                    )
-
-                def _dedupe_keep_order(items):
-                    seen = set()
-                    out = []
-                    for it in items:
-                        key = _clean_txt(str(it)).lower()
-                        if not key or key in seen:
-                            continue
-                        seen.add(key)
-                        out.append(_clean_txt(str(it)))
-                    return out
-
-                # Données morpho utiles pour contextualiser les phrases
-                objectives_ctx = styling_objectives_str if isinstance(styling_objectives_str, str) else ""
-                highlight_ctx = highlight_str if isinstance(highlight_str, str) else ""
-                minimize_ctx = minimize_str if isinstance(minimize_str, str) else ""
-
-                def _explain_material(mat: str, cat: str) -> str:
-                    """
-                    Phrase courte, orientée 'objectif morpho', sans dépendre d'OpenAI.
-                    """
-                    mat_l = mat.lower()
-                    # heuristiques simples (suffisamment bonnes + stables)
-                    if any(k in mat_l for k in ["crêpe", "viscose", "soie", "mousseline", "chiffon", "jersey", "fluide"]):
-                        return f"apporte un tombé souple qui allonge visuellement et évite d’ajouter du volume sur les zones à minimiser ({minimize_ctx})."
-                    if any(k in mat_l for k in ["tweed", "sergé", "gabardine", "denim", "coton épais", "laine"]):
-                        return f"donne de la tenue et structure la silhouette, utile pour soutenir les zones à valoriser ({highlight_ctx}) et atteindre l’objectif ({objectives_ctx})."
-                    if any(k in mat_l for k in ["stretch", "élasthanne", "extensible"]):
-                        return f"offre du confort tout en gardant une ligne nette, idéal pour épouser sans comprimer et rester cohérent avec l’objectif ({objectives_ctx})."
-                    if any(k in mat_l for k in ["cuir", "suédine", "velours"]):
-                        return f"ajoute de la matière et du caractère sans épaissir si la coupe reste structurée, ce qui aide à équilibrer les proportions."
-                    return f"reste cohérent avec l’objectif morphologique ({objectives_ctx}) tout en gardant une silhouette lisible et harmonieuse."
-
-                def _explain_pattern(pat: str, cat: str, mode: str) -> str:
-                    pat_l = pat.lower()
-                    if mode == "recommandes":
-                        if any(k in pat_l for k in ["vertical", "rayure verticale", "lignes verticales"]):
-                            return f"crée une illusion d’allongement et guide le regard dans le sens de la hauteur, utile pour équilibrer la silhouette ({objectives_ctx})."
-                        if any(k in pat_l for k in ["uni", "ton sur ton", "monochrome"]):
-                            return f"rend la ligne plus lisible et plus élégante, ce qui affine visuellement et évite les ruptures sur les zones à minimiser ({minimize_ctx})."
-                        if any(k in pat_l for k in ["petit", "discret", "micro", "pois", "géométrique petit"]):
-                            return f"apporte du style sans élargir, en gardant une lecture légère et proportionnée à la morphologie."
-                        if any(k in pat_l for k in ["texturé", "relief", "subtil"]):
-                            return f"ajoute du relief sans créer de rupture forte, ce qui renforce l’équilibre global de la silhouette."
-                        return f"reste proportionné à la morphologie et aide à mettre en valeur ({highlight_ctx}) sans surcharger ({minimize_ctx})."
-                    else:
-                        if any(k in pat_l for k in ["horizontal", "rayure horizontale", "bandes"]):
-                            return f"élargit visuellement et coupe la silhouette, ce qui peut accentuer les contrastes de volumes (à éviter sur {minimize_ctx})."
-                        if any(k in pat_l for k in ["grand", "large", "oversize", "massif"]):
-                            return f"attire fortement l’attention et amplifie la zone où il se place, donc à éviter sur les zones à minimiser ({minimize_ctx})."
-                        if any(k in pat_l for k in ["contrasté", "flashy", "vif"]):
-                            return f"crée une rupture très marquée et peut déséquilibrer l’ensemble; mieux vaut limiter pour garder une silhouette harmonieuse."
-                        return f"risque de créer du volume visuel ou une rupture trop marquée; à limiter surtout si tu veux minimiser ({minimize_ctx})."
-
-                def _to_html_lines(label: str, items: list, explain_fn, cat: str, mode: str = "") -> str:
-                    """
-                    Retourne un HTML compact (safe pour PDFMonkey) :
-                    <strong>item</strong> : explication<br>
-                    """
-                    if not items:
-                        return ""
-
-                    items = _dedupe_keep_order(items)
-                    lines = []
-                    for it in items:
-                        if not it:
-                            continue
-                        expl = explain_fn(it, cat) if mode == "" else explain_fn(it, cat, mode)
-                        expl = _clean_txt(expl)
-                        # IMPORTANT: éviter les guillemets doubles dans l'HTML injecté
-                        lines.append(f"<strong>{it}</strong> : {expl}")
-                    return "<br>".join(lines)
-
-                # ---------------------------
-                # MOTIFS: sources + fallback
-                # ---------------------------
-                motifs = merged.get("motifs", {})
-                if isinstance(motifs, dict):
-                    rec_list = motifs.get("recommandes", []) or []
-                    avoid_list = motifs.get("a_eviter", []) or []
-                elif isinstance(motifs, list):
-                    rec_list = motifs
-                    avoid_list = []
-                else:
-                    rec_list = []
-                    avoid_list = []
-
-                # fallback métier si vide
-                if not rec_list:
-                    rec_list = [
-                        "rayures verticales fines",
-                        "uni",
-                        "motifs discrets proportionnés"
-                    ]
-                if not avoid_list:
-                    avoid_list = [
-                        "rayures horizontales larges",
-                        "motifs trop massifs",
-                        "contrastes trop vifs"
-                    ]
-
-                # HTML final (avec explications)
-                merged["motifs"] = {
-                    "recommandes": _to_html_lines("recommandes", rec_list, _explain_pattern, category, mode="recommandes"),
-                    "a_eviter": _to_html_lines("a_eviter", avoid_list, _explain_pattern, category, mode="a_eviter"),
-                }
-
-                # ---------------------------
-                # MATIERES: sources + fallback
-                # ---------------------------
-                matieres = merged.get("matieres", [])
-                if isinstance(matieres, str):
-                    # si une string arrive malgré tout, on tente de la splitter grossièrement
-                    matieres = [m.strip(" -•") for m in re.split(r"[•,\|;/]+", matieres) if m.strip()]
-                elif not isinstance(matieres, list):
-                    matieres = []
-
-                if not matieres:
-                    matieres = ["maille fine", "viscose fluide", "coton structuré", "jersey doux"]
-
-                merged["matieres"] = _to_html_lines("matieres", matieres, _explain_material, category)
-
-
-                merged_recommendations[category] = merged
-                pieges_count = len(merged.get('pieges', []))
-                print(f"   • {category}: {pieges_count} pièges")
-
-            print("   ✅ Fusion complétée!")
-            # ========================================================================
-            # RÉSULTAT FINAL
-            # ========================================================================
-            print("\n" + "="*80)
-            print("📦 RÉSULTAT FINAL")
-            print("="*80)
-            
             final_result = {
                 "silhouette_type": part1_result.get("silhouette_type"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
@@ -944,29 +339,22 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": merged_recommendations,  # ✅ Avec Part 2 + Part 3!
-                
-                # ✨ DONNÉES POUR PAGE 8 (GÉNÉRÉES EN INTERNE)
                 "highlights": highlights_data,
                 "minimizes": minimizes_data,
+                "morphology_mvp": deep_normalize_strings(part2_result),
             }
-            
-            # Normalisation FR (anti coquilles)
-            final_result["recommendations"] = deep_normalize_strings(final_result.get("recommendations", {}))
 
-            print("✅ Morphologie v5.2 générée avec succès!")
-            print("\n" + "="*80 + "\n")
-
+            print("✅ Morphologie MVP générée avec succès")
+            print("\n" + "=" * 80 + "\n")
             return final_result
 
-            
         except Exception as e:
             print(f"\n❌ EXCEPTION: {str(e)}")
             call_tracker.log_error("Morphology", str(e))
-            
+
             import traceback
             traceback.print_exc()
-            
+
             return {
                 "silhouette_type": part1_result.get("silhouette_type"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
@@ -975,9 +363,13 @@ class MorphologyService:
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
                 "bodyType": part1_result.get("silhouette_type"),
-                "recommendations": merged_recommendations,  # ✅ Avec Part 2 + Part 3!
+                "highlights": part1_result.get("highlights", {}),
+                "minimizes": part1_result.get("minimizes", {}),
+                "morphology_mvp": self._generate_default_morphology_mvp(
+                    part1_result.get("silhouette_type", "O")
+                ),
             }
-    
+
     def _format_highlights_for_page8(self, parties: list, silhouette_explanation: str,
                                      onboarding_parties: list, openai_parties: list) -> dict:
         """
@@ -1126,6 +518,62 @@ EXPLICATION: {explanation}"""
 
         return json.loads(content)
 
+    def _generate_default_morphology_mvp(self, silhouette: str) -> dict:
+        """Fallback MVP compact si Part 2 échoue."""
+        return {
+            "essentials": {
+                "tops": [
+                    {"name": "Top col V fluide", "why": "allonge le haut du corps"},
+                    {"name": "Blouse légèrement structurée", "why": "apporte de la tenue sans durcir"},
+                    {"name": "Haut cache coeur", "why": "dessine une taille visuelle"},
+                ],
+                "bottoms": [
+                    {"name": "Pantalon taille haute droit", "why": "allonge la jambe"},
+                    {"name": "Jean brut coupe droite", "why": "équilibre les volumes"},
+                    {"name": "Jupe midi fluide", "why": "adoucit la silhouette"},
+                ],
+                "dresses_jackets": [
+                    {"name": "Robe portefeuille", "why": "structure la silhouette"},
+                    {"name": "Robe empire sobre", "why": "allège la zone centrale"},
+                    {"name": "Veste cintrée ouverte", "why": "crée une ligne verticale"},
+                ],
+                "shoes_accessories": [
+                    {"name": "Escarpins ou bottines à talon moyen", "why": "élancent la silhouette"},
+                    {"name": "Collier long discret", "why": "renforce la verticalité"},
+                    {"name": "Ceinture fine", "why": "marque la taille sans couper"},
+                ],
+            },
+            "avoid": [
+                {"name": "Hauts trop boxy", "why": "effacent la structure du buste"},
+                {"name": "Volumes concentrés au milieu du corps", "why": "alourdissent visuellement"},
+                {"name": "Pièces trop raides ou trop larges", "why": "cassent l harmonie générale"},
+            ],
+            "outfit_formulas": [
+                {
+                    "occasion": "Quotidien",
+                    "pieces": ["Top fluide", "Jean droit taille haute", "Veste ouverte", "Bottines"],
+                    "why_it_works": "silhouette lisible, confortable et équilibrée",
+                },
+                {
+                    "occasion": "Travail",
+                    "pieces": ["Blouse structurée", "Pantalon droit", "Blazer cintré", "Escarpins"],
+                    "why_it_works": "tenue élégante qui affine et structure",
+                },
+                {
+                    "occasion": "Sortie",
+                    "pieces": ["Robe portefeuille", "Talons moyens", "Boucles discrètes", "Mini sac structuré"],
+                    "why_it_works": "met en valeur sans surcharger la silhouette",
+                },
+            ],
+            "shopping_priorities": [
+                "Un haut col V ou cache coeur",
+                "Un pantalon droit taille haute",
+                "Une robe portefeuille unie",
+                "Une veste cintrée facile à superposer",
+                "Une paire de chaussures qui allonge la jambe",
+            ],
+        }
+        
     def _generate_default_recommendations(self, silhouette: str) -> dict:
         """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
         print("   ✅ Génération recommandations par défaut")

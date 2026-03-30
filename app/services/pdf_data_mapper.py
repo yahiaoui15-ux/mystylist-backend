@@ -289,6 +289,7 @@ class PDFDataMapper:
         
         colorimetry_raw = PDFDataMapper._safe_dict(report_data.get("colorimetry", {}))
         morphology_raw = PDFDataMapper._safe_dict(report_data.get("morphology", {}))
+        morphology_mvp = PDFDataMapper._safe_dict(morphology_raw.get("morphology_mvp", {}))
         # ✅ Styling = schéma V3 (source of truth)
         styling_raw = PDFDataMapper._safe_dict(report_data.get("styling", {}))
 
@@ -406,9 +407,8 @@ class PDFDataMapper:
 
 
         
-        # Page 8 & Pages 9-15
+        # Page 8 + nouvelle section morphologie MVP
         morphology_page1 = PDFDataMapper._transform_morphology_service_data(morphology_raw, user_data)
-        morpho_categories = PDFDataMapper._generate_morphology_categories(morphology_raw, user_data)
 
         # ═══════════════════════════════════════════════════════════
         # COLORIMETRY - CORRECTION COMPLÈTE PAGES 4, 5, 7
@@ -561,8 +561,12 @@ class PDFDataMapper:
             },
             
             # ✅ PAGES 9-15: Morpho categories
-            "morpho": {
-                "categories": morpho_categories,
+            # ✅ NOUVELLE SECTION MORPHOLOGIE MVP
+            "morphology_mvp": {
+                "essentials": PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {})),
+                "avoid": PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
+                "outfit_formulas": PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", [])),
+                "shopping_priorities": PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
             },
             
             "morphology_highlights": morphology_raw.get("highlights", {
@@ -608,7 +612,9 @@ class PDFDataMapper:
         print(f"   ✓ Couleurs à éviter: {len(couleurs_eviter)} couleurs")
         print(f"   ✓ Associations: {len(associations)} enrichies")
         print(f"   ✓ Makeup: {sum(1 for v in makeup_mapping.values() if v)} champs remplis")
-        print(f"   ✓ Morpho categories: {list(morpho_categories.keys())}")
+        print(f"   ✓ Morphology MVP essentials: {list(PDFDataMapper._safe_dict(morphology_mvp.get('essentials', {})).keys())}")
+        print(f"   ✓ Morphology MVP avoid: {len(PDFDataMapper._safe_list(morphology_mvp.get('avoid', [])))} items")
+        print(f"   ✓ Morphology MVP formulas: {len(PDFDataMapper._safe_list(morphology_mvp.get('outfit_formulas', [])))} items")
 
         # ---------------------------------------------------------------------
         # PAGE 16 - UNIVERS VISUEL (style_visuals) - EXACTEMENT 9 VISUELS
@@ -720,43 +726,22 @@ class PDFDataMapper:
 
     @staticmethod
     def _transform_morphology_service_data(morphology_raw: dict, user_data: dict) -> dict:
-        """Transforme morphology_service.analyze() en morphology_page1"""
+        """Transforme morphology_service.analyze() en données page 8."""
         silhouette_type = morphology_raw.get("silhouette_type", "")
         silhouette_explanation = morphology_raw.get("silhouette_explanation", "")
         styling_objectives = PDFDataMapper._safe_list(morphology_raw.get("styling_objectives", []))
-        recommendations = PDFDataMapper._safe_dict(morphology_raw.get("recommendations", {}))
-        instant_tips = PDFDataMapper._safe_list(morphology_raw.get("instant_tips", []))
-        
-        hauts_recos = PDFDataMapper._safe_dict(recommendations.get("hauts", {}))
-        a_privilegier = PDFDataMapper._safe_list(hauts_recos.get("a_privilegier", []))
-        a_eviter = PDFDataMapper._safe_list(hauts_recos.get("a_eviter", []))
-        
-        highlights = []
-        for item in a_privilegier[:3]:
-            cut_display = item.get("cut_display", item.get("cut", ""))
-            why = item.get("why", "")
-            if cut_display:
-                highlights.append(f"{cut_display}: {why}" if why else cut_display)
-        
-        minimizes = []
-        for item in a_eviter[:3]:
-            cut = item.get("cut", item.get("cut_display", ""))
-            why = item.get("why", "")
-            if cut:
-                minimizes.append(f"{cut}: {why}" if why else cut)
-        
+
         waist = user_data.get("waist_circumference", 0) or 0
         shoulders = user_data.get("shoulder_circumference", 0) or 0
         hips = user_data.get("hip_circumference", 0) or 0
-        
-       # ✅ Convertir en float avant comparaison
+
         hips_float = float(hips) if hips else 0
         shoulders_float = float(shoulders) if shoulders else 0
         waist_float = float(waist) if waist else 0
 
         waist_hip_ratio = round(waist_float / hips_float, 2) if hips_float > 0 else ""
         waist_shoulder_ratio = round(waist_float / shoulders_float, 2) if shoulders_float > 0 else ""
-        
+
         return {
             "bodyType": silhouette_type,
             "coherence": silhouette_explanation,
@@ -772,11 +757,10 @@ class PDFDataMapper:
                 "weightKg": user_data.get("weight", ""),
             },
             "comment": " ".join(styling_objectives[:1]) if styling_objectives else "",
-            "goals": styling_objectives if styling_objectives else ["Créer de la verticalité"],
-            "highlights": highlights if highlights else ["Vos atouts naturels"],
-            "minimizes": minimizes if minimizes else ["Créer une transition fluide"],
-            "instantTips": instant_tips if instant_tips else ["Explorez les coupes qui vous flattent"],
-            "photos": {"body": user_data.get("body_photo_url", "")},
+            "goals": styling_objectives if styling_objectives else ["Créer une silhouette harmonieuse"],
+            "photos": {
+                "body": user_data.get("body_photo_url", "")
+            },
         }
 
     @staticmethod
