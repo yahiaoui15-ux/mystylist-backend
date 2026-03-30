@@ -634,6 +634,10 @@ class PDFDataMapper:
                 "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFreides", "")),
             }
         }
+        # ✅ Enrichissement visuels pédagogiques pour morphologie MVP
+        print("\n🎨 Enrichissement visuels MVP morphologie...")
+        essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
+        essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
         
         # BUILD LIQUID DATA
         liquid_data = {
@@ -694,11 +698,7 @@ class PDFDataMapper:
             },
             
             # ✅ PAGES 9-15: Morpho categories
-            # ✅ Enrichissement visuels pédagogiques pour morphologie MVP
-            print("\n🎨 Enrichissement visuels MVP morphologie...")
-            essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
-            essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
- 
+           
             "morphology_mvp": {
                 "essentials": essentials_enriched,
                 "avoid": PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
