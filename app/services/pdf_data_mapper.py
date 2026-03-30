@@ -283,7 +283,6 @@ class PDFDataMapper:
         
         return transformed
 
-# ═══════════════════════════════════════════════════════════════
     # MAPPING KEYWORD → nom_simplifie (basé sur vraies données Supabase)
     # Table visuels : 36 images disponibles
     # ═══════════════════════════════════════════════════════════════
@@ -416,7 +415,7 @@ class PDFDataMapper:
 
         return enriched
 
-   @staticmethod
+    @staticmethod
     def _guess_supabase_cats_for_piece(name: str) -> list:
         """Devine la(les) catégorie(s) Supabase pour un nom de pièce de formule."""
         n = PDFDataMapper._normalize_for_matching(name)
@@ -484,8 +483,6 @@ class PDFDataMapper:
  
         return enriched_formulas
  
- 
-
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """Prépare variables Liquid pour PDFMonkey - VERSION CORRIGÉE"""
@@ -528,8 +525,6 @@ class PDFDataMapper:
         # ---------------------------------------------------------------------
         # STYLING VISUALS + PRODUCT MATCH (PAGES 18-19)
         # ---------------------------------------------------------------------
- 
-
 
         def _apply_fallback_visuals(items: list) -> list:
             """
@@ -704,6 +699,11 @@ class PDFDataMapper:
                 "effet_couleurs_froides": impact_visuel_raw.get("effet_couleurs_froides", impact_visuel_raw.get("effetCouleursFreides", "")),
             }
         }
+        
+        # ✅ Enrichissement visuels pédagogiques MVP morphologie
+        print("\n🎨 Enrichissement visuels MVP morphologie...")
+        essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
+        essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
 
         # ✅ Enrichissement formules de tenues avec visuels
         print("\n🎨 Enrichissement formules de tenues...")
