@@ -287,57 +287,198 @@ class PDFDataMapper:
     # Table visuels : 36 images disponibles
     # ═══════════════════════════════════════════════════════════════
     MORPHO_MVP_KEYWORD_MAP = {
-        "haut": [
-            (["col en v", "col v", "encolure en v", "decollete en v", "cache-coeur", "cache coeur", "blouse", "chemisier"], "encolure_en_v"),
-            (["encolure bateau", "col bateau"], "encolure_bateau"),
-            (["encolure carree", "col carre", "col carré"], "encolure_carree"),
-            (["manches bouffantes", "bouffantes", "bouffant"], "manches_bouffantes"),
-            (["chauve-souris", "chauve souris", "chauve_souris"], "manches_chauve_souris"),
-            (["top fluide", "blouse fluide", "chemise fluide"], "top_fluide"),
-            (["fluide"], "top_fluide"),
-            (["col roule", "col roul", "col roulé"], "pull_col_roul"),
-            (["pull", "sweat"], "pull_col_roul"),
-            (["epaulettes", "epaulette", "epaule structuree", "epaule structure"], "haut_epaulettes"),
-            (["peplum", "cintree", "cintre"], "haut_cintre"),
-            (["gilet"], "gilet_long"),
-            (["debardeur"], "debardeur_long"),
-        ],
-        "bas": [
-            (["jupe crayon", "crayon taille haute", "crayon"], "jupe_crayon"),
-            (["jupe trapeze", "trapeze"], "jupe_trapeze"),
-            (["jupe patineuse", "patineuse"], "jupe_patineuse"),
-            (["palazzo", "evase", "evasee", "large", "ample"], "pantalon_flare"),
-            (["flare"], "pantalon_flare"),
-            (["bootcut"], "pantalon_bootcut"),
-            (["droit taille", "droit", "chino", "cigarette"], "pantalon_droit"),
-            (["slim", "skinny"], "jean_slim"),
-            (["carotte"], "pantalon_carotte"),
-            (["short"], "short_taille_haute"),
-            (["jean"], "jean_slim"),
-        ],
-        "robe": [
-            (["portefeuille"], "robe_portefeuille"),
-            (["empire"], "robe_empire"),
-            (["patineuse"], "robe_patineuse"),
-            (["bustier"], "robe_bustier"),
-            (["chemise"], "robe_chemise"),
-            (["droite"], "robe_droite"),
-        ],
-        "veste": [
-            (["blazer", "cintree", "cintre"], "blazer_cintre"),
-            (["courte"], "veste_courte"),
-            (["trench", "mi-long", "mi long", "long"], "veste_mi_longue"),
-            (["oversized", "oversize"], "veste_oversized"),
-        ],
-        "accessoire": [
-            (["ceinture fine"], "ceinture_fine"),
-            (["ceinture large"], "ceinture_large"),
-            (["ceinture moyenne"], "ceinture_moyenne"),
-            (["ceinture obi"], "ceinture_obi"),
-            (["ceinture tressee", "ceinture tress", "ceinture tressée"], "ceinture_tressee"),
-            (["ceinture"], "ceinture_fine"),   # fallback générique
-        ],
-    }
+    
+            # ── HAUTS (31 visuels disponibles) ───────────────────────────────────
+            "haut": [
+                # Épaules en premier (priorité haute)
+                (["epaulettes", "epaulette", "epaule structur", "epaule froncee",
+                "epaules froncees", "fronce aux epaules"], "chemise_epaules_froncees"),
+                # Manches bouffantes
+                (["manches bouffantes", "bouffantes", "bouffant",
+                "blouse bouffant", "blouse a manches bouffantes"], "blouse_imprimee_manches_bouffantes"),
+                # Cache-cœur / Col en V
+                (["cache-coeur", "cache coeur", "cachecoeur",
+                "col en v", "col v", "encolure en v"], "cache_coeur"),
+                # Encolure bateau
+                (["encolure bateau", "col bateau", "bateau", "bardot"], "encolure_bateau"),
+                # Encolure carrée
+                (["encolure carree", "col carre", "col carre"], "encolure_carree"),
+                # Chauve-souris
+                (["chauve-souris", "chauve souris"], "manches_chauve_souris"),
+                # Chemise cintrée
+                (["chemisier cintre", "chemise cintree", "blouse cintree"], "chemise_cintree"),
+                # Chemise fluide / droite
+                (["chemise fluide", "chemise droite fluide", "blouse droite",
+                "chemise droite", "blouse satinee", "chemise satinee"], "chemise_droite_fluide"),
+                # Chemise imprimée
+                (["chemise imprimee", "blouse imprimee", "imprimee"], "chemise_droite_fluide_imprimee"),
+                # Chemise rayée / oversize
+                (["rayures horizontales", "rayures", "rayee",
+                "chemise rayee", "top rayures"], "chemise_oversize_rayee"),
+                # Blouse / chemise générique
+                (["blouse", "chemisier", "chemise oversize", "chemise souple"], "blouse_droite_satinee"),
+                # Peplum / cintré
+                (["peplum", "cintree", "cintre"], "haut_cintre"),
+                # Top fluide
+                (["top fluide", "haut fluide", "top doux"], "top_fluide"),
+                # Fluide générique
+                (["fluide"], "chemise_droite_fluide"),
+                # Cardigan
+                (["cardigan", "gilet long", "gilet en maille"], "cardigan_laine"),
+                # Gilet court
+                (["gilet"], "gilet_long"),
+                # Col roulé / pull
+                (["col roule", "col roul", "col roule",
+                "pull col roule", "pull", "sweat", "maille"], "pull_col_roul"),
+                # Épaulettes (générique)
+                (["epaulettes", "epaulette", "haut epaulettes"], "haut_epaulettes"),
+                # Débardeur
+                (["debardeur", "debardeur long"], "debardeur_long"),
+            ],
+    
+            # ── BAS (15 visuels disponibles) ─────────────────────────────────────
+            "bas": [
+                (["jupe crayon", "jupe crayon taille haute", "crayon"], "jupe_crayon"),
+                (["jupe midi portefeuille", "jupe portefeuille"], "jupe_midi_portefeuille"),
+                (["jupe trapeze", "trapeze"], "jupe_trapeze"),
+                (["jupe patineuse", "patineuse"], "jupe_patineuse"),
+                # Palazzo / évasé
+                (["palazzo", "pantalon palazzo fluide"], "pantalon_palazzo_fluide_beige"),
+                (["palazzo"], "pantalon_palazzo"),
+                (["evase", "evasee", "large fluide", "ample", "fluide"], "pantalon_large_fluide"),
+                (["flare"], "pantalon_flare"),
+                (["bootcut"], "pantalon_bootcut"),
+                (["carotte"], "pantalon_carotte"),
+                # Jean slim / skinny
+                (["slim", "skinny", "jean slim"], "jean_slim"),
+                # Jean droit taille haute
+                (["jean droit", "jean taille haute"], "jean_droit_taille_haute"),
+                # Jean taille mi-haute
+                (["jean taille mi", "jean mi-haute"], "jean_taille_mi_haute"),
+                (["jean"], "jean_droit_taille_haute"),
+                # Pantalon droit / taille haute
+                (["droit taille haute", "pantalon taille haute droit"], "pantalon_taille_haute_droit"),
+                (["taille haute", "pantalon taille haute"], "pantalon_taille_haute"),
+                (["droit", "chino", "cigarette", "ajuste"], "pantalon_droit"),
+                (["short"], "short_taille_haute"),
+            ],
+    
+            # ── ROBES (6 visuels disponibles) ────────────────────────────────────
+            "robe": [
+                (["portefeuille"], "robe_portefeuille"),
+                (["empire"], "robe_empire"),
+                (["patineuse"], "robe_patineuse"),
+                (["bustier"], "robe_bustier"),
+                (["chemise"], "robe_chemise"),
+                (["droite", "ligne droite"], "robe_droite"),
+            ],
+    
+            # ── VESTES (4 visuels disponibles) ───────────────────────────────────
+            "veste": [
+                (["blazer", "cintree", "cintre"], "blazer_cintre"),
+                (["courte"], "veste_courte"),
+                (["trench", "mi-long", "mi long", "long"], "veste_mi_longue"),
+                (["oversize", "oversized"], "veste_oversized"),
+            ],
+    
+            # ── CHAUSSURES (31 visuels disponibles) ──────────────────────────────
+            "chaussure": [
+                # Escarpins (du plus spécifique au plus générique)
+                (["escarpin pointu cuir", "escarpins pointus cuir"], "escarpins_pointus_cuir"),
+                (["escarpin pointu", "escarpins pointus"], "escarpins_pointus"),
+                (["escarpin bride", "escarpins brides"], "escarpins_brides_vernis_cuir"),
+                (["escarpin bout carre", "escarpins bout carre"], "escarpins_bout_carree"),
+                (["kitten heel", "kitten", "petit talon fin"], "escarpins_kitten_heel_cuir"),
+                (["talon bloc", "escarpin talon bloc"], "escarpins_talons_bloc"),
+                (["escarpin ouvert", "escarpins ouverts"], "escarpins_ouverts_arriere"),
+                (["escarpin", "talon haut", "talons hauts", "talons aiguilles", "aiguille"], "escarpins_pointus"),
+                # Sandales
+                (["sandales fines talons", "sandales talons fins"], "sandales_fines_talons_dorees"),
+                (["sandales lannieres", "sandales lanieres", "nu-pieds lanieres"], "sandales_lannieres_montantes"),
+                (["sandales compensees"], "sandales_compensees"),
+                (["sandales plateforme"], "sandales_talon_plateforme_daim"),
+                (["sandales plates"], "sandales_plates_cuir"),
+                (["sandales talons"], "sandales_fines_talons_dorees"),
+                (["sandales", "nu-pieds"], "sandales_fines_talons_dorees"),
+                # Bottes & Bottines
+                (["bottines western", "western"], "bottines_western_bouts_pointus"),
+                (["bottines talon fin"], "bottines_talon_fin_velours"),
+                (["bottines talon large"], "bottines_talon_large"),
+                (["bottines", "bottine"], "bottines_talon_fin_velours"),
+                (["bottes hautes"], "bottes_hautes_cuir_velours"),
+                (["bottes talons", "bottes a talons"], "bottes_talons_cuir"),
+                (["bottes mollets"], "bottes_mollets_larges"),
+                (["bottes plates"], "bottes_cuir_plates"),
+                (["bottes", "boots"], "bottes_talons_cuir"),
+                # Ballerines
+                (["ballerines pointues"], "ballerines_pointues_cuir"),
+                (["ballerines"], "ballerines_daim_classiques"),
+                # Mocassins
+                (["mocassins chunky", "loafers chunky"], "mocassins_chunky"),
+                (["mocassins", "mocassin", "loafer"], "mocassins"),
+                # Mules
+                (["mules talons", "mules a talons"], "mules_ouvertes_talons"),
+                (["mules"], "mules_plates_cuir"),
+                # Espadrilles
+                (["espadrilles compensees"], "espadrilles_coton_compensees"),
+                (["espadrilles talon"], "espadrilles_cuir_talon"),
+                (["espadrilles"], "espadrilles_rayees_plates"),
+                # Sneakers
+                (["sneakers massives", "basket masse"], "sneakers_massives"),
+                (["sneakers montantes", "sneakers compensees"], "sneakers_montantes_compensees_beige"),
+                (["sneakers", "basket", "sport"], "sneakers_fines_minimalistes"),
+                # Derbies
+                (["derbies", "derby", "richelieu"], "derbies_feminines"),
+            ],
+    
+            # ── ACCESSOIRES (37 visuels disponibles) ─────────────────────────────
+            "accessoire": [
+                # Sacs (du plus spécifique au plus générique)
+                (["sac cabas"], "sac_cabas_grand_noir"),
+                (["sac rigide"], "sac_rigide"),
+                (["sac demi lune", "half-moon"], "sac_demi_lune_petit_format_cuir"),
+                (["sac bandouliere", "sac croise", "crossbody"], "sac_bandouliere_souple_petit_format"),
+                (["sac porte croise", "porte croise"], "sac_porte_croise"),
+                (["sac porte epaule", "sac epaule"], "sac_porte_epaule"),
+                (["sac a main", "sac main", "sac porte main"], "sac_a_main_moyen_cuir_souple"),
+                (["sac"], "sac_a_main_moyen_cuir_souple"),
+                # Ceintures
+                (["ceinture corset"], "ceinture_corset"),
+                (["ceinture tres fine"], "ceinture_tres_fine"),
+                (["ceinture fine en cuir", "ceinture fine"], "ceinture_fine"),
+                (["ceinture taille haute boucle"], "ceinture_taille_haute_boucle_ardillon"),
+                (["ceinture taille haute"], "ceinture_taille_haute"),
+                (["ceinture large boucle"], "ceinture_large_boucle"),
+                (["ceinture large"], "ceinture_large"),
+                (["ceinture moyenne"], "ceinture_moyenne"),
+                (["ceinture chaine"], "ceinture_chaine"),
+                (["ceinture obi"], "ceinture_obi"),
+                (["ceinture cuir tressee", "ceinture tressee"], "ceinture_cuir_tressee"),
+                (["ceinture"], "ceinture_fine"),
+                # Colliers / Sautoirs
+                (["sautoir", "collier long", "long collier"], "sautoir_etain_dore"),
+                (["collier multi rang", "multi-rang"], "collier_multi_rang"),
+                (["collier mi long", "collier moyen"], "collier_mi_long"),
+                (["collier ras du cou", "ras du cou", "choker"], "collier_ras_du_cou"),
+                (["chaine maille", "chaine doree"], "chaine_maille_torsadee_laiton_dore"),
+                (["pendentif"], "pendentif_pierre_naturelle"),
+                (["collier"], "collier_mi_long"),
+                # Boucles d'oreilles
+                (["creoles", "boucles creoles"], "boucles_d_oreilles_creoles"),
+                (["boucles pendantes", "boucles longues"], "boucles_d_oreilles_pendantes"),
+                (["boucles clips"], "boucles_d_oreilles_clips"),
+                (["boucles oreilles", "boucles d oreilles"], "boucles_d_oreilles_pendantes"),
+                # Bracelets
+                (["manchette"], "manchette"),
+                (["bracelet jonc"], "bracelet_jonc"),
+                (["bracelet maille"], "bracelet_maille"),
+                (["bracelet"], "bracelet_souple"),
+                # Foulards
+                (["foulard long", "foulard vertical"], "foulard_long_vertical"),
+                (["foulard"], "foulard_noue_cou"),
+            ],
+        }
+    
 
     @staticmethod
     def _normalize_for_matching(s: str) -> str:
@@ -372,10 +513,10 @@ class PDFDataMapper:
           shoes_accessories→ accessoire
         """
         CATEGORY_MAP = {
-            "tops":              ["haut"],
-            "bottoms":           ["bas"],
-            "dresses_jackets":   ["robe", "veste"],   # essaie robe d'abord, puis veste
-            "shoes_accessories": ["accessoire"],
+            "tops":               ["haut"],
+            "bottoms":            ["bas"],
+            "dresses_jackets":    ["robe", "veste"],
+            "shoes_accessories":  ["chaussure", "accessoire"],  # chaussure en premier
         }
 
         enriched = {}
@@ -425,9 +566,13 @@ class PDFDataMapper:
             return ["veste"]
         if any(k in n for k in ["jupe", "pantalon", "jean", "legging", "short", "palazzo"]):
             return ["bas"]
-        if any(k in n for k in ["ceinture", "collier", "sac", "foulard", "accessoire"]):
+        if any(k in n for k in ["escarpin", "botte", "bottine", "sandale", "chaussure",
+                                  "talon", "sneaker", "ballerine", "mocassin", "mule",
+                                  "derby", "espadrille"]):
+            return ["chaussure"]
+        if any(k in n for k in ["ceinture", "collier", "sac", "foulard", "accessoire",
+                                  "bracelet", "boucle", "sautoir", "pendentif"]):
             return ["accessoire"]
-        # Par défaut: tenter haut
         return ["haut", "veste"]
  
     @staticmethod
@@ -482,7 +627,91 @@ class PDFDataMapper:
             enriched_formulas.append({**formula, "pieces": enriched_pieces})
  
         return enriched_formulas
+
+    @staticmethod
+    def _guess_product_category_for_priority(name: str) -> str:
+        """
+        Devine la catégorie product_matcher_service pour une priorité shopping.
+        Catégories valides: tops, bottoms, dresses_playsuits, outerwear, shoes, accessories
+        """
+        n = PDFDataMapper._normalize_for_matching(name)
+        if any(k in n for k in ["escarpin", "botte", "bottine", "sandale", "chaussure",
+                                  "talon", "sneaker", "ballerine", "mocassin", "mule",
+                                  "derby", "espadrille"]):
+            return "shoes"
+        if any(k in n for k in ["sac", "ceinture", "collier", "bracelet", "foulard",
+                                  "bijou", "accessoire", "boucle", "sautoir", "pendentif"]):
+            return "accessories"
+        if any(k in n for k in ["robe", "combinaison", "jumpsuit"]):
+            return "dresses_playsuits"
+        if any(k in n for k in ["veste", "blazer", "manteau", "trench", "trenchcoat"]):
+            return "outerwear"
+        if any(k in n for k in ["pantalon", "jupe", "jean", "short", "palazzo"]):
+            return "bottoms"
+        return "tops"
+
+    @staticmethod
+    def _enrich_shopping_priorities_with_products(shopping_priorities: list) -> list:
+        """
+        Pour chaque priorité shopping (string), trouve un produit affilié via
+        product_matcher_service.match_piece() — même logique que pages 18-19.
+        Retourne une liste de dicts: {name, category, visual_key, match}
+        """
+        # Mapping catégorie product_matcher → catégorie Supabase visuels
+        VISUAL_CATS = {
+            "tops":             ["haut"],
+            "bottoms":          ["bas"],
+            "dresses_playsuits": ["robe"],
+            "outerwear":        ["veste"],
+            "shoes":            ["chaussure"],
+            "accessories":      ["accessoire"],
+        }
  
+        enriched = []
+        for priority in shopping_priorities:
+            if not isinstance(priority, str) or not priority.strip():
+                continue
+ 
+            name = priority.strip()
+            product_cat = PDFDataMapper._guess_product_category_for_priority(name)
+            supabase_cats = VISUAL_CATS.get(product_cat, ["haut"])
+ 
+            # Chercher visual_key
+            visual_key = ""
+            for vcat in supabase_cats:
+                visual_key = PDFDataMapper._find_visual_key_for_piece(name, vcat)
+                if visual_key:
+                    break
+ 
+            piece = {
+                "piece_title": name,
+                "spec": "",
+                "visual_key": visual_key,
+            }
+ 
+            try:
+                match = product_matcher_service.match_piece(piece, product_cat)
+            except Exception as e:
+                print(f"⚠️ Shopping priority match failed for '{name}': {e}")
+                match = {
+                    "image_url": "", "product_url": "", "source": "none",
+                    "title": name, "brand": "", "price": "",
+                    "alt1_url": "", "alt1_label": "", "alt2_url": "", "alt2_label": "",
+                }
+ 
+            enriched.append({
+                "name": name,
+                "category": product_cat,
+                "visual_key": visual_key,
+                "match": match,
+            })
+ 
+            status = "✅" if match.get("product_url") else "⚠️"
+            print(f"   {status} PRIORITY '{name[:50]}' → {product_cat} url={bool(match.get('product_url'))}")
+ 
+        return enriched
+
+
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
         """Prépare variables Liquid pour PDFMonkey - VERSION CORRIGÉE"""
@@ -709,7 +938,12 @@ class PDFDataMapper:
         print("\n🎨 Enrichissement formules de tenues...")
         outfit_formulas_raw = PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", []))
         outfit_formulas_enriched = PDFDataMapper._enrich_outfit_formulas_with_visuals(outfit_formulas_raw)
-        
+
+        # ✅ Enrichissement priorités shopping avec produits affiliés
+        print("\n🛍️ Enrichissement priorités shopping morphologie...")
+        shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
+        shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
+
         # BUILD LIQUID DATA
         liquid_data = {
             "user": {
@@ -771,15 +1005,16 @@ class PDFDataMapper:
             # ✅ PAGES 9-15: Morpho categories
            
             "morphology_mvp": {
-                "essentials": essentials_enriched,
-                "avoid": PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
-                "outfit_formulas": outfit_formulas_enriched,
-                "shopping_priorities": PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
+                "essentials":                 essentials_enriched,
+                "avoid":                      PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
+                "outfit_formulas":            outfit_formulas_enriched,
+                "shopping_priorities":        PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
+                "shopping_priorities_enriched": shopping_priorities_enriched,
                 "style_notes": PDFDataMapper._safe_dict(morphology_mvp.get("style_notes", {
                     "matieres_recommandees": [],
-                    "motifs_recommandes": [],
-                    "matieres_eviter": [],
-                    "motifs_eviter": [],
+                    "motifs_recommandes":    [],
+                    "matieres_eviter":       [],
+                    "motifs_eviter":         [],
                 })),
             },
             
