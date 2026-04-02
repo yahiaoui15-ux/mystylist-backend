@@ -1,12 +1,11 @@
 """
-MORPHOLOGY PART 2 - MVP v3.0
-Corrections v3:
-- Accents et apostrophes AUTORISÉS (GPT-4 gère le JSON correctement)
-- avoid : 5 items au lieu de 3
-- why_it_works : 3 phrases minimum
-- Cohérence silhouette (règles par type)
-- Tenues cohérentes (pas robe + pantalon ensemble)
-- style_notes ajouté (matières + motifs)
+MORPHOLOGY PART 2 - MVP v4.0
+Changements v4:
+- tops: 6 items (au lieu de 3)
+- avoid_by_category: avoid séparé par catégorie pour affichage cohérent page 9
+- avoid: 5 items globaux conservés pour page 12
+- Accents et apostrophes autorisés
+- why_it_works: 3 phrases minimum
 """
 
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """
@@ -20,11 +19,7 @@ RÈGLES JSON ABSOLUES:
 - Aucune clé supplémentaire.
 - AUCUN saut de ligne dans les strings (une string = une ligne).
 - Pas de Markdown, pas de HTML, pas d'emojis.
-- Les accents et apostrophes sont AUTORISÉS et attendus (é, è, ê, à, â, ç, œ, ', etc.).
-
-OBJECTIF:
-Produire un JSON 100% parseable pour alimenter un rapport PDF premium.
-Le ton doit être concret, premium, utile, pédagogique et parfaitement cohérent avec la silhouette.
+- Les accents et apostrophes sont AUTORISÉS et attendus (é, è, ê, à, â, ç, ', etc.).
 """
 
 MORPHOLOGY_PART2_USER_PROMPT = """
@@ -38,28 +33,25 @@ RÈGLES OBLIGATOIRES PAR SILHOUETTE
 ══════════════════════════════════════════
 
 SILHOUETTE A (poire — hanches plus larges que épaules):
-- TOPS OBLIGATOIRES: encolure bateau, épaulettes structurées, manches bouffantes, col rond large, bardot, empiècements colorés sur les épaules, rayures horizontales sur le haut uniquement
-- TOPS ABSOLUMENT INTERDITS: col en V (rétrécit les épaules), peplum (ajoute du volume aux hanches), tops courts
-- BAS: droits, palazzo, légèrement évasés depuis la hanche, couleurs sombres et unies
-- BAS INTERDITS: slim, skinny, leggings, imprimés larges sur le bas, jupes évasées volumineuses
-- ROBES: empire (ne marque pas les hanches), portefeuille (croise sur la poitrine)
-- VESTES: structurées avec épaulettes, s'arrêtant à la taille ou juste sous la taille
+- TOPS OBLIGATOIRES: encolure bateau, épaulettes structurées, manches bouffantes, col rond large, bardot, chemise froncée aux épaules, rayures horizontales sur le haut uniquement
+- TOPS INTERDITS: col en V (rétrécit les épaules), peplum (ajoute du volume aux hanches), tops courts
+- BAS À ÉVITER: slim, skinny, leggings, imprimés larges sur le bas, jupes évasées volumineuses
 
 SILHOUETTE V (épaules plus larges que hanches):
 - TOPS: col en V, raglan, encolures larges, matières fluides, sans volume aux épaules
-- BAS: évasés, palazzo, motifs et couleurs claires sur le bas
+- BAS ÉVITER: jupes très évasées qui agrandissent encore le bas
 
 SILHOUETTE O (ronde — peu de définition à la taille):
 - TOPS: col en V, encolure en U, matières fluides, coupes ceinturées
-- BAS: droits, palazzo, tailles hautes
-- ROBES: empire, portefeuille
+- BAS ÉVITER: leggings moulants, jeans skinny très serrés
 
 SILHOUETTE H (rectangle):
 - TOPS: peplum, volumineux, bouffants, détail au niveau des hanches
-- BAS: évasés, jupes froncées
+- BAS ÉVITER: coupes droites sans volume
 
 SILHOUETTE X (sablier):
-- Mettre en valeur la taille: ceintures, coupes cintrées, robes portefeuille
+- TOPS: wrap tops, cintré, col en V
+- BAS ÉVITER: coupes droites qui cachent la taille
 
 ══════════════════════════════════════════
 RÈGLES DE COHÉRENCE DES FORMULES
@@ -68,18 +60,17 @@ RÈGLES DE COHÉRENCE DES FORMULES
 - Ne JAMAIS mélanger robe + pantalon dans la même formule.
 - Soit: haut + bas + veste/accessoire + chaussure
 - Soit: robe + veste/accessoire + accessoire + chaussure
-- Les couleurs entre pièces doivent être compatibles.
 
 ══════════════════════════════════════════
 CONTRAINTES DE CONTENU
 ══════════════════════════════════════════
+- tops: EXACTEMENT 6 items (pas 3, pas 4 — 6 exactement).
+- bottoms, dresses_jackets, shoes_accessories: 3 items chacun.
+- avoid_by_category: pièces à éviter STRICTEMENT liées à leur catégorie
+  (ex: "tops" ne contient QUE des hauts à éviter, jamais des leggings ou chaussures)
+- avoid: 5 items globaux (les erreurs les plus fréquentes, toutes catégories confondues).
+- why_it_works: MINIMUM 3 phrases par formule.
 - Strings: maximum 130 caractères chacune.
-- why_it_works: MINIMUM 3 phrases. Expliquer l'effet silhouette, l'équilibre visuel, la cohérence des pièces.
-- Interdit: phrases génériques type "Coupe adaptée à votre silhouette".
-- Interdit: doublons entre les 3 formules.
-- Interdit: leggings, t-shirt loose, cardigan oversize.
-- avoid: EXACTEMENT 5 items (pas 3).
-- Chaque item doit être élégant, portable et cohérent avec une cliente premium.
 - AUCUN saut de ligne dans les strings.
 - Zéro texte hors JSON.
 
@@ -88,6 +79,9 @@ JSON ATTENDU (respecter exactement la structure):
 {{
   "essentials": {{
     "tops": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}}
@@ -108,6 +102,22 @@ JSON ATTENDU (respecter exactement la structure):
       {{"name": "", "why": ""}}
     ]
   }},
+  "avoid_by_category": {{
+    "tops": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "bottoms": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "dresses_jackets": [
+      {{"name": "", "why": ""}}
+    ],
+    "shoes_accessories": [
+      {{"name": "", "why": ""}}
+    ]
+  }},
   "avoid": [
     {{"name": "", "why": ""}},
     {{"name": "", "why": ""}},
@@ -119,34 +129,32 @@ JSON ATTENDU (respecter exactement la structure):
     {{
       "occasion": "Quotidien",
       "pieces": ["pièce haut", "pièce bas", "accessoire", "chaussure"],
-      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel créé. Phrase 3 sur la cohérence des pièces ensemble."
+      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel. Phrase 3 sur la cohérence des pièces."
     }},
     {{
       "occasion": "Travail",
       "pieces": ["pièce haut", "pièce bas", "veste structurée", "chaussure"],
-      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel créé. Phrase 3 sur la cohérence des pièces ensemble."
+      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel. Phrase 3 sur la cohérence des pièces."
     }},
     {{
       "occasion": "Sortie",
       "pieces": ["robe OU haut élégant", "bas si pas de robe", "accessoire", "chaussure"],
-      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel créé. Phrase 3 sur la cohérence des pièces ensemble."
+      "why_it_works": "Phrase 1 sur l'effet silhouette. Phrase 2 sur l'équilibre visuel. Phrase 3 sur la cohérence des pièces."
     }}
   ],
   "shopping_priorities": ["", "", "", "", ""],
   "style_notes": {{
-    "matieres_recommandees": ["", "", ""],
-    "motifs_recommandes": ["", "", ""],
-    "matieres_eviter": ["", ""],
-    "motifs_eviter": ["", ""]
+    "matieres_recommandees": ["matière — raison courte", "matière — raison courte", "matière — raison courte"],
+    "motifs_recommandes": ["motif — raison courte", "motif — raison courte", "motif — raison courte"],
+    "matieres_eviter": ["matière — raison courte", "matière — raison courte"],
+    "motifs_eviter": ["motif — raison courte", "motif — raison courte"]
   }}
 }}
 
 RAPPEL FINAL:
-- 3 items exacts par sous-catégorie essentials.
-- EXACTEMENT 5 items dans avoid.
-- 3 formules exactes avec 4 pièces COHÉRENTES (pas robe + pantalon ensemble).
-- 5 priorités shopping exactes.
-- why_it_works: MINIMUM 3 phrases pour chaque formule.
+- tops: EXACTEMENT 6 items.
+- avoid_by_category: chaque sous-liste ne contient QUE des pièces de SA catégorie.
 - Les accents et apostrophes sont autorisés et attendus.
+- style_notes: chaque item = "nom de la matière/motif — explication courte" (format avec tiret).
 - Zéro texte hors JSON.
 """

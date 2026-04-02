@@ -944,6 +944,16 @@ class PDFDataMapper:
         shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
         shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
 
+        # ✅ Extraction avoid_by_category (items à éviter par catégorie, pour page 9)
+        avoid_by_category_raw = PDFDataMapper._safe_dict(morphology_mvp.get("avoid_by_category", {}))
+        avoid_by_category = {
+            "tops":              PDFDataMapper._safe_list(avoid_by_category_raw.get("tops", [])),
+            "bottoms":           PDFDataMapper._safe_list(avoid_by_category_raw.get("bottoms", [])),
+            "dresses_jackets":   PDFDataMapper._safe_list(avoid_by_category_raw.get("dresses_jackets", [])),
+            "shoes_accessories": PDFDataMapper._safe_list(avoid_by_category_raw.get("shoes_accessories", [])),
+        }
+ 
+ 
         # BUILD LIQUID DATA
         liquid_data = {
             "user": {
@@ -1007,6 +1017,7 @@ class PDFDataMapper:
             "morphology_mvp": {
                 "essentials":                 essentials_enriched,
                 "avoid":                      PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
+                "avoid_by_category":              avoid_by_category,
                 "outfit_formulas":            outfit_formulas_enriched,
                 "shopping_priorities":        PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
                 "shopping_priorities_enriched": shopping_priorities_enriched,
