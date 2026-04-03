@@ -151,6 +151,41 @@ class ProductMatcherService:
             "alt2_label": "",
         }
 
+    def match_piece_top4(self, piece: Dict[str, Any], category: str) -> List[Dict[str, Any]]:
+        """
+        Comme match_piece mais retourne une LISTE de 4 produits complets
+        (chacun avec image_url cachée, product_url, brand, price, title).
+        Utilisé pour shopping_products_flat (page 12).
+        """
+        piece_title = (piece.get("piece_title") or "").strip()
+        spec        = (piece.get("spec") or "").strip()
+        visual_key  = (piece.get("visual_key") or "").strip()
+ 
+        candidates = self._find_affiliate_products(
+            piece_title=piece_title,
+            spec=spec,
+            category=category,
+            limit=30,
+        )
+        top4 = self._pick_top_n_valid_candidates(candidates, n=4)
+ 
+        results = []
+        for candidate in top4:
+            raw_img  = (candidate.get("image_url") or "").strip()
+            safe_img = self._ensure_cached_public_image(raw_img, candidate) if raw_img else ""
+            results.append({
+                "image_url":   safe_img,
+                "product_url": (candidate.get("buy_url") or candidate.get("product_url") or "").strip(),
+                "brand":       (candidate.get("brand") or "").strip(),
+                "price":       str(candidate.get("price", "") or ""),
+                "title":       (candidate.get("product_name") or piece_title).strip(),
+            })
+            status = "✅" if safe_img else "⚠️"
+            print(f"   {status} TOP4 [{category}] '{piece_title[:40]}' → {(candidate.get('brand') or '')[:20]}")
+ 
+        return results
+ 
+ 
     # -------------------------
     # Output helpers
     # -------------------------
@@ -192,6 +227,27 @@ class ProductMatcherService:
                 break
         return out[:3]
 
+    def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        seen = set()
+        for c in candidates or []:
+            if not isinstance(c, dict):
+                continue
+            buy_url    = (c.get("buy_url") or "").strip()
+            product_id = str(c.get("product_id") or "").strip()
+            image_url  = (c.get("image_url") or "").strip()
+            if not buy_url and not product_id and not image_url:
+                continue
+            key = buy_url or product_id or image_url
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(c)
+            if len(out) >= n:
+                break
+        return out[:n]
+ 
+ 
     # -------------------------
     # Text helpers
     # -------------------------

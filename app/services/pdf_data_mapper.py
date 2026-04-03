@@ -653,18 +653,16 @@ class PDFDataMapper:
     @staticmethod
     def _enrich_shopping_priorities_with_products(shopping_priorities: list) -> list:
         """
-        Pour chaque priorité shopping (string), trouve un produit affilié via
-        product_matcher_service.match_piece() — même logique que pages 18-19.
-        Retourne une liste de dicts: {name, category, visual_key, match}
+        Pour chaque priorité shopping, retourne 4 produits complets via match_piece_top4.
+        Chaque item: {name, category, visual_key, products: list[4 dicts]}
         """
-        # Mapping catégorie product_matcher → catégorie Supabase visuels
         VISUAL_CATS = {
-            "tops":             ["haut"],
-            "bottoms":          ["bas"],
+            "tops":              ["haut"],
+            "bottoms":           ["bas"],
             "dresses_playsuits": ["robe"],
-            "outerwear":        ["veste"],
-            "shoes":            ["chaussure"],
-            "accessories":      ["accessoire"],
+            "outerwear":         ["veste"],
+            "shoes":             ["chaussure"],
+            "accessories":       ["accessoire"],
         }
  
         enriched = []
@@ -672,45 +670,36 @@ class PDFDataMapper:
             if not isinstance(priority, str) or not priority.strip():
                 continue
  
-            name = priority.strip()
-            product_cat = PDFDataMapper._guess_product_category_for_priority(name)
+            name         = priority.strip()
+            product_cat  = PDFDataMapper._guess_product_category_for_priority(name)
             supabase_cats = VISUAL_CATS.get(product_cat, ["haut"])
  
-            # Chercher visual_key
             visual_key = ""
             for vcat in supabase_cats:
                 visual_key = PDFDataMapper._find_visual_key_for_piece(name, vcat)
                 if visual_key:
                     break
  
-            piece = {
-                "piece_title": name,
-                "spec": "",
-                "visual_key": visual_key,
-            }
+            piece = {"piece_title": name, "spec": "", "visual_key": visual_key}
  
             try:
-                match = product_matcher_service.match_piece(piece, product_cat)
+                products = product_matcher_service.match_piece_top4(piece, product_cat)
             except Exception as e:
-                print(f"⚠️ Shopping priority match failed for '{name}': {e}")
-                match = {
-                    "image_url": "", "product_url": "", "source": "none",
-                    "title": name, "brand": "", "price": "",
-                    "alt1_url": "", "alt1_label": "", "alt2_url": "", "alt2_label": "",
-                }
+                print(f"⚠️ match_piece_top4 failed for '{name}': {e}")
+                products = []
  
             enriched.append({
-                "name": name,
-                "category": product_cat,
+                "name":       name,
+                "category":   product_cat,
                 "visual_key": visual_key,
-                "match": match,
+                "products":   products,
             })
  
-            status = "✅" if match.get("product_url") else "⚠️"
-            print(f"   {status} PRIORITY '{name[:50]}' → {product_cat} url={bool(match.get('product_url'))}")
+            print(f"   🛍️ PRIORITY '{name[:50]}' → {product_cat}: {len(products)} produits")
  
         return enriched
-
+ 
+ 
 
     @staticmethod
     def prepare_liquid_variables(report_data: dict, user_data: dict) -> dict:
@@ -945,13 +934,36 @@ class PDFDataMapper:
         shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
 
         # ✅ Extraction avoid_by_category (items à éviter par catégorie, pour page 9)
+        # ✅ avoid_by_category — shoes et accessories séparés (v5)
         avoid_by_category_raw = PDFDataMapper._safe_dict(morphology_mvp.get("avoid_by_category", {}))
         avoid_by_category = {
             "tops":              PDFDataMapper._safe_list(avoid_by_category_raw.get("tops", [])),
             "bottoms":           PDFDataMapper._safe_list(avoid_by_category_raw.get("bottoms", [])),
             "dresses_jackets":   PDFDataMapper._safe_list(avoid_by_category_raw.get("dresses_jackets", [])),
-            "shoes_accessories": PDFDataMapper._safe_list(avoid_by_category_raw.get("shoes_accessories", [])),
+            "shoes":             PDFDataMapper._safe_list(avoid_by_category_raw.get("shoes", [])),
+            "accessories":       PDFDataMapper._safe_list(avoid_by_category_raw.get("accessories", [])),
+            # rétrocompat : ancienne clé shoes_accessories si nouveau prompt pas encore déployé
+            "shoes_accessories": PDFDataMapper._safe_list(
+                avoid_by_category_raw.get("shoes_accessories", [])
+                or avoid_by_category_raw.get("shoes", [])
+            ),
         }
+
+        # ✅ Flatten shopping products pour page 12 (4 produits × 5 priorités = 20 max)
+        shopping_products_flat = []
+        for sp_item in shopping_priorities_enriched:
+            priority_name = sp_item.get("name", "")
+            for product in sp_item.get("products", []):
+                if product.get("product_url"):
+                    shopping_products_flat.append({
+                        "priority_name": priority_name,
+                        "image_url":     product.get("image_url", ""),
+                        "product_url":   product.get("product_url", ""),
+                        "brand":         product.get("brand", ""),
+                        "price":         product.get("price", ""),
+                        "title":         product.get("title", priority_name),
+                    })
+ 
  
  
         # BUILD LIQUID DATA
@@ -1021,6 +1033,7 @@ class PDFDataMapper:
                 "outfit_formulas":            outfit_formulas_enriched,
                 "shopping_priorities":        PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
                 "shopping_priorities_enriched": shopping_priorities_enriched,
+                "shopping_products_flat":       shopping_products_flat,
                 "style_notes": PDFDataMapper._safe_dict(morphology_mvp.get("style_notes", {
                     "matieres_recommandees": [],
                     "motifs_recommandes":    [],
