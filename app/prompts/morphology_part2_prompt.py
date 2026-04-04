@@ -1,9 +1,7 @@
 """
-MORPHOLOGY PART 2 - MVP v5.0
-Changements v5 vs v4:
-- avoid_by_category: shoes et accessories SÉPARÉS (plus shoes_accessories ensemble)
-- tops: toujours 6 items
-- style_notes: format "matière — raison courte"
+MORPHOLOGY PART 2 - MVP v5b
+Changement vs v5 : EXACTEMENT 4 pièces dans chaque outfit_formula,
+jamais 3, jamais 5.
 """
 
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """
@@ -30,7 +28,7 @@ RÈGLES OBLIGATOIRES PAR SILHOUETTE
 ══════════════════════════════════════════
 
 SILHOUETTE A (poire — hanches > épaules):
-- TOPS: encolure bateau, épaulettes, manches bouffantes, col rond large, bardot, froncé aux épaules, rayures horizontales sur le haut
+- TOPS: encolure bateau, épaulettes, manches bouffantes, col rond large, bardot, froncé aux épaules
 - TOPS INTERDITS: col en V, peplum, tops courts
 - BAS À ÉVITER: slim, skinny, leggings, imprimés larges sur le bas
 - CHAUSSURES À ÉVITER: chaussures très plates qui coupent la jambe
@@ -39,32 +37,38 @@ SILHOUETTE A (poire — hanches > épaules):
 SILHOUETTE V (épaules > hanches):
 - TOPS: col en V, raglan, encolures larges, sans volume aux épaules
 - BAS: évasés, palazzo
-- CHAUSSURES À ÉVITER: platforms très massives qui élargissent la base
-- ACCESSOIRES À ÉVITER: sacs portés haut sur l'épaule qui accentuent la largeur
+- CHAUSSURES À ÉVITER: platforms très massives
+- ACCESSOIRES À ÉVITER: sacs portés haut sur l'épaule
 
 SILHOUETTE O (ronde, peu de taille):
 - TOPS: col en V, encolure en U, matières fluides
 - BAS: droits, palazzo
-- CHAUSSURES À ÉVITER: ballerines très plates qui n'allongent pas
-- ACCESSOIRES À ÉVITER: ceintures épaisses qui coupent la silhouette
+- CHAUSSURES À ÉVITER: ballerines très plates
+- ACCESSOIRES À ÉVITER: ceintures épaisses
 
 SILHOUETTE H (rectangle):
 - TOPS: peplum, volumineux, bouffants
 - BAS: évasés, jupes froncées
-- CHAUSSURES À ÉVITER: bottes larges au genou qui effacent les courbes
-- ACCESSOIRES À ÉVITER: ceintures trop fines qui n'ont pas d'impact
+- CHAUSSURES À ÉVITER: bottes larges au genou
+- ACCESSOIRES À ÉVITER: ceintures trop fines
 
 SILHOUETTE X (sablier):
 - TOPS: wrap tops, cintrés, col en V
 - BAS: évasés, jupes mi-longues
-- CHAUSSURES À ÉVITER: chaussures massives qui alourdissent la silhouette
-- ACCESSOIRES À ÉVITER: grosses ceintures qui cachent la taille naturelle
+- CHAUSSURES À ÉVITER: chaussures massives
+- ACCESSOIRES À ÉVITER: grosses ceintures qui cachent la taille
 
 ══════════════════════════════════════════
-RÈGLES COHÉRENCE FORMULES
+RÈGLES COHÉRENCE FORMULES — CRITIQUE
 ══════════════════════════════════════════
-- 4 pièces = 1 seule tenue portée ensemble.
+- Chaque formule contient EXACTEMENT 4 pièces. Pas 3. Pas 5. EXACTEMENT 4.
+- Si tu ne trouves pas 4 pièces vestimentaires, complète avec un accessoire (sac, ceinture, collier).
+- Les 4 pièces forment UNE SEULE tenue portée ensemble.
 - Jamais robe + pantalon ensemble.
+- Structure recommandée :
+  Quotidien : haut + bas + accessoire + chaussure
+  Travail : haut + bas + veste + chaussure
+  Sortie : robe OU (haut + bas) + accessoire + chaussure
 - why_it_works: MINIMUM 3 phrases.
 
 ══════════════════════════════════════════
@@ -72,8 +76,7 @@ CONTRAINTES
 ══════════════════════════════════════════
 - tops: EXACTEMENT 6 items.
 - bottoms, dresses_jackets, shoes_accessories: 3 items chacun.
-- avoid_by_category: pièces STRICTEMENT de leur catégorie
-  (tops = hauts seulement, bottoms = bas seulement, shoes = chaussures seulement, accessories = accessoires seulement)
+- avoid_by_category: pièces STRICTEMENT de leur catégorie.
 - avoid: 5 items globaux toutes catégories confondues.
 - style_notes: format "nom — explication courte" avec tiret.
 - Strings max 130 caractères. Zéro texte hors JSON.
@@ -135,17 +138,17 @@ JSON ATTENDU:
   "outfit_formulas": [
     {{
       "occasion": "Quotidien",
-      "pieces": ["pièce haut", "pièce bas", "accessoire", "chaussure"],
+      "pieces": ["pièce 1", "pièce 2", "pièce 3", "pièce 4"],
       "why_it_works": "Phrase 1. Phrase 2. Phrase 3."
     }},
     {{
       "occasion": "Travail",
-      "pieces": ["pièce haut", "pièce bas", "veste", "chaussure"],
+      "pieces": ["pièce 1", "pièce 2", "pièce 3", "pièce 4"],
       "why_it_works": "Phrase 1. Phrase 2. Phrase 3."
     }},
     {{
       "occasion": "Sortie",
-      "pieces": ["robe OU haut", "bas si pas robe", "accessoire", "chaussure"],
+      "pieces": ["pièce 1", "pièce 2", "pièce 3", "pièce 4"],
       "why_it_works": "Phrase 1. Phrase 2. Phrase 3."
     }}
   ],
@@ -158,5 +161,10 @@ JSON ATTENDU:
   }}
 }}
 
-RAPPEL: tops=6 exactement. avoid_by_category.shoes = chaussures UNIQUEMENT. avoid_by_category.accessories = accessoires UNIQUEMENT. Zéro texte hors JSON.
+RAPPEL FINAL:
+- tops: EXACTEMENT 6 items.
+- Chaque outfit_formula: EXACTEMENT 4 pièces dans "pieces". JAMAIS 3. JAMAIS 5.
+- avoid_by_category.shoes = chaussures UNIQUEMENT.
+- avoid_by_category.accessories = accessoires UNIQUEMENT.
+- Zéro texte hors JSON.
 """

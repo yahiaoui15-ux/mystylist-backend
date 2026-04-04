@@ -303,6 +303,9 @@ class PDFDataMapper:
             (["top col cache coeur", "top cache coeur col"], "top_col_cache_coeur"),
             (["cache-coeur", "cache coeur", "cachecoeur", "top cache coeur",
               "blouse cache coeur"], "top_cache_coeur"),
+            (["wrap top", "haut wrap", "top portefeuille", "wrap"], "top_cache_coeur"),
+
+
             # ── Col bateau / bardot ──
             (["top col bateau brillant"], "top_col_bateau_brillant"),
             (["top col bateau", "col bateau top"], "top_col_bateau"),
@@ -337,9 +340,10 @@ class PDFDataMapper:
             # ── Taille froncée ──  ← NOUVEAU
             (["tshirt taille froncee", "t-shirt taille froncee", "taille froncee"], "tshirt_taille_froncee"),
             # ── Tunique ──  ← NOUVEAU
+            (["tunique ample", "tunique chiffon", "tunique fluide",
+            "tunique longue", "tunique"], "tunique_sombre"),
             (["tunique ceinturee", "tunique ceinturée"], "tunique_ceinturee"),
             (["tunique boutonnee", "tunique boutonnée"], "tunique_boutonee_unie"),
-            (["tunique ample", "tunique longue", "tunique"], "top_fluide"),
             # ── Encolure américaine ──  ← NOUVEAU
             (["encolure americaine", "dos nu", "dos nageur"], "top_encolure_americaine"),
             # ── Cintrés ──
@@ -386,13 +390,16 @@ class PDFDataMapper:
             (["jupe crayon taille haute", "jupe crayon"], "jupe_crayon"),
             (["jupe droite taille haute"], "jupe_droite_taille_haute"),  # NOUVEAU
             (["jupe droite classique", "jupe droite enfilable"], "jupe_droite_classique_enfilable"),  # NOUVEAU
-            (["jupe droite"], "jupe_crayon"),
+            (["jupe droite"], "jupe_droite_taille_haute"),
             (["jupe midi portefeuille", "jupe portefeuille midi"], "jupe_midi_portefeuille"),
             (["jupe froncee", "jupe froncée", "jupe volantee"], "jupe_froncee"),  # NOUVEAU
-            (["jupe trapeze", "trapeze"], "jupe_trapeze"),
+            (["jupe trapeze", "trapeze", "jupe A-line"], "jupe_trapeze"),
             (["jupe patineuse", "patineuse"], "jupe_patineuse"),
-            (["jupe longue fluide", "jupe maxi", "jupe longue"], "pantalon_large_fluide"),
+            (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe portefeuille midi"),
             (["jupe plissee", "jupe plissée"], "jupe_patineuse"),
+            (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe portefeuille midi"),
+            (["jupe midi evasee", "jupe midi évasée", "jupe evasee", "jupe évasée",
+              "jupe evase", "jupe trapeze midi"], "jupe_trapeze"),
             # ── Pantalons larges ──
             (["pantalon palazzo fluide beige"], "pantalon_palazzo_fluide_beige"),
             (["pantalon palazzo fluide"], "pantalon_palazzo_fluide_beige"),
@@ -685,7 +692,7 @@ class PDFDataMapper:
             ],
             "maillots": [
                 ("une_piece_gainant",   "Une pièce gainant",          "Galbe et affine la taille."),
-                ("une_piece_decollete", "Maillot découpes latérales", "Effet amincissant et élancé."),
+                ("maillot_decoupes_laterales", "Maillot découpes latérales", "Effet amincissant et élancé."),
                 ("tankini",             "Tankini col en V",           "Allonge le buste, verticalité."),
             ],
             "lingerie_eviter":  "Lingerie inadaptée à la poitrine — crée des bourrelets.",
@@ -819,25 +826,52 @@ class PDFDataMapper:
 
     @staticmethod
     def _guess_supabase_cats_for_piece(name: str) -> list:
-        """Devine la(les) catégorie(s) Supabase pour un nom de pièce de formule."""
+        """Devine la(les) catégorie(s) Supabase pour un nom de pièce.
+        Ordre : du plus spécifique au plus générique.
+        La fonction tente les catégories dans l'ordre et s'arrête au premier match.
+        """
         n = PDFDataMapper._normalize_for_matching(name)
-        if any(k in n for k in ["robe", "combinaison"]):
+ 
+        # Vestes / blousons / trenchs — AVANT les robes car GPT les met parfois
+        # dans dresses_jackets mais ce sont des vestes
+        if any(k in n for k in ["blazer", "veste", "blouson", "perfecto", "doudoune",
+                                  "gilet", "cardigan long"]):
+            return ["veste", "robe"]
+ 
+        # Manteaux
+        if any(k in n for k in ["manteau", "trench", "duffle"]):
+            return ["manteau", "veste"]
+ 
+        # Robes & combinaisons
+        if any(k in n for k in ["robe", "combinaison", "combi"]):
             return ["robe"]
-        if any(k in n for k in ["blazer", "veste", "trench", "cardigan", "manteau"]):
-            return ["veste", "manteau"]
-        if any(k in n for k in ["jupe", "pantalon", "jean", "legging", "short", "palazzo"]):
+ 
+        # Bas
+        if any(k in n for k in ["jupe", "pantalon", "jean", "legging", "short",
+                                  "palazzo", "bermuda"]):
             return ["bas"]
+ 
+        # Chaussures
         if any(k in n for k in ["escarpin", "botte", "bottine", "sandale", "chaussure",
                                   "talon", "sneaker", "ballerine", "mocassin", "mule",
                                   "derby", "espadrille"]):
             return ["chaussure"]
+ 
+        # Accessoires
         if any(k in n for k in ["ceinture", "collier", "sac", "foulard", "accessoire",
-                                  "bracelet", "boucle", "sautoir", "pendentif"]):
+                                  "bracelet", "boucle", "sautoir", "pendentif",
+                                  "pochette", "chapeau", "manchette"]):
             return ["accessoire"]
+ 
+        # Maillots
         if any(k in n for k in ["maillot", "bikini", "tankini", "shorty bain"]):
             return ["Maillot de bain"]
+ 
+        # Lingerie
         if any(k in n for k in ["soutien", "culotte", "bralette", "bustier", "body"]):
             return ["lingerie"]
+ 
+        # Hauts par défaut
         return ["haut", "veste"]
  
     @staticmethod
