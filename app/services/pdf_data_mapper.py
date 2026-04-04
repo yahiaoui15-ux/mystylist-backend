@@ -888,16 +888,23 @@ class PDFDataMapper:
             for nom_simplifie, label, why in items:
                 visual_url = ""
                 try:
-                    visual_url = visuals_service.get_url(nom_simplifie) or ""
+                    raw_url = visuals_service.get_url(nom_simplifie) or ""
+                    # PDFMonkey ne peut pas charger les CDN externes qui bloquent le hotlinking.
+                    # On ne garde que les URLs Supabase qui fonctionnent sans restriction.
+                    if raw_url and "supabase.co" in raw_url:
+                        visual_url = raw_url
+                    elif raw_url:
+                        print(f"   ⚠️ URL externe ignorée pour '{nom_simplifie}': {raw_url[:60]}...")
                 except Exception as e:
                     print(f"⚠️ visuals_service.get_url('{nom_simplifie}'): {e}")
+ 
                 enriched.append({
                     "key":        nom_simplifie,
                     "label":      label,
                     "why":        why,
                     "visual_url": visual_url,
                 })
-                status = "✅" if visual_url else "⚠️"
+                status = "✅" if visual_url else "⚠️ (emoji fallback)"
                 print(f"   {status} PAGE10 [{supabase_type}] '{nom_simplifie}' → url={'yes' if visual_url else 'no'}")
             return enriched
  

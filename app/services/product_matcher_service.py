@@ -228,33 +228,54 @@ class ProductMatcherService:
         return out[:3]
 
     def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4) -> List[Dict[str, Any]]:
-        """Retourne n candidats distincts. Déduplication sur buy_url ET product_name."""
+        """
+        Retourne n candidats distincts.
+        Déduplication sur : buy_url + product_name (préfixe 60 chars) + image_url (base).
+        """
         out: List[Dict[str, Any]] = []
-        seen_urls  = set()
-        seen_names = set()
+        seen_urls   = set()
+        seen_names  = set()
+        seen_images = set()
+ 
         for c in candidates or []:
             if not isinstance(c, dict):
                 continue
+ 
             buy_url    = (c.get("buy_url") or "").strip()
             product_id = str(c.get("product_id") or "").strip()
-            image_url  = (c.get("image_url") or "").strip()
-            if not buy_url and not product_id and not image_url:
+            raw_img    = (c.get("image_url") or "").strip()
+ 
+            if not buy_url and not product_id and not raw_img:
                 continue
-            url_key = buy_url or product_id or image_url
-            # Déduplique sur le nom produit (ignore offerid différents du même produit)
-            product_name = (c.get("product_name") or "").strip().lower()[:80]
+ 
+            url_key = buy_url or product_id or raw_img
+ 
+            # Clé nom : 60 premiers caractères, insensible à la casse
+            # (catch "Top col en V - Taille S" vs "Top col en V - Taille M")
+            product_name = (c.get("product_name") or "").strip().lower()[:60]
+ 
+            # Clé image : URL de base sans query string
+            # (catch variantes offerid différents mais même photo)
+            img_base = raw_img.split("?")[0] if raw_img else ""
+ 
             if url_key in seen_urls:
                 continue
             if product_name and product_name in seen_names:
                 continue
+            if img_base and img_base in seen_images:
+                continue
+ 
             seen_urls.add(url_key)
             if product_name:
                 seen_names.add(product_name)
+            if img_base:
+                seen_images.add(img_base)
+ 
             out.append(c)
             if len(out) >= n:
                 break
-        return out[:n]
  
+        return out[:n]
  
     # -------------------------
     # Text helpers
