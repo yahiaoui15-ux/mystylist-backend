@@ -297,8 +297,9 @@ class PDFDataMapper:
               "decollete en v", "encolure v"], "top_col_v"),
             (["blouse col en v", "blouse col v", "encolure en v blouse"], "encolure_en_v"),
             # ── Col en U ──  ← NOUVEAU
-            (["encolure en u", "col en u", "encolure u", "blouse en u",
-              "top encolure u", "col u"], "top_encolure_u"),
+            (["tshirt en u", "t-shirt en u", "tee en u", "top en u",
+              "encolure en u", "col en u", "encolure u",
+              "blouse en u", "top encolure u", "col u"], "top_encolure_u"),
             # ── Cache-cœur ──
             (["top col cache coeur", "top cache coeur col"], "top_col_cache_coeur"),
             (["cache-coeur", "cache coeur", "cachecoeur", "top cache coeur",
@@ -771,63 +772,66 @@ class PDFDataMapper:
             print(f"   📦 FALLBACK [{supabase_category}] '{name[:40]}' → key='{fallback_key}'")
             return fallback_key
         return ""
-
+ 
     @staticmethod
     def _enrich_mvp_essentials_with_visuals(essentials: dict) -> dict:
         """
         Enrichit chaque item de morphology_mvp.essentials avec visual_url
         depuis la table Supabase visuels via keyword matching sur le nom.
-
+ 
         Mapping catégories MVP → catégories Supabase :
-          tops             → haut
-          bottoms          → bas
-          dresses_jackets  → robe puis veste (fallback)
-          shoes_accessories→ accessoire
+          tops              → haut
+          bottoms           → bas
+          dresses           → robe             (NOUVEAU v6)
+          jackets           → veste, manteau   (NOUVEAU v6)
+          dresses_jackets   → robe, veste      (rétrocompat v5)
+          shoes_accessories → chaussure, accessoire
         """
         CATEGORY_MAP = {
             "tops":               ["haut"],
             "bottoms":            ["bas"],
-            "dresses_jackets":    ["robe", "veste"],
-            "shoes_accessories":  ["chaussure", "accessoire"],  # chaussure en premier
+            "dresses":            ["robe"],                    # ← NOUVEAU
+            "jackets":            ["veste", "manteau"],        # ← NOUVEAU
+            "dresses_jackets":    ["robe", "veste"],           # rétrocompat
+            "shoes_accessories":  ["chaussure", "accessoire"],
         }
-
+ 
         enriched = {}
-
+ 
         for mvp_cat, supabase_cats in CATEGORY_MAP.items():
             items = PDFDataMapper._safe_list(essentials.get(mvp_cat, []))
             enriched_items = []
-
+ 
             for item in items:
                 if not isinstance(item, dict):
                     continue
-
+ 
                 name = item.get("name", "")
                 visual_key = ""
-
-                # Tente chaque catégorie Supabase dans l'ordre
+ 
                 for supabase_cat in supabase_cats:
                     visual_key = PDFDataMapper._find_visual_key_for_piece(name, supabase_cat)
                     if visual_key:
                         break
-
-                # Récupère l'URL via visuals_service
+ 
                 visual_url = ""
                 if visual_key:
                     try:
                         visual_url = visuals_service.get_url(visual_key) or ""
                     except Exception as e:
                         print(f"⚠️ visuals_service.get_url('{visual_key}'): {e}")
-
+ 
                 enriched_item = {**item, "visual_key": visual_key, "visual_url": visual_url}
                 enriched_items.append(enriched_item)
-
+ 
                 status = "✅" if visual_url else "⚠️ NO IMG"
                 print(f"   {status} MVP [{mvp_cat}] '{name}' → key='{visual_key}'")
-
+ 
             enriched[mvp_cat] = enriched_items
-
+ 
         return enriched
-
+ 
+ 
  
     @staticmethod
     def _guess_supabase_cats_for_piece(name: str) -> list:
@@ -1276,8 +1280,8 @@ class PDFDataMapper:
         # Rétrocompat : si GPT retourne encore dresses_jackets (vieux rapport)
         if not essentials_dresses and not essentials_jackets:
             dj = essentials_enriched.get("dresses_jackets", [])
-            essentials_dresses  = [i for i in dj if _is_dress(i)]
-            essentials_jackets  = [i for i in dj if not _is_dress(i)]
+            essentials_dresses  = [i for i in dj if PDFDataMapper._is_dress(i)]
+            essentials_jackets  = [i for i in dj if not PDFDataMapper._is_dress(i)]
  
 
         # ✅ Enrichissement formules de tenues avec visuels

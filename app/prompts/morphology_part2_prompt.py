@@ -1,13 +1,8 @@
 """
-MORPHOLOGY PART 2 - MVP v6.0
-Changements vs v5b :
-- essentials.tops : 4 items (au lieu de 6)
-- essentials.dresses : 2 items robes/combinaisons (nouveau)
-- essentials.jackets : 3 items vestes/blazers/manteaux (nouveau, remplace dresses_jackets)
-- essentials.bottoms : 3 items (inchangé)
-- essentials.shoes_accessories : 3 items (inchangé)
-- avoid_by_category : ajoute "jackets" en plus de "dresses"
-- outfit_formulas : EXACTEMENT 4 pièces
+MORPHOLOGY PART 2 - MVP v6b
+Changements vs v6 :
+- Interdiction des couleurs dans les noms de pièces (sauf si pertinent morphologiquement)
+- shopping_priorities : 5 pièces concrètes parmi les coupes recommandées, pas de banalités
 """
 
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """
@@ -30,6 +25,17 @@ Objectifs styling: {styling_objectives}
 À minimiser: {body_parts_to_minimize}
 
 ══════════════════════════════════════════
+RÈGLE ABSOLUE SUR LES NOMS DE PIÈCES
+══════════════════════════════════════════
+INTERDIT : inclure des couleurs dans les noms de pièces.
+✗ "Top col en V noir", "Blouse fluide bleue", "Pantalon palazzo beige"
+✓ "Top col en V", "Blouse fluide", "Pantalon palazzo"
+
+EXCEPTION UNIQUE : si la couleur sombre ou claire a une pertinence directe
+pour l'objectif morphologique (ex: "couleurs sombres sur le bas pour affiner"),
+tu peux mentionner "sombre" ou "clair" UNIQUEMENT dans le champ "why", jamais dans "name".
+
+══════════════════════════════════════════
 RÈGLES OBLIGATOIRES PAR SILHOUETTE
 ══════════════════════════════════════════
 
@@ -38,7 +44,7 @@ SILHOUETTE A (poire — hanches > épaules):
 - TOPS INTERDITS: col en V, peplum, tops courts
 - BAS À ÉVITER: slim, skinny, leggings, imprimés larges
 - VESTES: structurées aux épaules, blazer à épaulettes
-- ROBES: empire, portefeuille, col en V interdit
+- ROBES: empire, portefeuille
 
 SILHOUETTE V (épaules > hanches):
 - TOPS: col en V, raglan, encolures larges, sans volume aux épaules
@@ -62,24 +68,34 @@ SILHOUETTE X (sablier):
 - VESTES: cintrées qui marquent la taille
 
 ══════════════════════════════════════════
-RÈGLES FORMULES — CRITIQUE
+RÈGLES FORMULES
 ══════════════════════════════════════════
 - EXACTEMENT 4 pièces par formule. Ni 3, ni 5.
-- Jamais robe + pantalon dans la même formule.
-- Structure :
-  Quotidien : haut + bas + accessoire + chaussure
-  Travail : haut + bas + veste + chaussure
-  Sortie : robe + accessoire + accessoire + chaussure
-             OU haut + bas + veste + chaussure
+- Jamais robe + pantalon ensemble.
+- Quotidien : haut + bas + accessoire + chaussure
+- Travail : haut + bas + veste + chaussure
+- Sortie : robe + accessoire + accessoire + chaussure
+           OU haut + bas + veste + chaussure
 - why_it_works: MINIMUM 3 phrases.
 
 ══════════════════════════════════════════
-CONTRAINTES STRICTES
+RÈGLES SHOPPING PRIORITIES — CRITIQUE
 ══════════════════════════════════════════
-- tops : EXACTEMENT 4 items (hauts uniquement)
-- dresses : EXACTEMENT 2 items (robes ou combinaisons uniquement)
-- jackets : EXACTEMENT 3 items (vestes, blazers, manteaux uniquement)
-- bottoms : EXACTEMENT 3 items (pantalons, jupes, jeans uniquement)
+Les 5 priorités shopping DOIVENT être des pièces de coupe spécifiques
+tirées directement de tes recommandations essentials (tops, dresses, jackets, bottoms).
+INTERDIT : priorités génériques comme "Vêtements avec matières fluides",
+"Pièces polyvalentes", "Accessoires élégants".
+OBLIGATOIRE : noms de coupe précis comme dans tes essentials.
+Exemples corrects : "Top col en V", "Pantalon palazzo", "Robe portefeuille",
+"Blazer cintré", "Jupe midi évasée".
+
+══════════════════════════════════════════
+CONTRAINTES
+══════════════════════════════════════════
+- tops : EXACTEMENT 4 items (hauts uniquement, sans couleur dans name)
+- dresses : EXACTEMENT 2 items (robes ou combinaisons uniquement, sans couleur dans name)
+- jackets : EXACTEMENT 3 items (vestes, blazers, manteaux uniquement, sans couleur dans name)
+- bottoms : EXACTEMENT 3 items (pantalons, jupes, jeans uniquement, sans couleur dans name)
 - shoes_accessories : EXACTEMENT 3 items
 - avoid_by_category : pièces STRICTEMENT de leur catégorie
 - style_notes : format "nom — explication courte"
@@ -161,7 +177,13 @@ JSON ATTENDU:
       "why_it_works": "Phrase 1. Phrase 2. Phrase 3."
     }}
   ],
-  "shopping_priorities": ["", "", "", "", ""],
+  "shopping_priorities": [
+    "coupe spécifique tirée des essentials",
+    "coupe spécifique tirée des essentials",
+    "coupe spécifique tirée des essentials",
+    "coupe spécifique tirée des essentials",
+    "coupe spécifique tirée des essentials"
+  ],
   "style_notes": {{
     "matieres_recommandees": ["matière — raison", "matière — raison", "matière — raison"],
     "motifs_recommandes": ["motif — raison", "motif — raison", "motif — raison"],
@@ -171,7 +193,8 @@ JSON ATTENDU:
 }}
 
 RAPPEL FINAL:
-- tops: EXACTEMENT 4. dresses: EXACTEMENT 2. jackets: EXACTEMENT 3.
-- dresses = robes/combi UNIQUEMENT. jackets = vestes/blazers UNIQUEMENT. tops = hauts UNIQUEMENT.
-- Chaque outfit_formula: EXACTEMENT 4 pièces. Zéro texte hors JSON.
+- AUCUNE couleur dans les champs "name" des essentials.
+- shopping_priorities : 5 coupes précises issues de tes essentials, PAS de généralités.
+- tops=4, dresses=2, jackets=3, bottoms=3. Chaque formule=4 pièces exactement.
+- Zéro texte hors JSON.
 """
