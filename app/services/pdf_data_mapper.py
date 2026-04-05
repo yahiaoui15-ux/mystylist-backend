@@ -691,7 +691,7 @@ class PDFDataMapper:
         },
         "O": {
             "lingerie": [
-                ("soutien_tshirt",  "Minimiseur armatures",    "Soutient et structure la silhouette."),
+                ("minimiseur_avec_armatures",  "Minimiseur armatures",    "Soutient et structure la silhouette."),
                 ("culotte_haute",   "Shorty taille haute",     "Confort et maintien optimal au quotidien."),
                 ("body_gainant",    "Body gainant ventre plat","Affine la taille sous les vêtements."),
             ],
