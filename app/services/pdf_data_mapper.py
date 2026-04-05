@@ -757,16 +757,21 @@ class PDFDataMapper:
         return s
 
     @staticmethod
-    def _find_visual_key_for_piece(name: str, supabase_category: str) -> str:
-        """Retourne le nom_simplifie Supabase correspondant au nom de pièce, ou '' si aucun match."""
+    def _find_visual_key_for_piece(name: str, supabase_category: str, allow_fallback: bool = True) -> str:
+        """Retourne le nom_simplifie Supabase correspondant au nom de pièce.
+        Si allow_fallback=False, retourne "" si aucun match réel (sans activer le fallback).
+        """
         if not name:
             return ""
         name_norm = PDFDataMapper._normalize_for_matching(name)
         for keywords, visual_key in PDFDataMapper.MORPHO_MVP_KEYWORD_MAP.get(supabase_category, []):
             if any(kw in name_norm for kw in keywords):
                 return visual_key
-        # Fallback : si aucun match, retourner le visuel générique de la catégorie
-        # pour éviter les cases vides dans le PDF
+ 
+        if not allow_fallback:
+            return ""
+ 
+        # Fallback uniquement si allow_fallback=True
         fallback_key = PDFDataMapper.MORPHO_MVP_FALLBACK.get(supabase_category, "")
         if fallback_key:
             print(f"   📦 FALLBACK [{supabase_category}] '{name[:40]}' → key='{fallback_key}'")
@@ -809,10 +814,20 @@ class PDFDataMapper:
                 name = item.get("name", "")
                 visual_key = ""
  
+                # Passe 1 : chercher un vrai match sans fallback sur toutes les catégories
+                visual_key = ""
                 for supabase_cat in supabase_cats:
-                    visual_key = PDFDataMapper._find_visual_key_for_piece(name, supabase_cat)
+                    visual_key = PDFDataMapper._find_visual_key_for_piece(
+                        name, supabase_cat, allow_fallback=False
+                    )
                     if visual_key:
                         break
+ 
+                # Passe 2 : si toujours rien, accepter le fallback de la première catégorie
+                if not visual_key:
+                    visual_key = PDFDataMapper._find_visual_key_for_piece(
+                        name, supabase_cats[0], allow_fallback=True
+                    )
  
                 visual_url = ""
                 if visual_key:
