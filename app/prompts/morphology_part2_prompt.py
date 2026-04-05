@@ -1,7 +1,13 @@
 """
-MORPHOLOGY PART 2 - MVP v5b
-Changement vs v5 : EXACTEMENT 4 pièces dans chaque outfit_formula,
-jamais 3, jamais 5.
+MORPHOLOGY PART 2 - MVP v6.0
+Changements vs v5b :
+- essentials.tops : 4 items (au lieu de 6)
+- essentials.dresses : 2 items robes/combinaisons (nouveau)
+- essentials.jackets : 3 items vestes/blazers/manteaux (nouveau, remplace dresses_jackets)
+- essentials.bottoms : 3 items (inchangé)
+- essentials.shoes_accessories : 3 items (inchangé)
+- avoid_by_category : ajoute "jackets" en plus de "dresses"
+- outfit_formulas : EXACTEMENT 4 pièces
 """
 
 MORPHOLOGY_PART2_SYSTEM_PROMPT = """
@@ -14,7 +20,7 @@ RÈGLES JSON ABSOLUES:
 - Aucune valeur null.
 - AUCUN saut de ligne dans les strings.
 - Pas de Markdown, pas de HTML, pas d'emojis.
-- Les accents et apostrophes sont AUTORISÉS et attendus.
+- Les accents et apostrophes sont AUTORISÉS.
 """
 
 MORPHOLOGY_PART2_USER_PROMPT = """
@@ -30,55 +36,53 @@ RÈGLES OBLIGATOIRES PAR SILHOUETTE
 SILHOUETTE A (poire — hanches > épaules):
 - TOPS: encolure bateau, épaulettes, manches bouffantes, col rond large, bardot, froncé aux épaules
 - TOPS INTERDITS: col en V, peplum, tops courts
-- BAS À ÉVITER: slim, skinny, leggings, imprimés larges sur le bas
-- CHAUSSURES À ÉVITER: chaussures très plates qui coupent la jambe
-- ACCESSOIRES À ÉVITER: ceintures trop larges qui élargissent les hanches
+- BAS À ÉVITER: slim, skinny, leggings, imprimés larges
+- VESTES: structurées aux épaules, blazer à épaulettes
+- ROBES: empire, portefeuille, col en V interdit
 
 SILHOUETTE V (épaules > hanches):
 - TOPS: col en V, raglan, encolures larges, sans volume aux épaules
 - BAS: évasés, palazzo
-- CHAUSSURES À ÉVITER: platforms très massives
-- ACCESSOIRES À ÉVITER: sacs portés haut sur l'épaule
+- VESTES: longues, cintrées à la taille
 
 SILHOUETTE O (ronde, peu de taille):
 - TOPS: col en V, encolure en U, matières fluides
 - BAS: droits, palazzo
-- CHAUSSURES À ÉVITER: ballerines très plates
-- ACCESSOIRES À ÉVITER: ceintures épaisses
+- VESTES: ceinturées, mi-longues structurées
+- ROBES: empire, portefeuille, cache-cœur
 
 SILHOUETTE H (rectangle):
 - TOPS: peplum, volumineux, bouffants
 - BAS: évasés, jupes froncées
-- CHAUSSURES À ÉVITER: bottes larges au genou
-- ACCESSOIRES À ÉVITER: ceintures trop fines
+- VESTES: avec ceinture, structurées à la taille
 
 SILHOUETTE X (sablier):
 - TOPS: wrap tops, cintrés, col en V
 - BAS: évasés, jupes mi-longues
-- CHAUSSURES À ÉVITER: chaussures massives
-- ACCESSOIRES À ÉVITER: grosses ceintures qui cachent la taille
+- VESTES: cintrées qui marquent la taille
 
 ══════════════════════════════════════════
-RÈGLES COHÉRENCE FORMULES — CRITIQUE
+RÈGLES FORMULES — CRITIQUE
 ══════════════════════════════════════════
-- Chaque formule contient EXACTEMENT 4 pièces. Pas 3. Pas 5. EXACTEMENT 4.
-- Si tu ne trouves pas 4 pièces vestimentaires, complète avec un accessoire (sac, ceinture, collier).
-- Les 4 pièces forment UNE SEULE tenue portée ensemble.
-- Jamais robe + pantalon ensemble.
-- Structure recommandée :
+- EXACTEMENT 4 pièces par formule. Ni 3, ni 5.
+- Jamais robe + pantalon dans la même formule.
+- Structure :
   Quotidien : haut + bas + accessoire + chaussure
   Travail : haut + bas + veste + chaussure
-  Sortie : robe OU (haut + bas) + accessoire + chaussure
+  Sortie : robe + accessoire + accessoire + chaussure
+             OU haut + bas + veste + chaussure
 - why_it_works: MINIMUM 3 phrases.
 
 ══════════════════════════════════════════
-CONTRAINTES
+CONTRAINTES STRICTES
 ══════════════════════════════════════════
-- tops: EXACTEMENT 6 items.
-- bottoms, dresses_jackets, shoes_accessories: 3 items chacun.
-- avoid_by_category: pièces STRICTEMENT de leur catégorie.
-- avoid: 5 items globaux toutes catégories confondues.
-- style_notes: format "nom — explication courte" avec tiret.
+- tops : EXACTEMENT 4 items (hauts uniquement)
+- dresses : EXACTEMENT 2 items (robes ou combinaisons uniquement)
+- jackets : EXACTEMENT 3 items (vestes, blazers, manteaux uniquement)
+- bottoms : EXACTEMENT 3 items (pantalons, jupes, jeans uniquement)
+- shoes_accessories : EXACTEMENT 3 items
+- avoid_by_category : pièces STRICTEMENT de leur catégorie
+- style_notes : format "nom — explication courte"
 - Strings max 130 caractères. Zéro texte hors JSON.
 
 JSON ATTENDU:
@@ -89,16 +93,18 @@ JSON ATTENDU:
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "dresses": [
+      {{"name": "", "why": ""}},
+      {{"name": "", "why": ""}}
+    ],
+    "jackets": [
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}}
     ],
     "bottoms": [
-      {{"name": "", "why": ""}},
-      {{"name": "", "why": ""}},
-      {{"name": "", "why": ""}}
-    ],
-    "dresses_jackets": [
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}}
@@ -118,7 +124,10 @@ JSON ATTENDU:
       {{"name": "", "why": ""}},
       {{"name": "", "why": ""}}
     ],
-    "dresses_jackets": [
+    "dresses": [
+      {{"name": "", "why": ""}}
+    ],
+    "jackets": [
       {{"name": "", "why": ""}}
     ],
     "shoes": [
@@ -154,17 +163,15 @@ JSON ATTENDU:
   ],
   "shopping_priorities": ["", "", "", "", ""],
   "style_notes": {{
-    "matieres_recommandees": ["matière — raison courte", "matière — raison courte", "matière — raison courte"],
-    "motifs_recommandes": ["motif — raison courte", "motif — raison courte", "motif — raison courte"],
-    "matieres_eviter": ["matière — raison courte", "matière — raison courte"],
-    "motifs_eviter": ["motif — raison courte", "motif — raison courte"]
+    "matieres_recommandees": ["matière — raison", "matière — raison", "matière — raison"],
+    "motifs_recommandes": ["motif — raison", "motif — raison", "motif — raison"],
+    "matieres_eviter": ["matière — raison", "matière — raison"],
+    "motifs_eviter": ["motif — raison", "motif — raison"]
   }}
 }}
 
 RAPPEL FINAL:
-- tops: EXACTEMENT 6 items.
-- Chaque outfit_formula: EXACTEMENT 4 pièces dans "pieces". JAMAIS 3. JAMAIS 5.
-- avoid_by_category.shoes = chaussures UNIQUEMENT.
-- avoid_by_category.accessories = accessoires UNIQUEMENT.
-- Zéro texte hors JSON.
+- tops: EXACTEMENT 4. dresses: EXACTEMENT 2. jackets: EXACTEMENT 3.
+- dresses = robes/combi UNIQUEMENT. jackets = vestes/blazers UNIQUEMENT. tops = hauts UNIQUEMENT.
+- Chaque outfit_formula: EXACTEMENT 4 pièces. Zéro texte hors JSON.
 """

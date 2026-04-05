@@ -364,6 +364,12 @@ class PDFDataMapper:
             (["top col rond fluide"], "top_col_rond_fluide"),
             (["top fluide", "haut fluide"], "top_fluide"),
             (["fluide"], "chemise_droite_fluide"),
+            # ── Bénitier ──
+            (["col benitier", "benitier"], "top_sans_manches_col_benitier"),
+            (["col benitier", "benitier", "sans manches col benitier"], "top_sans_manches_col_benitier"),
+            (["pull col benitier", "pull benitier"], "top_sans_manches_col_benitier"),
+            (["pull col"], "pull_col_roul"),
+            (["pull en maille", "pull maille", "pull"], "pull_col_roul"),
             # ── Pull / col roulé ──
             (["pull col roule", "pull col roul"], "pull_col_roule"),
             (["pull col"], "pull_col_roul"),
@@ -376,8 +382,6 @@ class PDFDataMapper:
             # ── Col montant ──
             (["col montant creme"], "top_col_montant_creme"),
             (["col montant"], "top_col_montant"),
-            # ── Bénitier ──
-            (["col benitier", "benitier"], "top_sans_manches_col_benitier"),
             # ── Col tailleur ──
             (["col tailleur"], "top_col_tailleur"),
             # ── Sweat ──
@@ -824,55 +828,53 @@ class PDFDataMapper:
 
         return enriched
 
+ 
     @staticmethod
     def _guess_supabase_cats_for_piece(name: str) -> list:
         """Devine la(les) catégorie(s) Supabase pour un nom de pièce.
-        Ordre : du plus spécifique au plus générique.
-        La fonction tente les catégories dans l'ordre et s'arrête au premier match.
+        Priorité : veste > manteau > robe > bas > chaussure > accessoire > haut
         """
         n = PDFDataMapper._normalize_for_matching(name)
  
-        # Vestes / blousons / trenchs — AVANT les robes car GPT les met parfois
-        # dans dresses_jackets mais ce sont des vestes
-        if any(k in n for k in ["blazer", "veste", "blouson", "perfecto", "doudoune",
-                                  "gilet", "cardigan long"]):
-            return ["veste", "robe"]
+        # Vestes — AVANT robes pour attraper blazer/veste cintré/fluide
+        if any(k in n for k in ["blazer", "veste", "blouson", "perfecto",
+                                  "doudoune", "gilet", "cardigan long"]):
+            return ["veste"]
  
         # Manteaux
         if any(k in n for k in ["manteau", "trench", "duffle"]):
             return ["manteau", "veste"]
  
-        # Robes & combinaisons
+        # Robes et combinaisons
         if any(k in n for k in ["robe", "combinaison", "combi"]):
             return ["robe"]
  
         # Bas
-        if any(k in n for k in ["jupe", "pantalon", "jean", "legging", "short",
-                                  "palazzo", "bermuda"]):
+        if any(k in n for k in ["jupe", "pantalon", "jean", "legging",
+                                  "short", "palazzo", "bermuda"]):
             return ["bas"]
  
-        # Chaussures
-        if any(k in n for k in ["escarpin", "botte", "bottine", "sandale", "chaussure",
-                                  "talon", "sneaker", "ballerine", "mocassin", "mule",
-                                  "derby", "espadrille"]):
+        # Chaussures — word boundary pour "talon"
+        words = n.split()
+        shoe_kw = ["escarpin", "botte", "bottine", "sandale", "chaussure",
+                   "sneaker", "ballerine", "mocassin", "mule", "derby", "espadrille"]
+        if any(k in n for k in shoe_kw) or "talon" in words or "talons" in words:
             return ["chaussure"]
  
         # Accessoires
-        if any(k in n for k in ["ceinture", "collier", "sac", "foulard", "accessoire",
+        if any(k in n for k in ["ceinture", "collier", "sac", "foulard",
                                   "bracelet", "boucle", "sautoir", "pendentif",
                                   "pochette", "chapeau", "manchette"]):
             return ["accessoire"]
  
-        # Maillots
-        if any(k in n for k in ["maillot", "bikini", "tankini", "shorty bain"]):
+        # Maillots / lingerie
+        if any(k in n for k in ["maillot", "bikini", "tankini"]):
             return ["Maillot de bain"]
- 
-        # Lingerie
         if any(k in n for k in ["soutien", "culotte", "bralette", "bustier", "body"]):
             return ["lingerie"]
  
-        # Hauts par défaut
-        return ["haut", "veste"]
+        return ["haut"]
+ 
  
     @staticmethod
     def _enrich_outfit_formulas_with_visuals(outfit_formulas: list) -> list:
@@ -934,10 +936,13 @@ class PDFDataMapper:
         Catégories valides: tops, bottoms, dresses_playsuits, outerwear, shoes, accessories
         """
         n = PDFDataMapper._normalize_for_matching(name)
-        if any(k in n for k in ["escarpin", "botte", "bottine", "sandale", "chaussure",
-                                  "talon", "sneaker", "ballerine", "mocassin", "mule",
-                                  "derby", "espadrille"]):
+        shoe_keywords = ["escarpin", "botte", "bottine", "sandale", "chaussure",
+                         "sneaker", "ballerine", "mocassin", "mule", "derby", "espadrille"]
+        # "talon" vérifié séparément avec word boundary pour éviter "pantalons"
+        words = n.split()
+        if any(k in n for k in shoe_keywords) or "talon" in words or "talons" in words:
             return "shoes"
+ 
         if any(k in n for k in ["sac", "ceinture", "collier", "bracelet", "foulard",
                                   "bijou", "accessoire", "boucle", "sautoir", "pendentif"]):
             return "accessories"
@@ -1265,6 +1270,16 @@ class PDFDataMapper:
         essentials_raw = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
         essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
 
+        # Séparer dresses et jackets depuis essentials pour la page 9 v10
+        essentials_dresses  = essentials_enriched.get("dresses", [])
+        essentials_jackets  = essentials_enriched.get("jackets", [])
+        # Rétrocompat : si GPT retourne encore dresses_jackets (vieux rapport)
+        if not essentials_dresses and not essentials_jackets:
+            dj = essentials_enriched.get("dresses_jackets", [])
+            essentials_dresses  = [i for i in dj if _is_dress(i)]
+            essentials_jackets  = [i for i in dj if not _is_dress(i)]
+ 
+
         # ✅ Enrichissement formules de tenues avec visuels
         print("\n🎨 Enrichissement formules de tenues...")
         outfit_formulas_raw = PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", []))
@@ -1374,7 +1389,9 @@ class PDFDataMapper:
             # ✅ PAGES 9-15: Morpho categories
            
             "morphology_mvp": {
-                "essentials":                 essentials_enriched,
+                "essentials":                 essentials_enriched,*
+                "essentials_dresses":  essentials_dresses,
+                "essentials_jackets":  essentials_jackets,
                 "avoid":                      PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
                 "avoid_by_category":              avoid_by_category,
                 "outfit_formulas":            outfit_formulas_enriched,
@@ -1586,6 +1603,13 @@ class PDFDataMapper:
                 "body": user_data.get("body_photo_url", "")
             },
         }
+    
+    @staticmethod
+    def _is_dress(item: dict) -> bool:
+        """True si l'item ressemble à une robe/combinaison plutôt qu'une veste."""
+        name = PDFDataMapper._normalize_for_matching(item.get("name", ""))
+        return any(k in name for k in ["robe", "combinaison", "combi", "jumpsuit"])
+
 
     @staticmethod
     def _generate_morphology_categories(morphology_raw: dict, user_data: dict) -> dict:
@@ -1751,6 +1775,7 @@ class PDFDataMapper:
         return {
             "data": PDFDataMapper.prepare_liquid_variables(report_data, user_data)
         }
+    
 
 
 pdf_mapper = PDFDataMapper()

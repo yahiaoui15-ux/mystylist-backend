@@ -38,6 +38,13 @@ class ProductMatcherService:
         "accessories": "accessoire",
     }
 
+    PRODUCT_BLACKLIST_KEYWORDS = [
+        "trousse", "pochette beaute", "pochette maquillage",
+        "sac voyage", "bagage", "valise", "cosmetic",
+        "beauty bag", "bébé", "bebe", "enfant", "garçon", "garcon", "fille",
+        "maternité", "maternite", "sport", "jogging", "pyjama", "nuisette",
+    ]
+
     AFFILIATE_TABLE = os.getenv("AFFILIATE_TABLE", "affiliate_products")
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
 
@@ -271,6 +278,12 @@ class ProductMatcherService:
             if img_base:
                 seen_images.add(img_base)
  
+             # Blacklist : exclure produits hors scope styling féminin adulte
+            product_name_lower = (c.get("product_name") or "").lower()
+            secondary_cat_lower = (c.get("secondary_category") or "").lower()
+            combined_text = product_name_lower + " " + secondary_cat_lower
+            if any(bk in combined_text for bk in self.PRODUCT_BLACKLIST_KEYWORDS):
+                continue
             out.append(c)
             if len(out) >= n:
                 break
@@ -428,7 +441,7 @@ class ProductMatcherService:
                 file=data,
                 file_options={
                     "content-type": content_type or f"image/{ext}",
-                    "upsert": True,
+                    "upsert": "true",
                 },
             )
 
