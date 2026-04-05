@@ -1389,7 +1389,7 @@ class PDFDataMapper:
             # ✅ PAGES 9-15: Morpho categories
            
             "morphology_mvp": {
-                "essentials":                 essentials_enriched,*
+                "essentials":                 essentials_enriched,
                 "essentials_dresses":  essentials_dresses,
                 "essentials_jackets":  essentials_jackets,
                 "avoid":                      PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
