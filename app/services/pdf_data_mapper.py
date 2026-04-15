@@ -298,8 +298,9 @@ class PDFDataMapper:
             (["blouse col en v", "blouse col v", "encolure en v blouse"], "encolure_en_v"),
             # ── Col en U ──  ← NOUVEAU
             (["tshirt en u", "t-shirt en u", "tee en u", "top en u",
-              "encolure en u", "col en u", "encolure u",
-              "blouse en u", "top encolure u", "col u"], "top_encolure_u"),
+            "encolure en u", "col en u", "encolure u",
+            "blouse en u", "top encolure u", "col u",
+            "pull en u", "pull u", "pull col u"], "top_encolure_u"),
             # ── Cache-cœur ──
             (["top col cache coeur", "top cache coeur col"], "top_col_cache_coeur"),
             (["cache-coeur", "cache coeur", "cachecoeur", "top cache coeur",
