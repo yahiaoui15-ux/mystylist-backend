@@ -456,7 +456,7 @@ class ProductMatcherService:
 
         except Exception as e:
             print(f"⚠️ Image cache failed: {e}")
-            return image_url
+            return ""  # PDFMonkey ne peut pas charger media-cdn (hotlinking bloqué)
 
     # -------------------------
     # AFFILIATE MATCH
