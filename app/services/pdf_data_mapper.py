@@ -1320,8 +1320,25 @@ class PDFDataMapper:
 
         # ✅ Enrichissement priorités shopping avec produits affiliés
         print("\n🛍️ Enrichissement priorités shopping morphologie...")
+        print(f"   📋 shopping_priorities raw: {shopping_priorities_raw}")  # ← AJOUTER
         shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
         shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
+
+        # ── FALLBACK : dériver depuis essentials si GPT-4 a retourné [] ──────────
+        if not shopping_priorities_raw:
+            _essentials_for_sp = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
+            _sp_fallback = []
+            for _cat in ["tops", "dresses", "jackets", "bottoms", "shoes_accessories"]:
+                _items = PDFDataMapper._safe_list(_essentials_for_sp.get(_cat, []))
+                if _items and isinstance(_items[0], dict):
+                    _name = (_items[0].get("name") or "").strip()
+                    if _name and _name not in _sp_fallback:
+                        _sp_fallback.append(_name)
+                if len(_sp_fallback) >= 5:
+                    break
+            shopping_priorities_raw = _sp_fallback
+            print(f"⚠️ shopping_priorities vide — fallback depuis essentials: {_sp_fallback}")
+# ─────────────────────────────────────────────────────────────────────────
 
         # ✅ Extraction avoid_by_category (items à éviter par catégorie, pour page 9)
         # ✅ avoid_by_category — shoes et accessories séparés (v5)

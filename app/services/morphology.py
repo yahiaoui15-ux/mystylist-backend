@@ -502,7 +502,7 @@ EXPLICATION: {explanation}"""
         response = await self.openai.call_chat(
             prompt=repair_prompt,
             model="gpt-4-turbo",
-            max_tokens=2000
+            max_tokens=3500
         )
 
         content = (response.get("content", "") or "").strip()

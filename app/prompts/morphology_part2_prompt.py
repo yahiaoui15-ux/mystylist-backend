@@ -79,15 +79,26 @@ RÈGLES FORMULES
 - why_it_works: MINIMUM 3 phrases.
 
 ══════════════════════════════════════════
-RÈGLES SHOPPING PRIORITIES — CRITIQUE
+RÈGLES SHOPPING PRIORITIES — CRITIQUE ABSOLUE
 ══════════════════════════════════════════
-Les 5 priorités shopping DOIVENT être des pièces de coupe spécifiques
-tirées directement de tes recommandations essentials (tops, dresses, jackets, bottoms).
-INTERDIT : priorités génériques comme "Vêtements avec matières fluides",
-"Pièces polyvalentes", "Accessoires élégants".
-OBLIGATOIRE : noms de coupe précis comme dans tes essentials.
-Exemples corrects : "Top col en V", "Pantalon palazzo", "Robe portefeuille",
-"Blazer cintré", "Jupe midi évasée".
+INTERDICTION ABSOLUE de retourner shopping_priorities vide ou avec moins de 5 items.
+Si ce champ est vide ou incomplet, la réponse sera REJETÉE et tu devras recommencer.
+
+Les 5 priorités DOIVENT être des noms de coupe exacts tirés de tes essentials ci-dessus.
+Copie littéralement les "name" depuis tes essentials : tops[0].name, bottoms[0].name,
+dresses[0].name, jackets[0].name, tops[1].name (ou toute autre combinaison de 5 noms).
+
+INTERDIT : tableau vide [], priorités génériques, phrases descriptives.
+OBLIGATOIRE : exactement 5 strings, chacune = un "name" de tes essentials.
+
+Exemple pour silhouette O :
+"shopping_priorities": [
+  "Top col en V",
+  "Pantalon palazzo",
+  "Robe portefeuille",
+  "Blazer cintré",
+  "Jupe droite taille haute"
+]
 
 ══════════════════════════════════════════
 CONTRAINTES
