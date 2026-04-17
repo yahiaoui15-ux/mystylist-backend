@@ -60,6 +60,31 @@ CONTRAINTES IA :
 - Zones à valoriser : {morphology_goals.body_parts_to_highlight}
 - Zones à minimiser : {morphology_goals.body_parts_to_minimize}
 
+RÈGLES MORPHOLOGIQUES CRITIQUES PAR CATÉGORIE :
+Ces règles sont ABSOLUES et priment sur tout autre critère (style, confort, préférence) :
+
+CHAUSSURES — selon silhouette :
+- O (ronde) : UNIQUEMENT des chaussures à talons (escarpins, bottes à talons, sandales à talons min. 5cm). Les chaussures plates (ballerines, sandales plates, sneakers, mocassins) sont STRICTEMENT INTERDITES car elles alourdissent et tronquent la silhouette.
+- A (triangle) : talons fins ou moyens, bottes hautes. INTERDIRE les boots courtes chevilles qui élargissent les hanches.
+- V (triangle inversé) : talons larges ou compensés pour rééquilibrer. Éviter les stilettos très fins.
+- X (sablier) : tous les talons sont flatteurs, liberté totale.
+- H (rectangulaire) : talons pour créer l'illusion de courbes. Éviter les chaussures 100% plates.
+
+HAUTS — selon silhouette :
+- O : encolures dégagées (V, U, bateau, bardot). INTERDIRE cols roulés et cols ronds fermés.
+- A : épaules structurées, cols larges, épaulettes légères pour élargir le haut.
+- V : cols V ou U pour alléger. INTERDIRE encolures bateau et cols carrés larges.
+
+BAS — selon silhouette :
+- O : coupes fluides et droites taille haute. INTERDIRE skinny, slim, legging moulant.
+- A : coupes A-line ou évasées. INTERDIRE poches plaquées et motifs sur les hanches.
+
+ROBES — selon silhouette :
+- O : empire, portefeuille, trapèze. INTERDIRE robes droites sans ceinture.
+- A : robe évasée ou patineuse. INTERDIRE robes moulantes sur le bas.
+
+MISSION (PART 2 / PAGES 18–19) :
+
 MISSION (PART 2 / PAGES 18–19) :
 Tu dois recommander des "pièces phares" du style (spécifications de pièces) en respectant STRICTEMENT :
 1) Colorimétrie : proposer des couleurs adaptées à la saison/palette (et éviter les couleurs rejetées).
