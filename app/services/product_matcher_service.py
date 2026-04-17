@@ -20,12 +20,9 @@ class ProductMatcherService:
     1) un produit affilié (TABLE: affiliate_products)
     2) sinon un visuel pédagogique (table `visuels`)
 
-    Fix stable v8 (PATCH):
-    - Remplace les patterns ilike "%kw%" (dangereux en URL si % non encodé)
-      par le wildcard PostgREST URL-safe "*kw*"
-      => supprime les erreurs Cloudflare 1101 / "JSON could not be generated"
-    - Supprime la PHASE CAT primary (incompatible avec primary_category=eq.Femme + ilike token)
-      qui génère des doublons de paramètres et n'apporte rien.
+    v9 (Points 1 + 2):
+    - PHASE 0: style-aware search via affiliate_product_enrichment
+    - Image-first selection: tente jusqu'à 4 candidats pour le produit principal
     """
 
     VISUELS_TYPE_MAP = {
@@ -45,10 +42,36 @@ class ProductMatcherService:
         "maternité", "maternite", "sport", "jogging", "pyjama", "nuisette",
     ]
 
+    # ── Mapping styles styling → tags enrichment ──────────────────────────
+    # Les tags enrichment sont les clés du classifier v6 (lowercase, sans accent).
+    STYLE_LABEL_TO_ENRICHMENT_TAG: Dict[str, str] = {
+        # Labels courts (style_mix dans styling)
+        "Classique": "classique",
+        "Chic": "chic",
+        "Casual": "casual",
+        "Rock": "rock",
+        "Moderne": "moderne",
+        "Sporty Chic": "sportswear",
+        "Sportswear": "sportswear",
+        "Vintage": "vintage",
+        "Bohème": "boheme",
+        "Boheme": "boheme",
+        # Labels complets (styling._score_styles keys)
+        "Style Classique / Intemporel": "classique",
+        "Style Chic / Élégant": "chic",
+        "Style Casual / Décontracté": "casual",
+        "Style Rock": "rock",
+        "Style Moderne / Contemporain": "moderne",
+        "Style Sporty Chic": "sportswear",
+        "Style Urbain / Streetwear": "streetwear",
+        "Style Vintage": "vintage",
+        "Style Bohème": "boheme",
+        # Styles sans équivalent enrichment (romantique, minimaliste, etc.)
+        # → pas de mapping → PHASE 0 ignorée pour eux, fallback PHASE 1
+    }
+
     AFFILIATE_TABLE = os.getenv("AFFILIATE_TABLE", "affiliate_products")
     AFFILIATE_IMAGE_BUCKET = os.getenv("AFFILIATE_IMAGE_BUCKET", "affiliate-cache")
-
-    # si tu ne veux pas filtrer Femme, mets vide dans Railway: AFFILIATE_PRIMARY_CATEGORY=""
     AFFILIATE_PRIMARY_CATEGORY = (os.getenv("AFFILIATE_PRIMARY_CATEGORY", "Femme") or "").strip()
 
     HTTP_TIMEOUT = float(os.getenv("PDT_HTTP_TIMEOUT", "8.0").strip() or "8.0")
@@ -73,22 +96,31 @@ class ProductMatcherService:
     # -------------------------
     # Public API
     # -------------------------
-    def enrich_pieces(self, pieces: List[Dict[str, Any]], category: str) -> List[Dict[str, Any]]:
+    def enrich_pieces(
+        self,
+        pieces: List[Dict[str, Any]],
+        category: str,
+        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+    ) -> List[Dict[str, Any]]:
         out = []
         for p in pieces or []:
             if not isinstance(p, dict):
                 continue
             p2 = dict(p)
-            p2["match"] = self.match_piece(p2, category)
+            p2["match"] = self.match_piece(p2, category, style_tags=style_tags)
             m = p2.get("match") or {}
             p2["image_url"] = (m.get("image_url") or "").strip()
             p2["product_url"] = (m.get("product_url") or "").strip()
             p2["source"] = (m.get("source") or "").strip()
             out.append(p2)
-
         return out
 
-    def match_piece(self, piece: Dict[str, Any], category: str) -> Dict[str, Any]:
+    def match_piece(
+        self,
+        piece: Dict[str, Any],
+        category: str,
+        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+    ) -> Dict[str, Any]:
         piece_title = (piece.get("piece_title") or "").strip()
         spec = (piece.get("spec") or "").strip()
         visual_key = (piece.get("visual_key") or "").strip()
@@ -98,23 +130,42 @@ class ProductMatcherService:
             spec=spec,
             category=category,
             limit=20,
+            style_tags=style_tags,
         )
-        top3 = self._pick_top3_valid_candidates(candidates)
+
+        # ── IMAGE-FIRST: on tente jusqu'à 4 candidats pour trouver une image ──
+        valid_pool = self._pick_top_n_valid_candidates(candidates, n=4)
 
         try:
-            print(f"🧩 MATCH [{category}] '{piece_title[:60]}' → {len(candidates)} candidats / {len(top3)} retenus")
+            print(f"🧩 MATCH [{category}] '{piece_title[:60]}' → {len(candidates)} candidats / {len(valid_pool)} retenus")
         except Exception:
             pass
 
-        if top3:
-            main = top3[0]
-            raw_img = (main.get("image_url") or "").strip()
-            safe_img = self._ensure_cached_public_image(raw_img, main) if raw_img else ""
-            print("🖼️ IMG raw:", raw_img)
-            print("🖼️ IMG safe:", safe_img)
-            alt1 = top3[1] if len(top3) > 1 else None
-            alt2 = top3[2] if len(top3) > 2 else None
-         
+        if valid_pool:
+            # Cherche le premier candidat avec une image qui fonctionne
+            main = None
+            safe_img = ""
+            remaining = []
+
+            for idx, candidate in enumerate(valid_pool):
+                raw_img = (candidate.get("image_url") or "").strip()
+                img = self._ensure_cached_public_image(raw_img, candidate) if raw_img else ""
+                print("🖼️ IMG raw:", raw_img)
+                print("🖼️ IMG safe:", img)
+                if img:
+                    main = candidate
+                    safe_img = img
+                    remaining = valid_pool[idx + 1:]
+                    break
+
+            # Si aucun candidat avec image → on prend le premier quand même
+            if main is None:
+                main = valid_pool[0]
+                remaining = valid_pool[1:]
+
+            alt1 = remaining[0] if len(remaining) > 0 else None
+            alt2 = remaining[1] if len(remaining) > 1 else None
+
             return {
                 "image_url": safe_img,
                 "product_url": (main.get("buy_url") or main.get("product_url") or "").strip(),
@@ -160,14 +211,12 @@ class ProductMatcherService:
 
     def match_piece_top4(self, piece: Dict[str, Any], category: str) -> List[Dict[str, Any]]:
         """
-        Comme match_piece mais retourne une LISTE de 4 produits complets
-        (chacun avec image_url cachée, product_url, brand, price, title).
+        Comme match_piece mais retourne une LISTE de 4 produits complets.
         Utilisé pour shopping_products_flat (page 12).
         """
         piece_title = (piece.get("piece_title") or "").strip()
         spec        = (piece.get("spec") or "").strip()
-        visual_key  = (piece.get("visual_key") or "").strip()
- 
+
         candidates = self._find_affiliate_products(
             piece_title=piece_title,
             spec=spec,
@@ -175,7 +224,7 @@ class ProductMatcherService:
             limit=30,
         )
         top4 = self._pick_top_n_valid_candidates(candidates, n=4)
- 
+
         results = []
         for candidate in top4:
             raw_img  = (candidate.get("image_url") or "").strip()
@@ -189,10 +238,101 @@ class ProductMatcherService:
             })
             status = "✅" if safe_img else "⚠️"
             print(f"   {status} TOP4 [{category}] '{piece_title[:40]}' → {(candidate.get('brand') or '')[:20]}")
- 
+
         return results
- 
- 
+
+    # -------------------------
+    # Style helpers (Point 1)
+    # -------------------------
+    def _map_styles_to_enrichment_tags(self, style_labels: List[str]) -> List[str]:
+        """Convertit les labels styling (ex: 'Classique') en tags enrichment (ex: 'classique')."""
+        tags = []
+        for label in style_labels or []:
+            label = (label or "").strip()
+            tag = self.STYLE_LABEL_TO_ENRICHMENT_TAG.get(label)
+            if tag:
+                tags.append(tag)
+            else:
+                # Tentative par normalisation : lowercase + strip accents
+                normalized = self._strip_accents(label.lower())
+                if normalized.startswith("style "):
+                    normalized = normalized[6:]
+                normalized = re.sub(r"[^a-z0-9]", "", normalized)
+                if len(normalized) >= 3:
+                    tags.append(normalized)
+        return list(dict.fromkeys(tags))  # déduplique en préservant l'ordre
+
+    def _find_affiliate_products_phase0_style(
+        self,
+        piece_title: str,
+        style_tags: List[str],
+        category: str,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        PHASE 0 — Style-aware: requête affiliate_product_enrichment sur style_primary,
+        puis récupère les produits correspondants dans affiliate_products.
+        Retourne une liste pré-filtrée par catégorie.
+        """
+        if not style_tags:
+            return []
+
+        enrichment_tags = self._map_styles_to_enrichment_tags(style_tags)
+        if not enrichment_tags:
+            return []
+
+        select_fields = ",".join([
+            "product_id", "product_name", "brand", "primary_category",
+            "secondary_category", "product_url", "image_url", "buy_url",
+            "price", "sale_price", "currency", "availability",
+            "is_deleted", "last_seen_at",
+        ])
+
+        try:
+            # 1) Récupère les product_ids dont style_primary est dans nos tags
+            q_enrich = (
+                self.client.table("affiliate_product_enrichment")
+                .select("product_id")
+                .in_("style_primary", enrichment_tags)
+                .limit(200)
+            )
+            resp_enrich = self._execute(q_enrich)
+            enrich_data = getattr(resp_enrich, "data", None) or []
+            product_ids = [row["product_id"] for row in enrich_data if row.get("product_id")]
+
+            if not product_ids:
+                return []
+
+            # 2) Récupère ces produits dans affiliate_products + filtre keyword
+            kws = self._extract_keywords(piece_title, "")
+            kw_safe = self._normalize_kw_for_ilike(kws[0]) if kws else ""
+
+            # On limite à 50 product_ids pour éviter une requête trop lourde
+            q_products = (
+                self.client.table(self.AFFILIATE_TABLE)
+                .select(select_fields)
+                .eq("is_deleted", False)
+                .in_("product_id", product_ids[:50])
+            )
+            if self.AFFILIATE_PRIMARY_CATEGORY:
+                q_products = q_products.eq("primary_category", self.AFFILIATE_PRIMARY_CATEGORY)
+            if len(kw_safe) >= 3:
+                q_products = q_products.ilike("product_name", self._ilike_pattern(kw_safe))
+
+            q_products = q_products.limit(40)
+            resp_products = self._execute(q_products)
+            data = getattr(resp_products, "data", None) or []
+
+            # 3) Filtre catégorie
+            filtered = [r for r in data if self._category_match(r, category)]
+            if filtered:
+                print(f"✅ PHASE0 style [{category}] tags={enrichment_tags}: {len(filtered)} produits")
+            return filtered[:limit]
+
+        except Exception as e:
+            print(f"⚠️ PHASE 0 style failed: {e}")
+            return []
+
     # -------------------------
     # Output helpers
     # -------------------------
@@ -215,81 +355,55 @@ class ProductMatcherService:
     # Candidate selection / dedupe
     # -------------------------
     def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
-        seen = set()
-        for c in candidates or []:
-            if not isinstance(c, dict):
-                continue
-            buy_url = (c.get("buy_url") or "").strip()
-            product_id = str(c.get("product_id") or "").strip()
-            image_url = (c.get("image_url") or "").strip()
-            if not buy_url and not product_id and not image_url:
-                continue
-            key = buy_url or product_id or image_url
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(c)
-            if len(out) >= 3:
-                break
-        return out[:3]
+        return self._pick_top_n_valid_candidates(candidates, n=3)
 
     def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4) -> List[Dict[str, Any]]:
-        """
-        Retourne n candidats distincts.
-        Déduplication sur : buy_url + product_name (préfixe 60 chars) + image_url (base).
-        """
         out: List[Dict[str, Any]] = []
         seen_urls   = set()
         seen_names  = set()
         seen_images = set()
- 
+
         for c in candidates or []:
             if not isinstance(c, dict):
                 continue
- 
+
             buy_url    = (c.get("buy_url") or "").strip()
             product_id = str(c.get("product_id") or "").strip()
             raw_img    = (c.get("image_url") or "").strip()
- 
+
             if not buy_url and not product_id and not raw_img:
                 continue
- 
+
             url_key = buy_url or product_id or raw_img
- 
-            # Clé nom : 60 premiers caractères, insensible à la casse
-            # (catch "Top col en V - Taille S" vs "Top col en V - Taille M")
             product_name = (c.get("product_name") or "").strip().lower()[:60]
- 
-            # Clé image : URL de base sans query string
-            # (catch variantes offerid différents mais même photo)
             img_base = raw_img.split("?")[0] if raw_img else ""
- 
+
             if url_key in seen_urls:
                 continue
             if product_name and product_name in seen_names:
                 continue
             if img_base and img_base in seen_images:
                 continue
- 
+
             seen_urls.add(url_key)
             if product_name:
                 seen_names.add(product_name)
             if img_base:
                 seen_images.add(img_base)
- 
-             # Blacklist : exclure produits hors scope styling féminin adulte
+
+            # Blacklist
             product_name_lower = (c.get("product_name") or "").lower()
             secondary_cat_lower = (c.get("secondary_category") or "").lower()
             combined_text = product_name_lower + " " + secondary_cat_lower
             if any(bk in combined_text for bk in self.PRODUCT_BLACKLIST_KEYWORDS):
                 continue
+
             out.append(c)
             if len(out) >= n:
                 break
- 
+
         return out[:n]
- 
+
     # -------------------------
     # Text helpers
     # -------------------------
@@ -311,14 +425,9 @@ class ProductMatcherService:
         return kw
 
     def _ilike_pattern(self, token: str) -> str:
-        """
-        PostgREST wildcard URL-safe: '*' (évite les '%' non encodés qui cassent Cloudflare).
-        Ex: ilike.*blouse*
-        """
         t = (token or "").strip()
         if not t:
             return ""
-        # Évite qu'un token contienne déjà des '*' parasites
         t = t.replace("*", " ").strip()
         t = re.sub(r"\s{2,}", " ", t)
         return f"*{t}*"
@@ -348,17 +457,15 @@ class ProductMatcherService:
     # Image cache (Supabase Storage)
     # -------------------------
     def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
-        # normalisation URL (évite WAF sur URLs paramétrées)
         image_url = (image_url or "").strip()
         if image_url.endswith("?"):
             image_url = image_url[:-1]
 
-        base_url = image_url.split("?", 1)[0]  # <- CRITIQUE
+        base_url = image_url.split("?", 1)[0]
 
         if not image_url:
             return ""
 
-        # déjà une URL Supabase public
         if "supabase.co/storage/v1/object/public" in image_url:
             url = image_url.strip()
             return url[:-1] if url.endswith("?") else url
@@ -371,7 +478,6 @@ class ProductMatcherService:
 
             ext = "jpg"
             low = (base_url or image_url).lower()
-
             if ".png" in low:
                 ext = "png"
             elif ".webp" in low:
@@ -382,7 +488,6 @@ class ProductMatcherService:
             object_path = f"pdt/{h}.{ext}"
             bucket = self.client.storage.from_(self.AFFILIATE_IMAGE_BUCKET)
 
-            # si déjà là, renvoyer l’URL
             try:
                 public = bucket.get_public_url(object_path)
                 public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
@@ -401,17 +506,15 @@ class ProductMatcherService:
             except Exception:
                 pass
 
-            # télécharger image source
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
                 "Referer": "https://www.placedestendances.com/",
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             }
-            
+
             proxy_target = base_url or image_url
             try:
                 u = urlparse(proxy_target)
-                # weserv préfère sans schéma
                 target_no_scheme = f"{u.netloc}{u.path}"
                 proxy_url = f"https://images.weserv.nl/?url={quote(target_no_scheme, safe='')}"
             except Exception:
@@ -425,7 +528,6 @@ class ProductMatcherService:
                 print("🧪 proxy status:", r2.status_code, "proxy_url:", proxy_url)
                 r = r2
 
-            # Optionnel: si proxy KO et image_url ≠ base_url, on tente image_url
             if r.status_code >= 400 and try_url != image_url:
                 r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
 
@@ -434,7 +536,7 @@ class ProductMatcherService:
             content_type = (r.headers.get("content-type", "") or "").strip()
             data = r.content
             if not data or len(data) < 200:
-                return image_url
+                return ""
 
             bucket.upload(
                 path=object_path,
@@ -445,18 +547,17 @@ class ProductMatcherService:
                 },
             )
 
-
             public = bucket.get_public_url(object_path)
             public_url = public.get("publicUrl") if isinstance(public, dict) else str(public or "")
             public_url = (public_url or "").strip()
             if public_url.endswith("?"):
                 public_url = public_url[:-1]
 
-            return public_url or image_url
+            return public_url or ""
 
         except Exception as e:
             print(f"⚠️ Image cache failed: {e}")
-            return ""  # PDFMonkey ne peut pas charger media-cdn (hotlinking bloqué)
+            return ""
 
     # -------------------------
     # AFFILIATE MATCH
@@ -468,24 +569,21 @@ class ProductMatcherService:
             q = q.eq("primary_category", self.AFFILIATE_PRIMARY_CATEGORY)
         return q
 
-    def _find_affiliate_products(self, piece_title: str, spec: str, category: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def _find_affiliate_products(
+        self,
+        piece_title: str,
+        spec: str,
+        category: str,
+        limit: int = 20,
+        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+    ) -> List[Dict[str, Any]]:
         kws = self._extract_keywords(piece_title, spec)
 
         select_fields = ",".join([
-            "product_id",
-            "product_name",
-            "brand",
-            "primary_category",
-            "secondary_category",
-            "product_url",
-            "image_url",
-            "buy_url",
-            "price",
-            "sale_price",
-            "currency",
-            "availability",
-            "is_deleted",
-            "last_seen_at",
+            "product_id", "product_name", "brand", "primary_category",
+            "secondary_category", "product_url", "image_url", "buy_url",
+            "price", "sale_price", "currency", "availability",
+            "is_deleted", "last_seen_at",
         ])
 
         collected: List[Dict[str, Any]] = []
@@ -504,11 +602,21 @@ class ProductMatcherService:
                 if len(collected) >= limit:
                     return
 
-        # -------------------------
-        # PHASE 1: 1 keyword (CAT filtrée côté Python)
-        # IMPORTANT: PAS de order() ici
-        # IMPORTANT: wildcard URL-safe "*kw*" (pas "%kw%")
-        # -------------------------
+        # ────────────────────────────────────────────────────────
+        # PHASE 0 — Style-aware via affiliate_product_enrichment
+        # ────────────────────────────────────────────────────────
+        if style_tags:
+            phase0 = self._find_affiliate_products_phase0_style(
+                piece_title=piece_title,
+                style_tags=style_tags,
+                category=category,
+                limit=10,
+            )
+            _add_rows(phase0)
+
+        # ────────────────────────────────────────────────────────
+        # PHASE 1 — Keyword + category filter (côté Python)
+        # ────────────────────────────────────────────────────────
         for kw in kws[:1]:
             if len(collected) >= limit:
                 break
@@ -527,9 +635,9 @@ class ProductMatcherService:
             except Exception as e:
                 print(f"⚠️ KW+CAT query failed: {e}")
 
-        # -------------------------
-        # PHASE 2: 1 keyword sans catégorie (toujours sans order)
-        # -------------------------
+        # ────────────────────────────────────────────────────────
+        # PHASE 2 — Keyword sans filtre catégorie
+        # ────────────────────────────────────────────────────────
         if len(collected) < 6:
             for kw in kws[:1]:
                 if len(collected) >= limit:
@@ -548,10 +656,9 @@ class ProductMatcherService:
                 except Exception as e:
                     print(f"⚠️ KW query failed: {e}")
 
-        # -------------------------
-        # PHASE 3: fallback catégorie (secondary_category)
-        # Ici on garde order(last_seen_at) optionnel
-        # -------------------------
+        # ────────────────────────────────────────────────────────
+        # PHASE 3 — Fallback catégorie (secondary_category)
+        # ────────────────────────────────────────────────────────
         def _ordered(q):
             try:
                 return q.order("last_seen_at", desc=True)
@@ -575,8 +682,6 @@ class ProductMatcherService:
                         print(f"✅ CAT secondary [{category}] '{t}': {len(data)}")
                 except Exception as e:
                     print(f"⚠️ CAT secondary query failed: {e}")
-
-        # PHASE 4 (CAT primary) supprimée: incompatible avec primary_category=eq.Femme + ilike token
 
         print(f"📊 Total [{category}]: {len(collected)} produits collectés")
         return collected[:limit]

@@ -1154,13 +1154,21 @@ class PDFDataMapper:
                 out.append(it)
             return out
 
+        # Extraction des style_tags pour le matching affilié (Point 1 - style-aware)
+        _style_mix = (styling_raw.get("page17") or {}).get("style_mix") or []
+        _style_tags_matching = [
+            s.get("style", "").strip()
+            for s in _style_mix
+            if isinstance(s, dict) and s.get("style")
+        ]
+        print(f"🎨 Style tags pour matching affilié: {_style_tags_matching}")
 
         # Page 18 - enrich affiliate matches
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             items = styling_raw["page18"]["categories"].get(k, [])
 
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k)
+            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching)
 
             # 🔴 DEBUG TEMPORAIRE – À NE FAIRE QUE POUR tops
             if k == "tops" and items:
@@ -1183,7 +1191,7 @@ class PDFDataMapper:
         for k in ["swim_lingerie", "shoes", "accessories"]:
             items = styling_raw["page19"]["categories"].get(k, [])
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k)
+            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching)
             # 2) fallback pédagogique si pas de match
             items = _apply_fallback_visuals(items)
             styling_raw["page19"]["categories"][k] = items
