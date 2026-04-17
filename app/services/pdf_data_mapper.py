@@ -1320,8 +1320,9 @@ class PDFDataMapper:
 
         # ✅ Enrichissement priorités shopping avec produits affiliés
         print("\n🛍️ Enrichissement priorités shopping morphologie...")
-        print(f"   📋 shopping_priorities raw: {shopping_priorities_raw}")  # ← AJOUTER
         shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
+        print(f"   📋 shopping_priorities raw: {shopping_priorities_raw}")  # ← AJOUTER
+
         shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
 
         # ── FALLBACK : dériver depuis essentials si GPT-4 a retourné [] ──────────
