@@ -56,6 +56,8 @@ class ProductMatcherService:
         "Vintage": "vintage",
         "Bohème": "boheme",
         "Boheme": "boheme",
+        "Romantique": "romantique",       # ← manquait
+        "Minimaliste": "minimaliste",     # ← manquait
         # Labels complets (styling._score_styles keys)
         "Style Classique / Intemporel": "classique",
         "Style Chic / Élégant": "chic",
@@ -63,11 +65,14 @@ class ProductMatcherService:
         "Style Rock": "rock",
         "Style Moderne / Contemporain": "moderne",
         "Style Sporty Chic": "sportswear",
-        "Style Urbain / Streetwear": "streetwear",
+        "Style Urbain / Streetwear": "sportswear",
         "Style Vintage": "vintage",
         "Style Bohème": "boheme",
-        # Styles sans équivalent enrichment (romantique, minimaliste, etc.)
-        # → pas de mapping → PHASE 0 ignorée pour eux, fallback PHASE 1
+        "Style Romantique": "romantique",  # ← manquait
+        "Style Minimaliste": "minimaliste", # ← manquait
+        "Style Naturel / Authentique": "boheme",
+        "Style Féminin Moderne": "moderne",
+        "Style Artistique / Créatif": "rock",
     }
 
     AFFILIATE_TABLE = os.getenv("AFFILIATE_TABLE", "affiliate_products")
