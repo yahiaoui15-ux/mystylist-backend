@@ -1,23 +1,21 @@
 """
-Style Pieces Selector v1.0
+Style Pieces Selector v1.1
 Sélectionne 10 pièces phares depuis style_piece_visuals
 en fonction du profil stylistique et morphologique de la cliente.
 
-Aucun appel OpenAI — scoring pur + commentaires template.
+Aucun appel OpenAI — scoring pur + commentaires template enrichis.
+v1.1: commentaires plus personnalisés, référencent le mix de styles client,
+      formules variées par pièce pour éviter la répétition.
 """
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from app.utils.supabase_client import supabase
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Mapping labels styling (styling_service) → style_primary (style_piece_visuals)
-# ─────────────────────────────────────────────────────────────────────────────
 STYLE_LABEL_TO_TAG: Dict[str, str] = {
-    # Labels complets (styling._score_styles keys)
     "Style Classique / Intemporel": "classique",
     "Style Chic / Élégant": "chic",
     "Style Minimaliste": "minimaliste",
@@ -36,7 +34,6 @@ STYLE_LABEL_TO_TAG: Dict[str, str] = {
     "Style Preppy": "classique",
     "Style Ethnique": "boheme",
     "Style Sexy Assumé": "moderne",
-    # Labels courts (parfois présents dans style_mix)
     "Classique": "classique",
     "Chic": "chic",
     "Minimaliste": "minimaliste",
@@ -49,7 +46,6 @@ STYLE_LABEL_TO_TAG: Dict[str, str] = {
     "Moderne": "moderne",
     "Sporty Chic": "sportswear",
     "Sportswear": "sportswear",
-    # Valeurs déjà normalisées (fallback direct)
     "classique": "classique",
     "chic": "chic",
     "minimaliste": "minimaliste",
@@ -62,7 +58,6 @@ STYLE_LABEL_TO_TAG: Dict[str, str] = {
     "sportswear": "sportswear",
 }
 
-# Distribution cible des 10 pièces par catégorie (category dans style_piece_visuals)
 CATEGORY_TARGETS: Dict[str, int] = {
     "top":       2,
     "bottom":    2,
@@ -72,26 +67,24 @@ CATEGORY_TARGETS: Dict[str, int] = {
     "accessory": 2,
 }
 
-# Poids de scoring
-SCORE_STYLE_PRIMARY   = 30   # style_primary == tag client (pondéré par pct)
-SCORE_STYLE_SECONDARY = 15   # style_secondary == tag client
-SCORE_STYLE_TERTIARY  = 5    # style_tertiary == tag client
-SCORE_MORPHO_MATCH    = 25   # silhouette_type de la cliente dans silhouette_types de la pièce
-SCORE_FLATTERS_ZONE   = 8    # par zone flatters_zones qui recoupe les zones à valoriser
-SCORE_MINIMIZES_ZONE  = 8    # par zone minimizes_zones qui recoupe les zones à minimiser
-SCORE_CONTEXT_TAG     = 4    # par context_tag qui recoupe les situations de la cliente
-SCORE_BASE_PRIORITY   = 0.10 # base_priority × 0.10 (max ~10 pts pour base_priority=100)
+SCORE_STYLE_PRIMARY   = 30
+SCORE_STYLE_SECONDARY = 15
+SCORE_STYLE_TERTIARY  = 5
+SCORE_MORPHO_MATCH    = 25
+SCORE_FLATTERS_ZONE   = 8
+SCORE_MINIMIZES_ZONE  = 8
+SCORE_CONTEXT_TAG     = 4
+SCORE_BASE_PRIORITY   = 0.10
 
-# Labels lisibles pour les commentaires
 STYLE_DISPLAY_LABELS: Dict[str, str] = {
     "minimaliste": "minimaliste",
-    "chic":        "chic et élégant",
-    "classique":   "classique et intemporel",
-    "moderne":     "moderne et contemporain",
-    "casual":      "casual et décontracté",
-    "boheme":      "bohème et naturel",
+    "chic":        "chic",
+    "classique":   "classique",
+    "moderne":     "moderne",
+    "casual":      "casual",
+    "boheme":      "bohème",
     "romantique":  "romantique",
-    "rock":        "rock et affirmé",
+    "rock":        "rock",
     "vintage":     "vintage",
     "sportswear":  "sporty chic",
 }
@@ -123,7 +116,6 @@ MESSAGE_DISPLAY_LABELS: Dict[str, str] = {
     "polyvalent":  "polyvalente",
 }
 
-# Mapping situations onboarding → context_tags style_piece_visuals
 SITUATION_TO_CONTEXT: Dict[str, List[str]] = {
     "work":      ["travail", "city"],
     "events":    ["occasion", "city"],
@@ -136,23 +128,21 @@ SITUATION_TO_CONTEXT: Dict[str, List[str]] = {
     "remote":    ["quotidien"],
 }
 
+# Effets trop génériques pour les accessoires → ne pas afficher
+GENERIC_EFFECTS = {"complete le look", "complète le look", "complete the look"}
+
 
 class StylePiecesSelector:
-    """
-    Sélectionne les 10 meilleures pièces depuis style_piece_visuals
-    pour le profil d'une cliente donnée.
-    """
 
     def __init__(self):
         self.client = supabase.get_client()
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Helpers statiques
+    # Helpers
     # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _parse_jsonb(value: Any) -> List[str]:
-        """Parse un champ jsonb Supabase (liste ou string JSON)."""
         if isinstance(value, list):
             return [str(v).strip().lower() for v in value if v]
         if isinstance(value, str) and value.strip():
@@ -166,7 +156,6 @@ class StylePiecesSelector:
 
     @staticmethod
     def _normalize(s: str) -> str:
-        """Lowercase + suppression accents pour comparaison robuste."""
         s = (s or "").strip().lower()
         for fr, en in [
             ('é','e'),('è','e'),('ê','e'),('ë','e'),
@@ -178,10 +167,6 @@ class StylePiecesSelector:
 
     @staticmethod
     def _zones_overlap(client_zones: List[str], piece_zones: List[str]) -> List[str]:
-        """
-        Retourne les zones client qui ont un recouvrement avec les zones de la pièce.
-        Matching souple : sous-chaîne bidirectionnelle après normalisation.
-        """
         matches = []
         for cz in client_zones:
             cz_norm = StylePiecesSelector._normalize(cz)
@@ -195,10 +180,6 @@ class StylePiecesSelector:
 
     @staticmethod
     def _map_style_mix_to_tags(style_mix: List[Dict[str, Any]]) -> List[Tuple[str, int]]:
-        """
-        Convertit style_mix=[{style: "Style Classique / Intemporel", pct: 55}, ...]
-        en [(tag_normalisé, pct), ...] pour le scoring.
-        """
         result = []
         for item in style_mix or []:
             if not isinstance(item, dict):
@@ -207,23 +188,18 @@ class StylePiecesSelector:
             pct = int(item.get("pct") or 0)
             if pct <= 0:
                 continue
-
             tag = STYLE_LABEL_TO_TAG.get(label)
             if not tag:
-                # Tentative normalisée : strip "Style " + accents
                 norm = StylePiecesSelector._normalize(label)
                 norm = re.sub(r"^style\s+", "", norm)
                 norm = re.sub(r"\s*/.*$", "", norm).strip()
                 tag = norm if norm else None
-
             if tag:
                 result.append((tag, pct))
-
         return result
 
     @staticmethod
     def _map_situations_to_context_tags(situations: List[str]) -> List[str]:
-        """Convertit les IDs de situations onboarding en context_tags CSV."""
         tags: List[str] = []
         for s in situations or []:
             for t in SITUATION_TO_CONTEXT.get(str(s).lower(), []):
@@ -232,97 +208,70 @@ class StylePiecesSelector:
         return tags
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Fetch depuis Supabase
+    # Fetch
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _fetch_candidates(
-        self,
-        style_tags_with_pct: List[Tuple[str, int]],
-    ) -> List[Dict[str, Any]]:
-        """
-        Récupère les pièces actives filtrées par style_primary des tags client.
-        Fallback sur toutes les pièces actives si résultats insuffisants (< 20).
-        """
+    def _fetch_candidates(self, style_tags_with_pct: List[Tuple[str, int]]) -> List[Dict[str, Any]]:
         primary_tags = [t for t, _ in style_tags_with_pct] if style_tags_with_pct else []
+        SELECT = (
+            "id, title, image_url, category, piece_type, "
+            "style_primary, style_secondary, style_tertiary, "
+            "silhouette_types, flatters_zones, minimizes_zones, "
+            "silhouette_effect, context_tags, message_tags, "
+            "personality_tags, base_priority"
+        )
 
-        # Essai 1 : filtre sur style_primary
         if primary_tags:
             try:
                 resp = (
                     self.client.table("style_piece_visuals")
-                    .select(
-                        "id, title, image_url, category, piece_type, "
-                        "style_primary, style_secondary, style_tertiary, "
-                        "silhouette_types, flatters_zones, minimizes_zones, "
-                        "silhouette_effect, context_tags, message_tags, "
-                        "personality_tags, base_priority"
-                    )
+                    .select(SELECT)
                     .eq("is_active", True)
                     .in_("style_primary", primary_tags)
                     .limit(250)
                     .execute()
                 )
                 data = getattr(resp, "data", None) or []
-                print(f"✅ [StylePiecesSelector] {len(data)} candidats (style_primary in {primary_tags})")
+                print(f"✅ [StylePiecesSelector] {len(data)} candidats primaires")
 
                 if len(data) >= 20:
                     return data
 
-                print(f"   ↩ Trop peu ({len(data)}) — ajout style_secondary...")
-
-                # Essai 2 : aussi style_secondary pour élargir
                 resp2 = (
                     self.client.table("style_piece_visuals")
-                    .select(
-                        "id, title, image_url, category, piece_type, "
-                        "style_primary, style_secondary, style_tertiary, "
-                        "silhouette_types, flatters_zones, minimizes_zones, "
-                        "silhouette_effect, context_tags, message_tags, "
-                        "personality_tags, base_priority"
-                    )
+                    .select(SELECT)
                     .eq("is_active", True)
                     .in_("style_secondary", primary_tags)
                     .limit(250)
                     .execute()
                 )
                 data2 = getattr(resp2, "data", None) or []
-
-                # Déduplique
                 ids_seen = {r["id"] for r in data}
                 for r in data2:
                     if r["id"] not in ids_seen:
                         data.append(r)
                         ids_seen.add(r["id"])
 
-                print(f"   ↩ Après ajout secondary: {len(data)} candidats")
-
+                print(f"   ↩ Après secondary: {len(data)} candidats")
                 if len(data) >= 10:
                     return data
 
             except Exception as e:
                 print(f"⚠️ [StylePiecesSelector] Fetch style_primary failed: {e}")
 
-        # Fallback final : toutes pièces actives
-        print(f"   ↩ Fallback: toutes pièces actives")
         try:
             resp = (
                 self.client.table("style_piece_visuals")
-                .select(
-                    "id, title, image_url, category, piece_type, "
-                    "style_primary, style_secondary, style_tertiary, "
-                    "silhouette_types, flatters_zones, minimizes_zones, "
-                    "silhouette_effect, context_tags, message_tags, "
-                    "personality_tags, base_priority"
-                )
+                .select(SELECT)
                 .eq("is_active", True)
                 .limit(250)
                 .execute()
             )
             data = getattr(resp, "data", None) or []
-            print(f"   ↩ Fallback: {len(data)} pièces actives récupérées")
+            print(f"   ↩ Fallback all: {len(data)} pièces")
             return data
         except Exception as e:
-            print(f"⚠️ [StylePiecesSelector] Fallback fetch failed: {e}")
+            print(f"⚠️ [StylePiecesSelector] Fallback failed: {e}")
             return []
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -339,92 +288,67 @@ class StylePiecesSelector:
         context_tags: List[str],
     ) -> float:
         score = 0.0
-
-        # ── Style scoring (pondéré par %) ─────────────────────────────────
-        sp_norm = self._normalize(piece.get("style_primary") or "")
-        ss_norm = self._normalize(piece.get("style_secondary") or "")
-        st_norm = self._normalize(piece.get("style_tertiary") or "")
+        sp = self._normalize(piece.get("style_primary") or "")
+        ss = self._normalize(piece.get("style_secondary") or "")
+        st = self._normalize(piece.get("style_tertiary") or "")
 
         for tag, pct in style_tags_with_pct:
-            tag_norm = self._normalize(tag)
-            weight = pct / 100.0
-            if sp_norm == tag_norm:
-                score += SCORE_STYLE_PRIMARY * weight
-            elif ss_norm == tag_norm:
-                score += SCORE_STYLE_SECONDARY * weight
-            elif st_norm == tag_norm:
-                score += SCORE_STYLE_TERTIARY * weight
+            tn = self._normalize(tag)
+            w  = pct / 100.0
+            if sp == tn:   score += SCORE_STYLE_PRIMARY   * w
+            elif ss == tn: score += SCORE_STYLE_SECONDARY * w
+            elif st == tn: score += SCORE_STYLE_TERTIARY  * w
 
-        # ── Morpho scoring ────────────────────────────────────────────────
         sil_types = self._parse_jsonb(piece.get("silhouette_types"))
-        sil_upper = silhouette_type.upper() if silhouette_type else ""
-        if sil_upper and any(s.upper() == sil_upper for s in sil_types):
+        if silhouette_type and any(s.upper() == silhouette_type.upper() for s in sil_types):
             score += SCORE_MORPHO_MATCH
 
-        # ── Zones valorisées ──────────────────────────────────────────────
-        flatters = self._parse_jsonb(piece.get("flatters_zones"))
-        matches_flatters = self._zones_overlap(highlight_zones, flatters)
-        score += len(matches_flatters) * SCORE_FLATTERS_ZONE
-
-        # ── Zones minimisées ──────────────────────────────────────────────
+        flatters  = self._parse_jsonb(piece.get("flatters_zones"))
         minimizes = self._parse_jsonb(piece.get("minimizes_zones"))
-        matches_minimizes = self._zones_overlap(minimize_zones, minimizes)
-        score += len(matches_minimizes) * SCORE_MINIMIZES_ZONE
+        score += len(self._zones_overlap(highlight_zones, flatters))  * SCORE_FLATTERS_ZONE
+        score += len(self._zones_overlap(minimize_zones, minimizes))  * SCORE_MINIMIZES_ZONE
 
-        # ── Contextes ─────────────────────────────────────────────────────
-        piece_contexts = self._parse_jsonb(piece.get("context_tags"))
+        piece_ctx = self._parse_jsonb(piece.get("context_tags"))
         for ctx in context_tags:
-            ctx_norm = self._normalize(ctx)
-            if any(ctx_norm == self._normalize(pc) for pc in piece_contexts):
+            if any(self._normalize(ctx) == self._normalize(pc) for pc in piece_ctx):
                 score += SCORE_CONTEXT_TAG
 
-        # ── Priorité de base ──────────────────────────────────────────────
         score += float(piece.get("base_priority") or 0) * SCORE_BASE_PRIORITY
-
         return score
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Sélection diversifiée (respect distribution cible)
+    # Sélection diversifiée
     # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _select_diverse_top10(
-        scored_pieces: List[Tuple[float, Dict[str, Any]]],
+        scored: List[Tuple[float, Dict[str, Any]]],
     ) -> List[Tuple[float, Dict[str, Any]]]:
-        """
-        Sélectionne 10 pièces en respectant CATEGORY_TARGETS.
-        Les pièces surreprésentées sont mises en attente et ajoutées si besoin.
-        """
-        sorted_pieces = sorted(scored_pieces, key=lambda x: x[0], reverse=True)
-        category_counts: Dict[str, int] = {cat: 0 for cat in CATEGORY_TARGETS}
-        selected: List[Tuple[float, Dict[str, Any]]] = []
-        overflow: List[Tuple[float, Dict[str, Any]]] = []
+        sorted_pieces = sorted(scored, key=lambda x: x[0], reverse=True)
+        counts   = {cat: 0 for cat in CATEGORY_TARGETS}
+        selected = []
+        overflow = []
 
-        for score, piece in sorted_pieces:
-            cat = (piece.get("category") or "").strip().lower()
+        for s, p in sorted_pieces:
+            cat    = (p.get("category") or "").strip().lower()
             target = CATEGORY_TARGETS.get(cat, 0)
-            current = category_counts.get(cat, 0)
-
-            if current < target:
-                selected.append((score, piece))
-                category_counts[cat] = current + 1
+            if counts.get(cat, 0) < target:
+                selected.append((s, p))
+                counts[cat] = counts.get(cat, 0) + 1
             else:
-                overflow.append((score, piece))
-
+                overflow.append((s, p))
             if len(selected) == 10:
                 break
 
-        # Compléter avec les meilleurs surreprésentés si < 10
-        if len(selected) < 10:
-            for item in overflow:
-                if len(selected) >= 10:
-                    break
-                selected.append(item)
+        for item in overflow:
+            if len(selected) >= 10:
+                break
+            selected.append(item)
 
         return selected[:10]
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Génération du commentaire stylistique (template, pas d'OpenAI)
+    # Génération du commentaire v1.1
     # ─────────────────────────────────────────────────────────────────────────
 
     def _generate_comment(
@@ -434,55 +358,95 @@ class StylePiecesSelector:
         minimize_zones: List[str],
         style_tags_with_pct: List[Tuple[str, int]],
     ) -> str:
-        """
-        Génère un commentaire personnalisé à 2-3 phrases:
-        1. Ancrage stylistique
-        2. Effet silhouette de la pièce
-        3. Adéquation morphologique (zones)
-        """
-        style_primary = self._normalize(piece.get("style_primary") or "")
+        sp_norm           = self._normalize(piece.get("style_primary") or "")
         silhouette_effect = (piece.get("silhouette_effect") or "").strip()
-        flatters = self._parse_jsonb(piece.get("flatters_zones"))
-        minimizes_zones_piece = self._parse_jsonb(piece.get("minimizes_zones"))
-        message_tags = self._parse_jsonb(piece.get("message_tags"))
+        flatters          = self._parse_jsonb(piece.get("flatters_zones"))
+        minimizes_piece   = self._parse_jsonb(piece.get("minimizes_zones"))
+        message_tags      = self._parse_jsonb(piece.get("message_tags"))
+
+        # Déterminisme de variante pour éviter la répétition visuelle
+        piece_id = piece.get("id") or ""
+        h = sum(ord(c) for c in piece_id[:8]) if piece_id else 0
 
         parts: List[str] = []
 
-        # ── Partie 1 : ancrage stylistique ───────────────────────────────
-        style_label = STYLE_DISPLAY_LABELS.get(style_primary, style_primary or "votre style")
-        parts.append(f"Pièce clé de votre ADN {style_label}.")
+        # ── Partie 1 : ancrage dans le profil stylistique de la cliente ───
+        top = style_tags_with_pct[:2]
 
-        # ── Partie 2 : effet silhouette ───────────────────────────────────
-        if silhouette_effect and len(silhouette_effect.strip()) > 5:
-            effect = silhouette_effect.strip()
-            effect = effect[0].upper() + effect[1:]
-            if not effect.endswith("."):
-                effect += "."
-            parts.append(effect)
+        if len(top) >= 2:
+            s1_tag, _ = top[0]
+            s2_tag, _ = top[1]
+            s1 = STYLE_DISPLAY_LABELS.get(self._normalize(s1_tag), s1_tag)
+            s2 = STYLE_DISPLAY_LABELS.get(self._normalize(s2_tag), s2_tag)
 
-        # ── Partie 3a : zones valorisées ─────────────────────────────────
-        flatters_match = self._zones_overlap(highlight_zones, flatters)
-        if flatters_match:
-            zones_str = " et ".join(flatters_match[:2])
-            parts.append(f"Valorise votre {zones_str}.")
+            if sp_norm == self._normalize(s1_tag):
+                tpls = [
+                    f"Incarne le cœur de votre style {s1}, avec la touche {s2} qui vous définit.",
+                    f"Ancrage direct dans votre ADN {s1} — l'équilibre parfait avec votre côté {s2}.",
+                    f"Pièce signature de votre profil {s1}, en résonance avec votre nuance {s2}.",
+                    f"Au centre de votre style {s1} — complète naturellement votre facette {s2}.",
+                ]
+            elif sp_norm == self._normalize(s2_tag):
+                tpls = [
+                    f"Exprime votre facette {s2} qui enrichit et équilibre votre base {s1}.",
+                    f"Apporte la nuance {s2} essentielle à votre style {s1}.",
+                    f"La touche {s2} qui donne du relief à votre garde-robe {s1}.",
+                ]
+            else:
+                tpls = [
+                    f"Pont naturel entre votre style {s1} et votre touche {s2}.",
+                    f"S'intègre dans votre univers {s1}/{s2} avec cohérence.",
+                ]
 
-        # ── Partie 3b : zones minimisées ─────────────────────────────────
-        minimizes_match = self._zones_overlap(minimize_zones, minimizes_zones_piece)
-        if minimizes_match and not flatters_match:
-            zones_str = " et ".join(minimizes_match[:2])
-            parts.append(f"Atténue visuellement {zones_str}.")
-
-        # ── Fallback si peu de contenu : message_tags ─────────────────────
-        if len(parts) < 3 and message_tags:
-            msg_labels = [
-                MESSAGE_DISPLAY_LABELS.get(m, None)
-                for m in message_tags[:3]
-                if MESSAGE_DISPLAY_LABELS.get(m)
+        elif len(top) == 1:
+            s1_tag, _ = top[0]
+            s1 = STYLE_DISPLAY_LABELS.get(self._normalize(s1_tag), s1_tag)
+            tpls = [
+                f"Pièce signature de votre style {s1}.",
+                f"Incarne l'ADN {s1} qui vous correspond.",
+                f"Essentielle à votre garde-robe {s1}.",
             ]
-            if msg_labels:
-                parts.append(f"L'allure : {' et '.join(msg_labels[:2])}.")
+        else:
+            tpls = ["Pièce clé de votre garde-robe personnalisée."]
 
-        return " ".join(parts) if parts else f"Une pièce essentielle pour votre style {style_label}."
+        parts.append(tpls[h % len(tpls)])
+
+        # ── Partie 2 : effet silhouette (si non générique) ────────────────
+        if silhouette_effect and len(silhouette_effect) > 5:
+            effect_norm = self._normalize(silhouette_effect)
+            if effect_norm not in GENERIC_EFFECTS:
+                e = silhouette_effect.strip()
+                e = e[0].upper() + e[1:]
+                if not e.endswith("."):
+                    e += "."
+                parts.append(e)
+
+        # ── Partie 3 : zones ou message ───────────────────────────────────
+        flatters_match  = self._zones_overlap(highlight_zones, flatters)
+        minimizes_match = self._zones_overlap(minimize_zones, minimizes_piece)
+
+        if flatters_match:
+            z = " et ".join(flatters_match[:2])
+            zone_tpls = [
+                f"Valorise votre {z}.",
+                f"Met en avant votre {z}.",
+                f"Souligne votre {z}.",
+            ]
+            parts.append(zone_tpls[h % len(zone_tpls)])
+        elif minimizes_match:
+            z = " et ".join(minimizes_match[:2])
+            min_tpls = [
+                f"Affine visuellement {z}.",
+                f"Atténue discrètement {z}.",
+                f"Equilibre la silhouette au niveau {z}.",
+            ]
+            parts.append(min_tpls[h % len(min_tpls)])
+        elif message_tags:
+            labels = [MESSAGE_DISPLAY_LABELS.get(m) for m in message_tags[:3] if MESSAGE_DISPLAY_LABELS.get(m)]
+            if labels:
+                parts.append(f"L'allure : {' et '.join(labels[:2])}.")
+
+        return " ".join(parts)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Point d'entrée principal
@@ -496,97 +460,61 @@ class StylePiecesSelector:
         body_parts_to_minimize: List[str],
         selected_situations: List[str],
     ) -> List[Dict[str, Any]]:
-        """
-        Retourne une liste de 10 pièces phares avec commentaire personnalisé.
-
-        Chaque dict retourné contient :
-          - title          : nom de la pièce
-          - image_url      : URL Supabase (chargeable directement par PDFMonkey)
-          - category       : top / bottom / dress / outerwear / shoe / accessory
-          - piece_type     : type précis
-          - style_primary  : style dominant de la pièce
-          - comment        : commentaire stylistique personnalisé (2-3 phrases)
-          - score          : score de pertinence (debug)
-        """
         print("\n" + "=" * 64)
-        print("🎨 STYLE PIECES SELECTOR — Sélection 10 pièces phares")
+        print("🎨 STYLE PIECES SELECTOR v1.1")
         print(f"   style_mix       : {style_mix}")
         print(f"   silhouette_type : {silhouette_type}")
-        print(f"   highlight_zones : {body_parts_to_highlight}")
-        print(f"   minimize_zones  : {body_parts_to_minimize}")
+        print(f"   highlight       : {body_parts_to_highlight}")
+        print(f"   minimize        : {body_parts_to_minimize}")
         print(f"   situations      : {selected_situations}")
 
-        # 1) Mapper les styles
-        style_tags_with_pct = self._map_style_mix_to_tags(style_mix)
-        print(f"   style_tags      : {style_tags_with_pct}")
-
-        # 2) Mapper les situations en context_tags
+        style_tags   = self._map_style_mix_to_tags(style_mix)
         context_tags = self._map_situations_to_context_tags(selected_situations)
+        h_zones      = [z.strip() for z in (body_parts_to_highlight or []) if z]
+        m_zones      = [z.strip() for z in (body_parts_to_minimize  or []) if z]
+
+        print(f"   style_tags      : {style_tags}")
         print(f"   context_tags    : {context_tags}")
 
-        # 3) Normaliser les zones (conserve la valeur originale pour l'affichage)
-        highlight_zones = [z.strip() for z in (body_parts_to_highlight or []) if z]
-        minimize_zones  = [z.strip() for z in (body_parts_to_minimize or []) if z]
-
-        # 4) Fetch candidats depuis Supabase
-        candidates = self._fetch_candidates(style_tags_with_pct)
+        candidates = self._fetch_candidates(style_tags)
         if not candidates:
-            print("⚠️ [StylePiecesSelector] Aucun candidat — liste vide retournée")
+            print("⚠️ Aucun candidat")
             return []
 
-        # 5) Scorer chaque pièce
-        scored: List[Tuple[float, Dict[str, Any]]] = []
-        for piece in candidates:
-            s = self._score_piece(
-                piece=piece,
-                style_tags_with_pct=style_tags_with_pct,
-                silhouette_type=silhouette_type,
-                highlight_zones=highlight_zones,
-                minimize_zones=minimize_zones,
-                context_tags=context_tags,
-            )
-            scored.append((s, piece))
+        scored = [
+            (self._score_piece(p, style_tags, silhouette_type, h_zones, m_zones, context_tags), p)
+            for p in candidates
+        ]
 
-        # Log top 5 pour debug
         top5 = sorted(scored, key=lambda x: x[0], reverse=True)[:5]
-        print(f"   Top 5 scores:")
+        print("   Top 5:")
         for s, p in top5:
             print(f"     [{s:.1f}] {p.get('title')} ({p.get('category')}/{p.get('style_primary')})")
 
-        # 6) Sélection diversifiée
-        selected = self._select_diverse_top10(scored)
+        selected       = self._select_diverse_top10(scored)
+        score_by_id    = {p.get("id"): s for s, p in scored}
 
-        # Index score par id pour lookup rapide
-        score_by_id: Dict[str, float] = {p.get("id"): s for s, p in scored}
-
-        # 7) Enrichir avec commentaire
-        result: List[Dict[str, Any]] = []
+        result = []
         for s, piece in selected:
-            comment = self._generate_comment(
-                piece=piece,
-                highlight_zones=highlight_zones,
-                minimize_zones=minimize_zones,
-                style_tags_with_pct=style_tags_with_pct,
-            )
+            comment = self._generate_comment(piece, h_zones, m_zones, style_tags)
             result.append({
-                "id":               piece.get("id", ""),
-                "title":            piece.get("title", ""),
-                "image_url":        piece.get("image_url", ""),
-                "category":         piece.get("category", ""),
-                "piece_type":       piece.get("piece_type", ""),
-                "style_primary":    piece.get("style_primary", ""),
+                "id":                piece.get("id", ""),
+                "title":             piece.get("title", ""),
+                "image_url":         piece.get("image_url", ""),
+                "category":          piece.get("category", ""),
+                "piece_type":        piece.get("piece_type", ""),
+                "style_primary":     piece.get("style_primary", ""),
                 "silhouette_effect": piece.get("silhouette_effect", ""),
-                "comment":          comment,
-                "score":            round(score_by_id.get(piece.get("id"), s), 1),
+                "comment":           comment,
+                "score":             round(score_by_id.get(piece.get("id"), s), 1),
             })
 
-        print(f"\n✅ {len(result)} pièces finales sélectionnées")
+        print(f"\n✅ {len(result)} pièces sélectionnées:")
         for r in result:
-            print(f"   [{r['score']:.1f}] {r['title']} ({r['category']}) — img={'✓' if r['image_url'] else '✗'}")
+            print(f"   [{r['score']:.1f}] {r['title']} | {r['comment'][:80]}...")
         print("=" * 64 + "\n")
 
         return result
 
 
-# Instance globale (pattern utilisé partout dans le projet)
 style_pieces_selector = StylePiecesSelector()

@@ -958,11 +958,12 @@ JSON À CORRIGER :
             ) -> Dict[str, Any]:
 
                 def _pick_tokens() -> int:
-                    # On donne plus de marge aux parties longues
                     if name == "PART2":
                         return max(max_tokens, 3200)
                     if name == "PART3":
                         return max(max_tokens, 3400)
+                    if name == "PART4":          # ← AJOUTER
+                        return max(max_tokens, 4500)
                     return max_tokens
 
                 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -1045,7 +1046,7 @@ JSON À CORRIGER :
                         "- AUCUN champ texte ne doit être vide si les données d'entrée correspondantes existent.\n"
                         "- Si manque de place: raccourcis les phrases, mais remplis tous les champs.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=2600)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=4800)
                     if self._is_part1_complete(out2, prompt_data):
                         out = out2
 
@@ -1101,7 +1102,9 @@ JSON À CORRIGER :
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
             part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=3800)
-          
+            p4_capsule = part4.get("page18_capsule") if isinstance(part4, dict) else {}
+            p4_pieces = p4_capsule.get("pieces") if isinstance(p4_capsule, dict) else []
+            print(f"DEBUG PART4 raw: keys={list(part4.keys()) if isinstance(part4, dict) else 'NOT DICT'}, pieces={len(p4_pieces) if isinstance(p4_pieces, list) else 'NOT LIST'}")
             print("DEBUG PART1 raw keys:", list(part1.keys()) if isinstance(part1, dict) else type(part1))
             try:
                 p16 = (part1.get("page16") or {}) if isinstance(part1, dict) else {}
