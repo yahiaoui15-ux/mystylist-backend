@@ -15,7 +15,8 @@ from app.utils.openai_call_tracker import call_tracker
 from app.prompts.styling_prompt_part1 import STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT
 from app.prompts.styling_prompt_part2 import STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT
 from app.prompts.styling_prompt_part3 import STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT
-
+from app.prompts.styling_prompt_part4 import STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT
+ 
 
 
 class StylingService:
@@ -233,6 +234,27 @@ class StylingService:
                     if not (isinstance(slots, list) and 4 <= len(slots) <= 6):
                         return False
             return True
+        except Exception:
+            return False
+
+    def _is_part4_complete(self, d: Dict[str, Any]) -> bool:
+        try:
+            capsule = d.get("page18_capsule") if isinstance(d, dict) else {}
+            if not isinstance(capsule, dict):
+                return False
+            pieces = capsule.get("pieces")
+            if not isinstance(pieces, list) or len(pieces) != 30:
+                return False
+            # Vérifie que la distribution des catégories est cohérente
+            cats = [p.get("category", "") for p in pieces if isinstance(p, dict)]
+            return (
+                cats.count("top") >= 6 and          # tolérance -2 sur top
+                cats.count("bottom") >= 4 and        # tolérance -1
+                cats.count("dress") >= 3 and
+                cats.count("outerwear") >= 3 and
+                cats.count("shoe") >= 2 and
+                cats.count("essential") >= 2
+            )
         except Exception:
             return False
 
@@ -1058,12 +1080,28 @@ JSON À CORRIGER :
                     if self._is_part3_complete(out2):
                         out = out2
 
+                if name == "PART4" and not self._is_part4_complete(out):
+                    guard = (
+                        "IMPORTANT — JSON COMPLET OBLIGATOIRE.\n"
+                        "- page18_capsule.pieces doit contenir EXACTEMENT 30 items.\n"
+                        "- Distribution STRICTE : top=8, bottom=5, dress=4, outerwear=4, shoe=3, accessory=3, essential=3.\n"
+                        "- Chaque pièce doit avoir : priority (1-30 unique), category, piece_title, spec, "
+                        "style_reason, morpho_reason, suggested_brands, budget_range, visual_key, contexts.\n"
+                        "- Si tu manques de place, raccourcis style_reason et morpho_reason, "
+                        "mais ne réduis JAMAIS le nombre de pièces.\n"
+                        "- Interdiction de supprimer des clés. JSON STRICT UNIQUEMENT.\n"
+                    )
+                    out2 = await _single_call(extra_guard=guard, tokens_override=4200)
+                    if self._is_part4_complete(out2):
+                        out = out2
+
                 return out
 
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
-            
+            part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=3800)
+          
             print("DEBUG PART1 raw keys:", list(part1.keys()) if isinstance(part1, dict) else type(part1))
             try:
                 p16 = (part1.get("page16") or {}) if isinstance(part1, dict) else {}
@@ -1111,6 +1149,18 @@ JSON À CORRIGER :
                 result.update(part2)
             if isinstance(part3, dict):
                 result.update(part3)
+            if isinstance(part4, dict):
+                result.update(part4)
+ 
+            # DEBUG PART4
+            p18c = result.get("page18_capsule") or {}
+            pieces_raw = p18c.get("pieces") if isinstance(p18c.get("pieces"), list) else []
+            print("DEBUG PART4 counts: page18_capsule.pieces", len(pieces_raw))
+            if pieces_raw:
+                cats = [p.get("category", "") for p in pieces_raw if isinstance(p, dict)]
+                from collections import Counter
+                print("DEBUG PART4 distribution:", dict(Counter(cats)))
+
 
             # -------------------------
             # 3) Normalize schema V3 (pages 16–24)
@@ -1274,6 +1324,38 @@ JSON À CORRIGER :
                     p17["wardrobe_impact_text"] = self._one_line(re.sub(r"(?:Votre\s+repere\s+cle\s*:\s*).+$", "", p17["wardrobe_impact_text"], flags=re.IGNORECASE).strip())
 
             result["page17"] = p17
+
+        # page18_capsule
+        p18c = self._ensure_dict(result.get("page18_capsule"), {})
+        p18c["headline"] = self._one_line(self._ensure_str(p18c.get("headline"), "Votre garde-robe capsule personnalisée"))
+        p18c["intro"] = self._one_line(self._ensure_str(p18c.get("intro"), ""))
+ 
+        pieces_raw = p18c.get("pieces") if isinstance(p18c.get("pieces"), list) else []
+        norm_pieces = []
+        for piece in pieces_raw:
+            if not isinstance(piece, dict):
+                continue
+            try:
+                priority_val = int(piece.get("priority", 0))
+            except (ValueError, TypeError):
+                priority_val = 0
+            norm_pieces.append({
+                "priority":        priority_val,
+                "category":        self._one_line(self._ensure_str(piece.get("category"), "")),
+                "piece_title":     self._one_line(self._ensure_str(piece.get("piece_title"), "")),
+                "spec":            self._one_line(self._ensure_str(piece.get("spec"), "")),
+                "style_reason":    self._one_line(self._ensure_str(piece.get("style_reason"), "")),
+                "morpho_reason":   self._one_line(self._ensure_str(piece.get("morpho_reason"), "")),
+                "suggested_brands":self._ensure_list(piece.get("suggested_brands"), []),
+                "budget_range":    self._one_line(self._ensure_str(piece.get("budget_range"), "")),
+                "visual_key":      self._one_line(self._ensure_str(piece.get("visual_key"), "")),
+                "contexts":        self._ensure_list(piece.get("contexts"), []),
+            })
+ 
+        # Tri par priorité croissante
+        norm_pieces.sort(key=lambda x: x.get("priority", 99))
+        p18c["pieces"] = norm_pieces
+        result["page18_capsule"] = p18c
 
         # page18/page19 categories structure
         for pkey in ["page18", "page19"]:

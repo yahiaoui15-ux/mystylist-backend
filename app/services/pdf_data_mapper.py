@@ -1486,6 +1486,11 @@ class PDFDataMapper:
                 }
             },
 
+            "capsule_pieces":   [],   # rempli par le bloc ci-dessous
+            "capsule_headline": "",   # rempli par le bloc ci-dessous
+            "capsule_intro":    "",   # rempli par le bloc ci-dessous
+ 
+
             "currentDate": datetime.now().strftime("%d %b %Y"),
             "lingerie_page10":        lingerie_maillot_p10["lingerie"],
             "maillots_page10":        lingerie_maillot_p10["maillots"],
@@ -1608,7 +1613,7 @@ class PDFDataMapper:
         except Exception as e:
             print(f"⚠️  Erreur style_visuals_page17: {e}")
             liquid_data["style_visuals_page17"] = []
-            
+
         # ─────────────────────────────────────────────────────────────────────
         # PAGE 17 — 10 PIÈCES PHARES (style_piece_visuals)
         # ─────────────────────────────────────────────────────────────────────
@@ -1693,8 +1698,93 @@ class PDFDataMapper:
             import traceback
             traceback.print_exc()
             liquid_data["style_pieces_page17"] = []
-        # ─────────────────────────────────────────────────────────────────────
 
+        # ─────────────────────────────────────────────────────────────────────
+        # PAGE 18 — GARDE-ROBE CAPSULE 30 PIÈCES (capsule_pieces)
+        # Matching affilié uniquement sur les 10 premières priorités (évite 30 requêtes)
+        # ─────────────────────────────────────────────────────────────────────
+        try:
+            # Mapping category capsule → category product_matcher_service
+            CAPSULE_CATEGORY_MAP = {
+                "top":        "tops",
+                "bottom":     "bottoms",
+                "dress":      "dresses_playsuits",
+                "outerwear":  "outerwear",
+                "shoe":       "shoes",
+                "accessory":  "accessories",
+                "essential":  "outerwear",   # manteau/trench → outerwear ; jean → bottoms géré ci-dessous
+            }
+ 
+            _capsule_raw = PDFDataMapper._safe_dict(styling_raw.get("page18_capsule", {}))
+            _raw_pieces  = PDFDataMapper._safe_list(_capsule_raw.get("pieces", []))
+ 
+            # Style tags déjà calculés plus haut dans le mapper (_style_tags_matching)
+            _capsule_style_tags = _style_tags_matching if "_style_tags_matching" in dir() else []
+ 
+            _capsule_pieces_out = []
+ 
+            for _piece in _raw_pieces:
+                if not isinstance(_piece, dict):
+                    continue
+ 
+                _priority    = _piece.get("priority", 99)
+                _cat_key     = (_piece.get("category") or "top").strip().lower()
+                _piece_title = (_piece.get("piece_title") or "").strip()
+ 
+                # Cas particulier : "essential" avec jean → bottoms
+                _product_cat = CAPSULE_CATEGORY_MAP.get(_cat_key, "tops")
+                if _cat_key == "essential" and "jean" in _piece_title.lower():
+                    _product_cat = "bottoms"
+ 
+                _enriched = dict(_piece)
+                _enriched.setdefault("match", {})
+                _enriched.setdefault("product_url", "")
+                _enriched.setdefault("image_url", "")
+ 
+                # Matching affilié uniquement pour les 10 premières priorités
+                try:
+                    _prio_int = int(_priority)
+                except (ValueError, TypeError):
+                    _prio_int = 99
+ 
+                if _prio_int <= 10:
+                    try:
+                        _match = product_matcher_service.match_piece(
+                            {
+                                "piece_title": _piece_title,
+                                "spec":        (_piece.get("spec") or ""),
+                                "visual_key":  (_piece.get("visual_key") or ""),
+                            },
+                            _product_cat,
+                            style_tags=_capsule_style_tags,
+                        )
+                        _enriched["match"]       = _match
+                        _enriched["product_url"] = (_match.get("product_url") or "").strip()
+                        _enriched["image_url"]   = (_match.get("image_url") or "").strip()
+                        _status = "✅" if _enriched["product_url"] else "⚠️"
+                        print(f"   {_status} CAPSULE P{_prio_int} [{_product_cat}] '{_piece_title[:45]}'")
+                    except Exception as _e_match:
+                        print(f"   ⚠️ CAPSULE match failed P{_prio_int} '{_piece_title[:40]}': {_e_match}")
+ 
+                _capsule_pieces_out.append(_enriched)
+ 
+            liquid_data["capsule_pieces"]   = _capsule_pieces_out
+            liquid_data["capsule_headline"] = _capsule_raw.get("headline", "Votre garde-robe capsule personnalisée")
+            liquid_data["capsule_intro"]    = _capsule_raw.get("intro", "")
+ 
+            _with_link = sum(1 for p in _capsule_pieces_out if p.get("product_url"))
+            print(f"\n   ✓ capsule_pieces: {len(_capsule_pieces_out)} pièces ({_with_link} avec lien affilié)")
+ 
+        except Exception as _e_capsule:
+            print(f"\n⚠️ Erreur capsule_pieces: {_e_capsule}")
+            import traceback
+            traceback.print_exc()
+            liquid_data["capsule_pieces"]   = []
+            liquid_data["capsule_headline"] = ""
+            liquid_data["capsule_intro"]    = ""
+ 
+        # ─────────────────────────────────────────────────────────────────────
+ 
         return liquid_data
 
     @staticmethod
