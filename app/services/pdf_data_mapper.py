@@ -16,6 +16,7 @@ import os
 import csv
 from app.services.product_matcher_service import product_matcher_service
 from app.services.visuals_service import visuals_service
+from app.services.style_pieces_selector import style_pieces_selector
 
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
@@ -1607,7 +1608,92 @@ class PDFDataMapper:
         except Exception as e:
             print(f"⚠️  Erreur style_visuals_page17: {e}")
             liquid_data["style_visuals_page17"] = []
-
+            
+        # ─────────────────────────────────────────────────────────────────────
+        # PAGE 17 — 10 PIÈCES PHARES (style_piece_visuals)
+        # ─────────────────────────────────────────────────────────────────────
+        try:
+            # 1) Style mix depuis page17 (déjà calculé plus haut dans le mapper)
+            _style_mix_p17 = PDFDataMapper._safe_list(
+                PDFDataMapper._safe_dict(styling_raw.get("page17", {})).get("style_mix", [])
+            )
+ 
+            # 2) Silhouette type depuis morphologie
+            _silhouette_type = (morphology_raw.get("silhouette_type") or "O").strip()
+ 
+            # 3) Extraire morphology_goals + personality_data depuis user_data/onboarding
+            #    (même logique que styling_service.py pour être cohérent)
+            _ud   = user_data if isinstance(user_data, dict) else {}
+            _prof = _ud.get("profile") or {}
+            _onb_raw = (
+                _ud.get("onboarding_data")
+                or (_prof or {}).get("onboarding_data")
+                or {}
+            )
+            if isinstance(_onb_raw, str):
+                try:
+                    import json as _json_p17
+                    _onb_raw = _json_p17.loads(_onb_raw)
+                except Exception:
+                    _onb_raw = {}
+            _onb = _onb_raw if isinstance(_onb_raw, dict) else {}
+ 
+            def _pick_p17(key, default):
+                v = _ud.get(key)
+                if v in [None, "", [], {}]:
+                    v = _onb.get(key)
+                return default if v is None else v
+ 
+            # morphology_goals
+            _morpho_goals = _pick_p17("morphology_goals", {})
+            if isinstance(_morpho_goals, str):
+                try:
+                    import json as _json_mg
+                    _morpho_goals = _json_mg.loads(_morpho_goals)
+                except Exception:
+                    _morpho_goals = {}
+            _morpho_goals = _morpho_goals if isinstance(_morpho_goals, dict) else {}
+ 
+            _highlight = PDFDataMapper._safe_list(_morpho_goals.get("body_parts_to_highlight", []))
+            _minimize  = PDFDataMapper._safe_list(_morpho_goals.get("body_parts_to_minimize", []))
+ 
+            # situations (pour context_tags)
+            _personality_p17 = _pick_p17("personality_data", {})
+            if isinstance(_personality_p17, str):
+                try:
+                    import json as _json_pers
+                    _personality_p17 = _json_pers.loads(_personality_p17)
+                except Exception:
+                    _personality_p17 = {}
+            _personality_p17 = _personality_p17 if isinstance(_personality_p17, dict) else {}
+            _situations_p17 = PDFDataMapper._safe_list(
+                _personality_p17.get("selected_situations", [])
+            )
+ 
+            print(f"\\n🎯 PAGE17 pieces input:")
+            print(f"   style_mix    : {_style_mix_p17}")
+            print(f"   silhouette   : {_silhouette_type}")
+            print(f"   highlight    : {_highlight}")
+            print(f"   minimize     : {_minimize}")
+            print(f"   situations   : {_situations_p17}")
+ 
+            _style_pieces = style_pieces_selector.select_10_pieces(
+                style_mix=_style_mix_p17,
+                silhouette_type=_silhouette_type,
+                body_parts_to_highlight=_highlight,
+                body_parts_to_minimize=_minimize,
+                selected_situations=_situations_p17,
+            )
+ 
+            liquid_data["style_pieces_page17"] = _style_pieces
+            print(f"   ✓ style_pieces_page17: {len(_style_pieces)} pièces")
+ 
+        except Exception as _e_p17:
+            print(f"⚠️  Erreur style_pieces_page17: {_e_p17}")
+            import traceback
+            traceback.print_exc()
+            liquid_data["style_pieces_page17"] = []
+        # ─────────────────────────────────────────────────────────────────────
 
         return liquid_data
 
