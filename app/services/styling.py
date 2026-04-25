@@ -243,17 +243,17 @@ class StylingService:
             if not isinstance(capsule, dict):
                 return False
             pieces = capsule.get("pieces")
-            if not isinstance(pieces, list) or len(pieces) != 30:
+            if not isinstance(pieces, list) or len(pieces) != 20:
                 return False
             # Vérifie que la distribution des catégories est cohérente
             cats = [p.get("category", "") for p in pieces if isinstance(p, dict)]
             return (
-                cats.count("top") >= 6 and          # tolérance -2 sur top
-                cats.count("bottom") >= 4 and        # tolérance -1
-                cats.count("dress") >= 3 and
-                cats.count("outerwear") >= 3 and
-                cats.count("shoe") >= 2 and
-                cats.count("essential") >= 2
+                cats.count("top") >= 4 and
+                cats.count("bottom") >= 2 and
+                cats.count("dress") >= 2 and
+                cats.count("outerwear") >= 2 and
+                cats.count("shoe") >= 1 and
+                cats.count("essential") >= 1
             )
         except Exception:
             return False
@@ -963,7 +963,7 @@ JSON À CORRIGER :
                     if name == "PART3":
                         return max(max_tokens, 3400)
                     if name == "PART4":          # ← AJOUTER
-                        return max(max_tokens, 4500)
+                        return max(max_tokens, 3200)
                     return max_tokens
 
                 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -1046,7 +1046,7 @@ JSON À CORRIGER :
                         "- AUCUN champ texte ne doit être vide si les données d'entrée correspondantes existent.\n"
                         "- Si manque de place: raccourcis les phrases, mais remplis tous les champs.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=4800)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
                     if self._is_part1_complete(out2, prompt_data):
                         out = out2
 
