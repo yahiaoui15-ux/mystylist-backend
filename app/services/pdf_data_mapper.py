@@ -1700,9 +1700,8 @@ class PDFDataMapper:
             liquid_data["style_pieces_page17"] = []
 
         # ─────────────────────────────────────────────────────────────────────
-        # PAGE 18 — GARDE-ROBE CAPSULE 30 PIÈCES (capsule_pieces)
-        # Matching affilié uniquement sur les 10 premières priorités (évite 30 requêtes)
-        # ─────────────────────────────────────────────────────────────────────
+        # PAGE 18 — GARDE-ROBE CAPSULE 20 PIÈCES (capsule_pieces)
+        # Matching affilié sur les 20 pièces        # ─────────────────────────────────────────────────────────────────────
         try:
             # Mapping category capsule → category product_matcher_service
             CAPSULE_CATEGORY_MAP = {
@@ -1747,7 +1746,7 @@ class PDFDataMapper:
                 except (ValueError, TypeError):
                     _prio_int = 99
  
-                if _prio_int <= 10:
+                if _prio_int <= 20:
                     try:
                         _match = product_matcher_service.match_piece(
                             {
