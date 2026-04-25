@@ -692,6 +692,25 @@ class ProductMatcherService:
         return collected[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
+        # Mots de couleur prioritaires
+        COLOR_TOKENS = {
+            "blanc", "blanche", "noir", "noire", "noirs", "noires",
+            "bordeaux", "rouge", "rouges", "beige", "camel", "ocre",
+            "olive", "terracotta", "marine", "bleu", "bleue", "bleus",
+            "vert", "verte", "kaki", "moutarde", "sienne", "rouille",
+            "aubergine", "caramel", "ivoire", "ecru", "crème", "gris",
+            "marron", "rose", "corail", "orange",
+        }
+        # Mots de coupe/style prioritaires
+        CUT_TOKENS = {
+            "empire", "portefeuille", "trapèze", "trapeze", "droit", "droite",
+            "droits", "droites", "palazzo", "évasé", "evasé", "évasée",
+            "cintré", "cintrée", "oversize", "fluide", "ajusté", "ajustée",
+            "structuré", "structurée", "ceinturé", "ceinturée", "long", "longue",
+            "midi", "mini", "court", "courte", "col", "encolure",
+            "portefeuille", "croisé", "croisée", "dégagée", "degagée",
+        }
+
         text = f"{piece_title} {spec}".lower()
         text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", text)
         text = re.sub(r"\s{2,}", " ", text).strip()
@@ -703,9 +722,6 @@ class ProductMatcherService:
             "matiere", "matières", "coton", "laine", "viscose", "soie", "bio",
         ])
 
-        tokens = [t.strip() for t in text.split() if t.strip()]
-        tokens = [t for t in tokens if t not in stop and len(t) >= 3]
-
         base = []
         for src in [piece_title.lower(), spec.lower()]:
             src = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", src)
@@ -716,50 +732,23 @@ class ProductMatcherService:
                 if t not in base:
                     base.append(t)
 
-        out = base
+        # Séparer en 3 buckets : couleurs, coupes, reste
+        colors = [t for t in base if t in COLOR_TOKENS]
+        cuts   = [t for t in base if t in CUT_TOKENS and t not in colors]
+        rest   = [t for t in base if t not in COLOR_TOKENS and t not in CUT_TOKENS]
+
+        # Priorité : coupe > couleur > reste
+        ordered = cuts + colors + rest
+
         seen = set()
         final = []
-        for x in out:
+        for x in ordered:
             k = x.strip().lower()
             if k and k not in seen:
                 seen.add(k)
                 final.append(k)
+
         return final[:8]
-
-    # -------------------------
-    # VISUELS FALLBACK
-    # -------------------------
-    def _find_visual_by_key(self, visual_key: str, category: str) -> Optional[Dict[str, Any]]:
-        if not visual_key:
-            return None
-        try:
-            q = (
-                self.client.table("visuels")
-                .select("nom_simplifie, type_vetement, coupe, url_image")
-                .eq("nom_simplifie", visual_key)
-                .limit(1)
-            )
-            expected_type = self.VISUELS_TYPE_MAP.get(category)
-            if expected_type:
-                q = q.eq("type_vetement", expected_type)
-
-            resp = self._execute(q)
-            data = getattr(resp, "data", None) or []
-            if data:
-                return data[0]
-
-            resp2 = self._execute(
-                self.client.table("visuels")
-                .select("nom_simplifie, type_vetement, coupe, url_image")
-                .eq("nom_simplifie", visual_key)
-                .limit(1)
-            )
-            data2 = getattr(resp2, "data", None) or []
-            return data2[0] if data2 else None
-
-        except Exception as e:
-            print(f"⚠️ Visual fallback failed (key={visual_key}): {e}")
-            return None
 
 
 product_matcher_service = ProductMatcherService()
