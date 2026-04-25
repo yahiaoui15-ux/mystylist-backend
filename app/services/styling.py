@@ -1084,15 +1084,13 @@ JSON À CORRIGER :
                 if name == "PART4" and not self._is_part4_complete(out):
                     guard = (
                         "IMPORTANT — JSON COMPLET OBLIGATOIRE.\n"
-                        "- page18_capsule.pieces doit contenir EXACTEMENT 30 items.\n"
-                        "- Distribution STRICTE : top=8, bottom=5, dress=4, outerwear=4, shoe=3, accessory=3, essential=3.\n"
-                        "- Chaque pièce doit avoir : priority (1-30 unique), category, piece_title, spec, "
-                        "style_reason, morpho_reason, suggested_brands, budget_range, visual_key, contexts.\n"
+                        "- page18_capsule.pieces doit contenir EXACTEMENT 20 items.\n"
+                        "- Distribution STRICTE : top=5, bottom=3, dress=3, outerwear=3, shoe=2, accessory=2, essential=2.\n"
                         "- Si tu manques de place, raccourcis style_reason et morpho_reason, "
                         "mais ne réduis JAMAIS le nombre de pièces.\n"
                         "- Interdiction de supprimer des clés. JSON STRICT UNIQUEMENT.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=4200)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
                     if self._is_part4_complete(out2):
                         out = out2
 
