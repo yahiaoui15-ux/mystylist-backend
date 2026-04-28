@@ -1094,12 +1094,20 @@ JSON À CORRIGER :
                     if self._is_part4_complete(out2):
                         out = out2
 
+                if name == "PART4":
+                    print(f"🔍 _call_part PART4 returning: type={type(out).__name__}, keys={list(out.keys()) if isinstance(out, dict) else 'NOT DICT'}, complete={self._is_part4_complete(out)}")
+                
                 return out
 
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
             part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=3800)
+            print(f"🔍 PART4 type: {type(part4).__name__}")
+            print(f"🔍 PART4 keys: {list(part4.keys()) if isinstance(part4, dict) else 'NOT DICT'}")
+            _p4c = (part4.get('page18_capsule') or {}) if isinstance(part4, dict) else {}
+            _p4pieces = _p4c.get('pieces') if isinstance(_p4c, dict) else None
+            print(f"🔍 PART4 page18_capsule type: {type(_p4c).__name__}, pieces type: {type(_p4pieces).__name__ if _p4pieces is not None else 'NONE'}, len: {len(_p4pieces) if isinstance(_p4pieces, list) else 'N/A'}")
             p4_capsule = part4.get("page18_capsule") if isinstance(part4, dict) else {}
             p4_pieces = p4_capsule.get("pieces") if isinstance(p4_capsule, dict) else []
             print(f"DEBUG PART4 raw: keys={list(part4.keys()) if isinstance(part4, dict) else 'NOT DICT'}, pieces={len(p4_pieces) if isinstance(p4_pieces, list) else 'NOT LIST'}")
