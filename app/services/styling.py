@@ -963,7 +963,7 @@ JSON À CORRIGER :
                     if name == "PART3":
                         return max(max_tokens, 3400)
                     if name == "PART4":
-                        return max(max_tokens, 3800)
+                        return max(max_tokens, 6000)
                     return max_tokens
 
                 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -1059,7 +1059,7 @@ JSON À CORRIGER :
                         "- AUCUN champ texte ne doit être vide si les données d'entrée correspondantes existent.\n"
                         "- Si manque de place: raccourcis les phrases, mais remplis tous les champs.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=6000)
                     if self._is_part1_complete(out2, prompt_data):
                         out = out2
 
@@ -1117,7 +1117,7 @@ JSON À CORRIGER :
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
-            part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=3800)
+            part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=6000)
             print(f"🔍 PART4 type: {type(part4).__name__}")
             print(f"🔍 PART4 keys: {list(part4.keys()) if isinstance(part4, dict) else 'NOT DICT'}")
             _p4c = (part4.get('page18_capsule') or {}) if isinstance(part4, dict) else {}
