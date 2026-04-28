@@ -963,7 +963,7 @@ JSON À CORRIGER :
                     if name == "PART3":
                         return max(max_tokens, 3400)
                     if name == "PART4":
-                        return max(max_tokens, 6000)
+                        return max(max_tokens, 5000)
                     return max_tokens
 
                 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -1014,8 +1014,8 @@ JSON À CORRIGER :
 
                     resp = await self.openai.call_chat(
                         prompt=user_prompt,
-                        model="gpt-4",
-                        max_tokens=_mt,
+                        model="gpt-4o" if name == "PART4" else "gpt-4",
+                        max_tokens=tokens_override or _pick_tokens(),
                     )
 
                     # === TOKEN LOGGING ===
@@ -1059,7 +1059,7 @@ JSON À CORRIGER :
                         "- AUCUN champ texte ne doit être vide si les données d'entrée correspondantes existent.\n"
                         "- Si manque de place: raccourcis les phrases, mais remplis tous les champs.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=6000)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
                     if self._is_part1_complete(out2, prompt_data):
                         out = out2
 
@@ -1105,7 +1105,7 @@ JSON À CORRIGER :
                         "mais ne réduis JAMAIS le nombre de pièces.\n"
                         "- Interdiction de supprimer des clés. JSON STRICT UNIQUEMENT.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=4200)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=5000)
                     if self._is_part4_complete(out2):
                         out = out2
 
