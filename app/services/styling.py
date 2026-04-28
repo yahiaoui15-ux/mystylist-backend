@@ -962,21 +962,19 @@ JSON À CORRIGER :
                         return max(max_tokens, 3200)
                     if name == "PART3":
                         return max(max_tokens, 3400)
-                    if name == "PART4":          # ← AJOUTER
-                        return max(max_tokens, 3200)
+                    if name == "PART4":
+                        return max(max_tokens, 3800)
                     return max_tokens
 
                 def _extract_json_object(text: str) -> Dict[str, Any]:
                     if not isinstance(text, str):
                         return {}
                     t = self.clean_json_string(text)
-                    # parse direct
                     try:
                         obj = json.loads(t)
                         return obj if isinstance(obj, dict) else {}
                     except Exception:
                         pass
-                    # fallback extraction
                     try:
                         start = t.find("{")
                         end = t.rfind("}") + 1
@@ -992,23 +990,19 @@ JSON À CORRIGER :
                     self.openai.set_system_prompt(system_prompt)
 
                     user_prompt = self.safe_format(user_prompt_template, prompt_data)
-                    
-                    # =========================
-                    # DEBUG PATCH 3: prompt_data summary actually sent
-                    # =========================
-                    print(f"DEBUG {name} prompt_data summary:",
-                          json.dumps({
-                              "style_preferences": prompt_data.get("style_preferences"),
-                              "personality_data": prompt_data.get("personality_data"),
-                              "brand_preferences": prompt_data.get("brand_preferences"),
-                              "color_preferences": prompt_data.get("color_preferences"),
-                              "pattern_preferences": prompt_data.get("pattern_preferences"),
-                              "morphology_goals": prompt_data.get("morphology_goals"),
-                              "season": prompt_data.get("season"),
-                              "silhouette_type": prompt_data.get("silhouette_type"),
-                          }, ensure_ascii=False)[:1200])
 
-                    # Guard en tête (évite d’être “ignoré” en fin de prompt)
+                    print(f"DEBUG {name} prompt_data summary:",
+                        json.dumps({
+                            "style_preferences": prompt_data.get("style_preferences"),
+                            "personality_data": prompt_data.get("personality_data"),
+                            "brand_preferences": prompt_data.get("brand_preferences"),
+                            "color_preferences": prompt_data.get("color_preferences"),
+                            "pattern_preferences": prompt_data.get("pattern_preferences"),
+                            "morphology_goals": prompt_data.get("morphology_goals"),
+                            "season": prompt_data.get("season"),
+                            "silhouette_type": prompt_data.get("silhouette_type"),
+                        }, ensure_ascii=False)[:1200])
+
                     if extra_guard:
                         user_prompt = extra_guard.strip() + "\n\n" + user_prompt
 
@@ -1016,21 +1010,40 @@ JSON À CORRIGER :
                         print("DEBUG PART1 USER PROMPT (first 1200):", user_prompt[:1200])
                         print("DEBUG PART1 USER PROMPT (contains morphology_goals?):", "morphology_goals" in user_prompt)
 
+                    _mt = tokens_override or _pick_tokens()
+
                     resp = await self.openai.call_chat(
                         prompt=user_prompt,
                         model="gpt-4",
-                        max_tokens=tokens_override or _pick_tokens(),
+                        max_tokens=_mt,
                     )
+
+                    # === TOKEN LOGGING ===
+                    if isinstance(resp, dict) and resp.get("usage"):
+                        _usage = resp["usage"]
+                        _completion_tokens = _usage.get("completion_tokens", 0)
+                        _prompt_tokens = _usage.get("prompt_tokens", 0)
+                        _total_tokens = _usage.get("total_tokens", 0)
+                        print(f"📊 TOKEN USAGE [{name}]: prompt={_prompt_tokens} | completion={_completion_tokens} | total={_total_tokens} | max_allowed={_mt}")
+                        if _completion_tokens >= _mt - 50:
+                            print(f"⚠️ TOKEN LIMIT ATTEINTE [{name}]: completion={_completion_tokens} ≈ max={_mt} → JSON probablement TRONQUÉ!")
+                    else:
+                        print(f"📊 TOKEN USAGE [{name}]: usage non disponible dans resp")
+
+                    # === PART4 RAW CONTENT ===
+                    if name == "PART4":
+                        raw_content = (resp.get("content", "") or "") if isinstance(resp, dict) else ""
+                        print(f"🔍 PART4 RAW (first 500): {raw_content[:500]}")
+                        print(f"🔍 PART4 RAW (last 300): {raw_content[-300:]}")
+                        print(f"🔍 PART4 RAW total length: {len(raw_content)}")
 
                     content = (resp.get("content", "") or "").strip()
                     out_obj = _extract_json_object(content)
 
-                    # ✅ LOG MINIMAL SI PARSING ÉCHOUÉ (utile quand PART1 sort un JSON tronqué / texte parasite)
                     if name == "PART1" and (not isinstance(out_obj, dict) or not out_obj):
                         print("DEBUG PART1 RAW (first 800):", content[:800])
 
                     return out_obj
-
 
                 # ---------------------------------------------------------
                 # 1) Essai standard
@@ -1051,7 +1064,7 @@ JSON À CORRIGER :
                         out = out2
 
                 # ---------------------------------------------------------
-                # 2) Retry si incomplet (PART2 / PART3)
+                # 2) Retry si incomplet (PART2 / PART3 / PART4)
                 # ---------------------------------------------------------
                 if name == "PART2" and not self._is_part2_complete(out):
                     guard = (
@@ -1086,17 +1099,19 @@ JSON À CORRIGER :
                         "IMPORTANT — JSON COMPLET OBLIGATOIRE.\n"
                         "- page18_capsule.pieces doit contenir EXACTEMENT 20 items.\n"
                         "- Distribution STRICTE : top=5, bottom=3, dress=3, outerwear=3, shoe=2, accessory=2, essential=2.\n"
+                        "- Chaque pièce doit avoir : priority (1-20 unique), category, piece_title, spec, "
+                        "style_reason, morpho_reason, suggested_brands, budget_range, visual_key, contexts.\n"
                         "- Si tu manques de place, raccourcis style_reason et morpho_reason, "
                         "mais ne réduis JAMAIS le nombre de pièces.\n"
                         "- Interdiction de supprimer des clés. JSON STRICT UNIQUEMENT.\n"
                     )
-                    out2 = await _single_call(extra_guard=guard, tokens_override=3600)
+                    out2 = await _single_call(extra_guard=guard, tokens_override=4200)
                     if self._is_part4_complete(out2):
                         out = out2
 
                 if name == "PART4":
                     print(f"🔍 _call_part PART4 returning: type={type(out).__name__}, keys={list(out.keys()) if isinstance(out, dict) else 'NOT DICT'}, complete={self._is_part4_complete(out)}")
-                
+
                 return out
 
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
