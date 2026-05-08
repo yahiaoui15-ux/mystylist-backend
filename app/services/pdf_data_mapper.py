@@ -1766,7 +1766,16 @@ class PDFDataMapper:
                         print(f"   ⚠️ CAPSULE match failed P{_prio_int} '{_piece_title[:40]}': {_e_match}")
  
                 _capsule_pieces_out.append(_enriched)
- 
+
+            # Tri par catégorie puis priorité
+            _CATEGORY_ORDER = {
+                "top": 1, "bottom": 2, "dress": 3,
+                "outerwear": 4, "shoe": 5, "accessory": 6, "essential": 7,
+            }
+            _capsule_pieces_out.sort(key=lambda p: (
+                _CATEGORY_ORDER.get((p.get("category") or "essential").lower(), 99),
+                int(p.get("priority", 99)) if str(p.get("priority", 99)).isdigit() else 99
+            ))
             liquid_data["capsule_pieces"]   = _capsule_pieces_out
             liquid_data["capsule_headline"] = _capsule_raw.get("headline", "Votre garde-robe capsule personnalisée")
             liquid_data["capsule_intro"]    = _capsule_raw.get("intro", "")

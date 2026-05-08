@@ -692,35 +692,41 @@ class ProductMatcherService:
         return collected[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
-        # Mots de couleur prioritaires
-        COLOR_TOKENS = {
-            "blanc", "blanche", "noir", "noire", "noirs", "noires",
-            "bordeaux", "rouge", "rouges", "beige", "camel", "ocre",
-            "olive", "terracotta", "marine", "bleu", "bleue", "bleus",
-            "vert", "verte", "kaki", "moutarde", "sienne", "rouille",
-            "aubergine", "caramel", "ivoire", "ecru", "crème", "gris",
-            "marron", "rose", "corail", "orange",
+        # Noms de pièces — PRIORITÉ ABSOLUE
+        TYPE_NOUNS = {
+            "manteau", "veste", "blazer", "blouson", "trench", "cardigan", "kimono",
+            "chemise", "blouse", "top", "pull", "tunique", "sweat", "body",
+            "pantalon", "jean", "jupe", "short", "legging",
+            "robe", "combinaison", "jumpsuit",
+            "escarpins", "bottes", "sandales", "mocassins", "sneakers", "mules",
+            "sac", "collier", "boucles", "bracelet", "foulard", "ceinture",
         }
-        # Mots de coupe/style prioritaires
+        # Mots de couleur
+        COLOR_TOKENS = {
+            "blanc", "blanche", "noir", "noire", "bordeaux", "rouge", "beige",
+            "camel", "ocre", "olive", "terracotta", "marine", "bleu", "bleue",
+            "vert", "verte", "kaki", "moutarde", "rouille", "aubergine", "caramel",
+            "ivoire", "ecru", "crème", "gris", "marron", "rose", "corail", "orange",
+        }
+        # Mots de coupe (adjectifs)
         CUT_TOKENS = {
             "empire", "portefeuille", "trapèze", "trapeze", "droit", "droite",
-            "droits", "droites", "palazzo", "évasé", "evasé", "évasée",
-            "cintré", "cintrée", "oversize", "fluide", "ajusté", "ajustée",
-            "structuré", "structurée", "ceinturé", "ceinturée", "long", "longue",
-            "midi", "mini", "court", "courte", "col", "encolure",
-            "portefeuille", "croisé", "croisée", "dégagée", "degagée",
+            "palazzo", "évasé", "evasée", "cintré", "cintrée", "oversize", "fluide",
+            "ajusté", "ajustée", "structuré", "structurée", "ceinturé", "ceinturée",
+            "long", "longue", "midi", "mini", "court", "courte", "col", "encolure",
+            "croisé", "croisée",
         }
 
         text = f"{piece_title} {spec}".lower()
         text = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", text)
         text = re.sub(r"\s{2,}", " ", text).strip()
 
-        stop = set([
+        stop = {
             "a", "à", "au", "aux", "de", "des", "du", "en", "et", "ou",
             "un", "une", "avec", "pour", "la", "le", "les", "d", "l",
             "sur", "dans", "sans", "style",
             "matiere", "matières", "coton", "laine", "viscose", "soie", "bio",
-        ])
+        }
 
         base = []
         for src in [piece_title.lower(), spec.lower()]:
@@ -732,13 +738,13 @@ class ProductMatcherService:
                 if t not in base:
                     base.append(t)
 
-        # Séparer en 3 buckets : couleurs, coupes, reste
-        colors = [t for t in base if t in COLOR_TOKENS]
-        cuts   = [t for t in base if t in CUT_TOKENS and t not in colors]
-        rest   = [t for t in base if t not in COLOR_TOKENS and t not in CUT_TOKENS]
+        nouns  = [t for t in base if t in TYPE_NOUNS]
+        colors = [t for t in base if t in COLOR_TOKENS and t not in nouns]
+        cuts   = [t for t in base if t in CUT_TOKENS and t not in nouns and t not in colors]
+        rest   = [t for t in base if t not in TYPE_NOUNS and t not in COLOR_TOKENS and t not in CUT_TOKENS]
 
-        # Priorité : coupe > couleur > reste
-        ordered = cuts + colors + rest
+        # Priorité : nom de pièce > coupe > couleur > reste
+        ordered = nouns + cuts + colors + rest
 
         seen = set()
         final = []
