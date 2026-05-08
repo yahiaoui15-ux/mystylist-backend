@@ -18,6 +18,267 @@ from app.services.product_matcher_service import product_matcher_service
 from app.services.visuals_service import visuals_service
 from app.services.style_pieces_selector import style_pieces_selector
 
+# ══════════════════════════════════════════════════════════════════════════
+# MYSTYLIST — LOOKS SIGNATURE : FONCTIONS DE SÉLECTION D'IMAGES
+# ══════════════════════════════════════════════════════════════════════════
+import os
+import unicodedata
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://eqtovvjueqsralaprsvm.supabase.co")
+LOOKS_BUCKET = "style-looks"
+
+# Mapping silhouette → groupe morpho
+SILHOUETTE_TO_MORPHO = {
+    "O": "courbee",
+    "A": "courbee",
+    "V": "droite",
+    "H": "droite",
+    "X": "droite",
+}
+
+# Tier par style (détermine la logique de saison dans le filename)
+STYLE_TIERS = {
+    "classique":   1,
+    "chic":        1,
+    "minimaliste": 1,
+    "casual":      1,
+    "romantique":  1,
+    "boheme":      2,
+    "moderne":     2,
+    "sportswear":  2,
+    "vintage":     2,
+    "rock":        3,
+}
+
+# Groupement de saisons Chaud/Froid pour Tier 2
+SAISON_TO_GROUP = {
+    "printemps": "chaud",
+    "automne":   "chaud",
+    "ete":       "froid",
+    "hiver":     "froid",
+}
+
+# Affinité style → contexte (pour pick_3_looks_styles)
+# Score : plus le score est élevé pour un contexte, plus le style lui convient
+STYLE_CONTEXT_AFFINITY = {
+    "classique":   {"quotidien": 2, "travail": 3, "sortie": 2},
+    "chic":        {"quotidien": 2, "travail": 2, "sortie": 3},
+    "minimaliste": {"quotidien": 3, "travail": 2, "sortie": 1},
+    "casual":      {"quotidien": 3, "travail": 1, "sortie": 2},
+    "romantique":  {"quotidien": 2, "travail": 1, "sortie": 3},
+    "boheme":      {"quotidien": 3, "travail": 1, "sortie": 2},
+    "moderne":     {"quotidien": 2, "travail": 2, "sortie": 3},
+    "sportswear":  {"quotidien": 3, "travail": 2, "sortie": 1},
+    "vintage":     {"quotidien": 2, "travail": 1, "sortie": 3},
+    "rock":        {"quotidien": 3, "travail": 1, "sortie": 2},
+}
+
+
+def _normalize_str(s: str) -> str:
+    """
+    Normalise une chaîne : minuscules + suppression des accents.
+    Ex: "Automne" → "automne", "Été" → "ete", "Bohème" → "boheme"
+    """
+    s = s.strip().lower()
+    # Supprime les accents via décomposition Unicode
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return s
+
+
+def _build_url(filename: str) -> str:
+    """Construit l'URL publique Supabase depuis un filename."""
+    return f"{SUPABASE_URL}/storage/v1/object/public/{LOOKS_BUCKET}/{filename}"
+
+
+def get_look_image_url(
+    style: str,
+    contexte: str,
+    saison_colo: str,
+    silhouette: str,
+) -> str:
+    """
+    Retourne l'URL Supabase de l'image de look la plus adaptée au profil.
+
+    Args:
+        style      : ex "romantique" ou "Romantique" (normalisé en interne)
+        contexte   : "quotidien" | "travail" | "sortie"
+        saison_colo: ex "Automne" | "Été" | "Printemps" | "Hiver"
+        silhouette : ex "O" | "A" | "V" | "H" | "X"
+
+    Returns:
+        URL complète vers l'image Supabase (jamais None — fallback garanti)
+    """
+    # Normalisation des inputs
+    style_n    = _normalize_str(style)
+    contexte_n = _normalize_str(contexte)
+    saison_n   = _normalize_str(saison_colo)  # ex: "automne", "ete"
+    morpho     = SILHOUETTE_TO_MORPHO.get(silhouette.upper(), "droite")
+    tier       = STYLE_TIERS.get(style_n, 1)
+
+    # Construction du filename selon le tier
+    if tier == 1:
+        saison_key = saison_n  # saison exacte : printemps/ete/automne/hiver
+    elif tier == 2:
+        saison_key = SAISON_TO_GROUP.get(saison_n, "chaud")  # chaud ou froid
+    else:
+        saison_key = "neutre"  # rock : toujours neutre
+
+    # ── Cascade de fallback en 5 niveaux ──────────────────────────────────
+
+    candidates = []
+
+    # 1. Filename exact (style + contexte + saison + morpho)
+    candidates.append(f"look_{style_n}_{contexte_n}_{saison_key}_{morpho}.webp")
+
+    # 2. Saison groupée si Tier 1 (chaud/froid à la place de la saison exacte)
+    if tier == 1:
+        saison_grouped = SAISON_TO_GROUP.get(saison_n, "chaud")
+        candidates.append(f"look_{style_n}_{contexte_n}_{saison_grouped}_{morpho}.webp")
+
+    # 3. Saison neutre (couvre tous les tiers)
+    candidates.append(f"look_{style_n}_{contexte_n}_neutre_{morpho}.webp")
+
+    # 4. Morpho opposée (si courbee → droite et vice-versa)
+    morpho_opposee = "droite" if morpho == "courbee" else "courbee"
+    candidates.append(f"look_{style_n}_{contexte_n}_{saison_key}_{morpho_opposee}.webp")
+
+    # 5. Style de fallback "classique" + paramètres restants (toujours présent en Tier 1)
+    candidates.append(f"look_classique_{contexte_n}_{saison_key}_{morpho}.webp")
+    candidates.append(f"look_classique_{contexte_n}_automne_{morpho}.webp")
+
+    # 6. Image par défaut universelle absolue
+    candidates.append("look_classique_quotidien_automne_courbee.webp")
+
+    # Retourne la première URL candidate
+    # En production, on pourrait vérifier l'existence via un HEAD request,
+    # mais pour le MVP on fait confiance au naming + fallback logique
+    filename = candidates[0]
+    return _build_url(filename)
+
+
+def pick_3_looks_styles(style_mix):
+    if not style_mix:
+        return {"quotidien": "classique", "travail": "classique", "sortie": "classique"}
+
+    styles_sorted = sorted(
+        [{"style": _normalize_str(s["style"]), "pct": s["pct"]} for s in style_mix],
+        key=lambda x: x["pct"], reverse=True,
+    )
+
+    assigned = {}
+
+    for contexte in ["quotidien", "travail", "sortie"]:
+        already_used = list(assigned.values())
+        best_style, best_score = None, -1
+
+        # Cherche le meilleur style NON encore utilisé selon score affinité×pct
+        for s in styles_sorted:
+            if s["style"] in already_used:
+                continue
+            affinite = STYLE_CONTEXT_AFFINITY.get(s["style"], {}).get(contexte, 1)
+            score = affinite * s["pct"]
+            if score > best_score:
+                best_score, best_style = score, s["style"]
+
+        # Si tous les styles sont déjà utilisés (mix très court), réutilise le dominant
+        if best_style is None:
+            best_style = styles_sorted[0]["style"]
+
+        assigned[contexte] = best_style
+
+    return assigned
+
+def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
+    """
+    Construit le bloc 'looks_signature' pour injection dans liquid_data PDFMonkey.
+
+    Appelle pick_3_looks_styles + get_look_image_url pour chaque look.
+    Les textes (titre, projection, pièces) sont générés par OpenAI séparément
+    et attendus dans raw_data["styling"]["looks_texts"].
+
+    Args:
+        liquid_data : le dict Liquid en cours de construction
+        raw_data    : le dict brut des données du rapport (JSON complet)
+
+    Returns:
+        dict looks_signature avec les 3 looks prêts pour PDFMonkey
+    """
+    # Extraction des données du profil
+    silhouette  = raw_data.get("morphology", {}).get("silhouette_type", "H")
+    saison_colo = raw_data.get("colorimetry", {}).get("saison_confirmee", "Automne")
+    style_mix   = raw_data.get("styling", {}).get("page17", {}).get("style_mix", [])
+
+    # Sélection des 3 styles
+    styles_3 = pick_3_looks_styles(style_mix)
+
+    # Textes générés par OpenAI (voir styling_prompt_part_looks.py)
+    looks_texts = raw_data.get("styling", {}).get("looks_texts", {})
+
+    # Données fixes par (style, contexte) issues du CSV — pièces visibles
+    PIECES_PAR_LOOK = {
+        ("classique",   "quotidien"): "Chemise blanche, pantalon tailleur droit taille haute, mocassins camel, sac cabas cuir, ceinture fine, montre soignée",
+        ("classique",   "travail"):   "Blouse soie, jupe crayon midi, blazer structuré, escarpins bout amande, sac structuré cuir, perles classiques",
+        ("classique",   "sortie"):    "Robe fourreau midi, manteau caban laine, escarpins kitten heel, sac soirée cuir, broche discrète, collier perles",
+        ("chic",        "quotidien"): "Top drapé jersey, pantalon cigarette, mules talons, sac demi-lune, sautoir or, lunettes de soleil",
+        ("chic",        "travail"):   "Blouse satinée, palazzo en crêpe, blazer oversize, escarpins pointus, sac baguette cuir, boucles statement",
+        ("chic",        "sortie"):    "Robe midi satin, cape laine fine, sandales talons fins, pochette verni, manchette dorée, boucles statement",
+        ("minimaliste", "quotidien"): "Tee-shirt col V coton, pantalon droit fluide, mocassins cuir, sac cabas épuré, collier fin or, montre minimaliste",
+        ("minimaliste", "travail"):   "Chemise popeline, palazzo lin, blazer sans col oversize, sneakers cuir blanc, sac géométrique, anneau or",
+        ("minimaliste", "sortie"):    "Robe-pull longue épurée, cardigan long maille, escarpins épurés, sac cabas cuir, collier fin or",
+        ("casual",      "quotidien"): "Tee-shirt oversize coton, jean droit taille haute, sneakers blanches, sac bandoulière souple, hoops simples",
+        ("casual",      "travail"):   "Robe-chemise jean midi, blouson teddy, mocassins cuir, tote bag toile, bracelet semainier",
+        ("casual",      "sortie"):    "Pull col V maille, jean mom taille haute, perfecto cuir souple, baskets cuir, sac à dos cuir, hoops",
+        ("romantique",  "quotidien"): "Robe portefeuille viscose, cardigan léger ouvert, ballerines pointues, sac main cuir souple, sautoir pendentif pierre",
+        ("romantique",  "travail"):   "Chemisier manches bouffantes, palazzo crêpe, cardigan long maille, escarpins kitten heel, sac structuré, boucles pendantes",
+        ("romantique",  "sortie"):    "Top dentelle fine, jupe plissée midi fluide, kimono soie imprimée, sandales brides fines, pochette satin, boucles pendantes",
+        ("boheme",      "quotidien"): "Blouse fluide brodée, jupe longue imprimée, sandales plates cuir, sac bandoulière tressé, sautoir multi-rangs, manchettes argent",
+        ("boheme",      "travail"):   "Chemisier mousseline imprimé, pantalon large lin, gilet long maille, mocassins daim, sac seau naturel, anneaux pierres",
+        ("boheme",      "sortie"):    "Robe longue fleurie, kimono long imprimé, bottines western cuir, pochette raphia, sautoir multi-rangs",
+        ("moderne",     "quotidien"): "Top découpes asymétriques, cargo épuré, sneakers chunky, sac géométrique, boucles géométriques, montre moderne",
+        ("moderne",     "travail"):   "Chemise oversize architecturale, palazzo wool, blazer épaules carrées, mules architecturales, pochette rigide",
+        ("moderne",     "sortie"):    "Robe-pull architecturale, manteau cocoon laine, bottines plateforme, sac demi-lune, sautoir minimaliste",
+        ("sportswear",  "quotidien"): "Sweatshirt premium bouclé, jogging taille haute droit, sneakers chunky, sac banane cuir, casquette mate",
+        ("sportswear",  "travail"):   "Polo jersey qualité, pantalon parachute, veste survêtement chic, sneakers plateforme, sac à dos sport-chic",
+        ("sportswear",  "sortie"):    "Tee-shirt oversize qualité, leggings jersey épais, bomber technique, baskets running mode, tote bag technique",
+        ("vintage",     "quotidien"): "Blouse à pois, jean mom-fit, mocassins à pampilles, sac kelly vintage, foulard noué au cou, montre rétro",
+        ("vintage",     "travail"):   "Pull col roulé années 60, pantalon flare taille haute, blazer tweed, escarpins années 60, sac à fermoir, broche dorée",
+        ("vintage",     "sortie"):    "Robe trapèze midi vintage, redingote laine, bottines lacées, pochette années 70, perles vintage, foulard",
+        ("rock",        "quotidien"): "Tee-shirt vintage, jean slim noir, bottines biker, sac bandoulière clouté, colliers chaîne, manchettes argent",
+        ("rock",        "travail"):   "Chemise sombre, pantalon cuir, perfecto cuir, derbies cloutées, sac structuré noir, bagues empilées",
+        ("rock",        "sortie"):    "Body jersey, jupe cuir mini, blouson aviateur, bottes hautes cuir, sac à chaîne, colliers multiples",
+    }
+
+    # Noms des looks par contexte
+    LOOK_NAMES = {
+        "quotidien": "Le Quotidien Signature",
+        "travail":   "Le Travail Affirmé",
+        "sortie":    "La Sortie Élégante",
+    }
+
+    # Construction des 3 looks
+    looks_signature = {}
+
+    for contexte in ["quotidien", "travail", "sortie"]:
+        style      = styles_3[contexte]
+        image_url  = get_look_image_url(style, contexte, saison_colo, silhouette)
+        pieces_str = PIECES_PAR_LOOK.get((style, contexte), "Pièces à définir")
+
+        # Textes OpenAI si disponibles, sinon fallback générique
+        look_text = looks_texts.get(contexte, {})
+
+        looks_signature[f"look_{contexte}"] = {
+            "style":       style,
+            "style_label": style.capitalize(),
+            "title":       look_text.get("title", LOOK_NAMES[contexte]),
+            "image_url":   image_url,
+            "pieces":      look_text.get("pieces", pieces_str),
+            "projection":  look_text.get("projection", ""),
+            "ideal_pour":  look_text.get("ideal_pour", ""),
+        }
+
+    return looks_signature
+
 class PDFDataMapper:
     """Mappe les données du rapport générés au format PDFMonkey (structure Liquid)"""
     
@@ -1790,7 +2051,9 @@ class PDFDataMapper:
             liquid_data["capsule_pieces"]   = []
             liquid_data["capsule_headline"] = ""
             liquid_data["capsule_intro"]    = ""
- 
+            
+        # ── Looks Signature (nouvelles pages 20-22 fusionnées) ──
+        liquid_data["looks_signature"] = build_looks_signature(liquid_data, report_data)
         # ─────────────────────────────────────────────────────────────────────
  
         return liquid_data
