@@ -489,7 +489,9 @@ class ProductMatcherService:
         if not kw:
             return ""
         kw = self._strip_accents(kw)
-        kw = re.sub(r"[^a-z0-9\-\s]", " ", kw)
+        # Convertit les tirets en espaces (ex: "col-v" → "col v" pour l'ILIKE)
+        kw = kw.replace("-", " ")
+        kw = re.sub(r"[^a-z0-9\s]", " ", kw)
         kw = re.sub(r"\s{2,}", " ", kw).strip()
         parts = kw.split()[:2]
         kw = " ".join(parts)
@@ -862,12 +864,36 @@ class ProductMatcherService:
             "matiere", "matières", "coton", "laine", "viscose", "soie", "bio",
         }
 
+        # ── Détection des composés spéciaux AVANT le split ──────────────────
+        # "col v", "col u" etc. doivent être préservés comme un seul token de coupe,
+        # car "v" et "u" seraient sinon filtrés (len < 3).
+        COMPOUND_CUTS = [
+            ("col v",        "col-v"),
+            ("col u",        "col-u"),
+            ("col bateau",   "col-bateau"),
+            ("col rond",     "col-rond"),
+            ("col carré",    "col-carre"),
+            ("col carre",    "col-carre"),
+            ("taille haute", "taille-haute"),
+        ]
+
+        def _preprocess_compounds(src: str) -> str:
+            for phrase, replacement in COMPOUND_CUTS:
+                src = src.replace(phrase, replacement)
+            return src
+
+        # Ajoute les composés normalisés aux CUT_TOKENS pour qu'ils soient reconnus
+        CUT_TOKENS.update({
+            "col-v", "col-u", "col-bateau", "col-rond", "col-carre", "taille-haute",
+        })
+
         base = []
         for src in [piece_title.lower(), spec.lower()]:
             src = re.sub(r"[^a-zàâçéèêëîïôûùüÿñæœ0-9\s-]", " ", src)
             src = re.sub(r"\s{2,}", " ", src).strip()
+            src = _preprocess_compounds(src)  # fusionne "col v" → "col-v"
             for t in src.split():
-                if t in stop or len(t) < 3:
+                if t in stop or (len(t) < 3 and "-" not in t):
                     continue
                 if t not in base:
                     base.append(t)
