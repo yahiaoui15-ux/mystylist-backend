@@ -189,33 +189,272 @@ def pick_3_looks_styles(style_mix):
 
     return assigned
 
+ 
+def _build_look_justification(
+    style: str,
+    contexte: str,
+    saison_colo: str,
+    silhouette: str,
+    style_pct: int = 0,
+) -> dict:
+    """
+    Génère le bloc de justification personnalisé (colorimétrie, morphologie, style)
+    pour un look signature. Aucun appel OpenAI — lookup tables statiques.
+    Chaque contexte (quotidien/travail/sortie) produit un texte différent
+    sur les 3 dimensions.
+    """
+    style_n    = _normalize_str(style)
+    saison_n   = _normalize_str(saison_colo)
+    sil        = (silhouette or "H").upper()
+    contexte_n = _normalize_str(contexte)
+    pct_str    = f"{style_pct}%" if style_pct else ""
+ 
+    # ── COLORIMÉTRIE — 3 angles différents selon le contexte ─────────────
+    COLOR_LINES = {
+        "automne": {
+            "quotidien": (
+                "Votre palette Automne (terracotta, camel, bordeaux, kaki) donne à ce look "
+                "une chaleur naturelle au quotidien. Ces tons terreux sont immédiats à porter "
+                "et ne demandent aucun effort d'association.",
+                "Portés près du visage, ils révèlent l'éclat de votre teint sans effet masque "
+                "— exactement ce qu'il faut pour une tenue qu'on enfile sans réfléchir.",
+            ),
+            "travail": (
+                "En contexte professionnel, vos couleurs Automne (bordeaux, kaki profond, camel) "
+                "envoient un signal de sérieux et de chaleur simultanément. Ni froides ni criardes.",
+                "Ces tons racés et ancrés renforcent votre crédibilité visuelle — les teintes "
+                "trop pastel ou trop vives produiraient l'effet inverse sur votre colorimétrie.",
+            ),
+            "sortie": (
+                "Pour une sortie, votre palette Automne monte naturellement en intensité : "
+                "un bordeaux profond ou un terracotta soutenu prend toute sa dimension le soir.",
+                "Ces couleurs chaudes et riches créent une présence immédiate sous un éclairage "
+                "artificiel — votre teint chaud les sublime sans effort.",
+            ),
+        },
+        "printemps": {
+            "quotidien": (
+                "Votre palette Printemps (pêche, corail, vert tendre, camel clair) apporte "
+                "une légèreté lumineuse idéale au quotidien. Ces tons s'accordent spontanément.",
+                "Leur fraîcheur naturelle dynamise la silhouette sans forcer — exactement "
+                "ce qu'il faut pour une tenue reproductible chaque matin.",
+            ),
+            "travail": (
+                "En environnement professionnel, vos tons Printemps (camel doré, corail doux, "
+                "vert sauge) projettent une image chaleureuse et accessible sans manquer d'autorité.",
+                "Ces teintes lumineuses mais non agressives créent une présence positive "
+                "qui facilite les interactions et renforce votre image ouverte.",
+            ),
+            "sortie": (
+                "Pour une sortie, votre colorimétrie Printemps rayonne sous la lumière : "
+                "un corail vif ou un ocre doré prend une dimension festive naturelle.",
+                "Ces couleurs claires et dorées captent la lumière et illuminent votre teint "
+                "— elles fonctionnent particulièrement bien en soirée ou en extérieur.",
+            ),
+        },
+        "ete": {
+            "quotidien": (
+                "Votre palette Été (lavande, rose poudré, bleu glacier) donne à ce look "
+                "une douceur apaisante au quotidien. Ces tons s'assemblent sans effort.",
+                "Légèrement délavés, ils créent une harmonie immédiate sur votre teint clair "
+                "et délicat — sans contraste forcé ni couleur qui domine.",
+            ),
+            "travail": (
+                "En contexte professionnel, vos tons Été (bleu ardoise, mauve grisé, rose poudré) "
+                "projettent une image soignée, douce et distinctement professionnelle.",
+                "Ces teintes raffinées s'harmonisent à votre colorimétrie sans l'écraser "
+                "— elles imposent le respect par la subtilité, pas par l'intensité.",
+            ),
+            "sortie": (
+                "Pour une sortie, votre palette Été peut jouer sur des contrastes doux mais "
+                "affirmés : un bleu ardoise soutenu ou un prune rosé crée une vraie présence.",
+                "Ces tons pastels de caractère captent l'attention sans agressivité "
+                "— votre teint délicat les sublime et ressort encore plus lumineux.",
+            ),
+        },
+        "hiver": {
+            "quotidien": (
+                "Votre palette Hiver (blanc éclatant, gris froid, marine profond) donne "
+                "un rendu net et affirmé même pour un look quotidien décontracté.",
+                "Vos contrastes forts appellent des couleurs nettes — le moindre ton "
+                "vif ou pur sur votre colorimétrie produit un effet immédiat et élégant.",
+            ),
+            "travail": (
+                "En environnement professionnel, vos couleurs Hiver (noir, blanc, bleu roi) "
+                "imposent une présence naturelle sans effort. Le contraste fort est votre atout.",
+                "Ces teintes nettes et intenses projettent une image d'autorité et de clarté "
+                "— elles parlent avant même que vous n'ouvriez la bouche.",
+            ),
+            "sortie": (
+                "Pour une sortie, votre colorimétrie Hiver est faite pour briller : "
+                "un rouge vif, un bleu électrique ou un blanc éclatant prennent toute leur force.",
+                "Ces couleurs intenses et saturées subliment votre teint contrasté "
+                "sous les lumières — c'est là que votre palette donne le meilleur d'elle-même.",
+            ),
+        },
+    }
+    color_key = saison_n if saison_n in COLOR_LINES else "automne"
+    ctx_key   = contexte_n if contexte_n in COLOR_LINES[color_key] else "quotidien"
+    color_l1, color_l2 = COLOR_LINES[color_key][ctx_key]
+ 
+    # ── MORPHOLOGIE — 3 angles différents selon le contexte ──────────────
+    MORPHO_LINES = {
+        "O": {
+            "quotidien": (
+                "Pour le quotidien, les coupes fluides et les lignes verticales de ce look "
+                "créent une silhouette élancée sans contrainte. Confort et allure ne s'excluent pas.",
+                "Les détails placés en hauteur (encolure, épaules) attirent naturellement "
+                "le regard vers le haut — votre meilleur atout visible à toute heure.",
+            ),
+            "travail": (
+                "En contexte professionnel, les coupes structurées et les lignes verticales "
+                "de ce look allongent la silhouette et projettent une image maîtrisée.",
+                "Les pièces bien ajustées en haut du corps créent une présence visuelle "
+                "forte sans jamais alourdir — exactement ce qu'exige un cadre de travail.",
+            ),
+            "sortie": (
+                "Pour une sortie, ce look joue sur la verticalité et la fluidité "
+                "pour créer une silhouette légère et élégante sous toutes les lumières.",
+                "Les détails près du visage et du décolleté captent l'attention vers le haut "
+                "— votre zone la plus valorisable pour une soirée réussie.",
+            ),
+        },
+        "A": {
+            "quotidien": (
+                "Au quotidien, les hauts structurés et les détails sur les épaules rééquilibrent "
+                "naturellement votre silhouette sans y penser.",
+                "Les bas dans des tons neutres et des coupes fluides affinent discrètement "
+                "le bas du corps — le résultat est harmonieux sans être travaillé.",
+            ),
+            "travail": (
+                "En milieu professionnel, les hauts avec structure aux épaules équilibrent "
+                "votre silhouette et créent une présence visuelle forte et affirmée.",
+                "Les bas plus sombres et ajustés affinent la ligne et renforcent "
+                "l'impression de rigueur et de maîtrise que vous souhaitez projeter.",
+            ),
+            "sortie": (
+                "Pour sortir, les tops structurés et les détails en haut du corps "
+                "créent un équilibre élégant qui met votre buste en valeur.",
+                "Un bas fluide ou légèrement évasé complète la silhouette en douceur "
+                "— la proportion est flatteuse et naturellement harmonieuse.",
+            ),
+        },
+        "V": {
+            "quotidien": (
+                "Au quotidien, les bas légèrement plus amples et les hauts dans des "
+                "matières légères rééquilibrent vos épaules naturellement larges sans effort.",
+                "Les encolures sobres et les couleurs neutres en haut adoucissent le haut "
+                "pendant que le bas gagne en présence — l'équilibre se fait naturellement.",
+            ),
+            "travail": (
+                "En contexte professionnel, les bas structurés et les hauts épurés "
+                "redistribuent le regard vers le bas et renforcent l'harmonie visuelle.",
+                "Les vestes et blazers légèrement cintrés au bas créent une ligne "
+                "flatteuse et professionnelle adaptée à votre morphologie V.",
+            ),
+            "sortie": (
+                "Pour une sortie, les jupes ou pantalons avec volume ou détails en bas "
+                "créent un contrebalancement élégant de vos épaules larges.",
+                "Un haut sobre et fluide laisse la place aux pièces du bas — "
+                "la silhouette gagne en équilibre et en féminité.",
+            ),
+        },
+        "H": {
+            "quotidien": (
+                "Au quotidien, les ceintures et les détails à la taille créent "
+                "l'illusion de courbes sur votre silhouette rectiligne sans contrainte.",
+                "Les pièces légèrement froncées ou évasées apportent du galbe "
+                "et de la féminité là où votre silhouette naturelle reste droite.",
+            ),
+            "travail": (
+                "En milieu professionnel, les blazers cintrés et les ceintures fines "
+                "définissent une taille sans forcer et renforcent votre image structurée.",
+                "Les robes et ensembles avec découpe à la taille créent visuellement "
+                "des courbes qui donnent de l'autorité et de la présence.",
+            ),
+            "sortie": (
+                "Pour une sortie, les pièces ceinturées et les coupes qui suggèrent "
+                "une taille dessinée transforment votre silhouette avec élégance.",
+                "Un tissu avec de la tenue ou légèrement drapé à la taille "
+                "crée une féminité affirmée — parfait pour une soirée.",
+            ),
+        },
+        "X": {
+            "quotidien": (
+                "Au quotidien, les pièces ajustées mais confortables mettent en valeur "
+                "votre taille naturelle sans effort. Votre morphologie X est très polyvalente.",
+                "Les proportions équilibrées haut/bas de ce look subliment vos atouts "
+                "naturels — presque tout fonctionne, il suffit d'éviter l'excès de volume.",
+            ),
+            "travail": (
+                "En contexte professionnel, les coupes ajustées et les lignes nettes "
+                "de ce look mettent en valeur votre silhouette harmonieuse avec autorité.",
+                "Les pièces structurées qui suivent vos courbes sans les exagérer "
+                "créent une image professionnelle forte et soignée.",
+            ),
+            "sortie": (
+                "Pour une sortie, votre morphologie X permet d'oser des coupes "
+                "plus ajustées ou plus drapées qui soulignent votre taille marquée.",
+                "Les matières avec du tombé ou légèrement stretch révèlent vos proportions "
+                "harmonieuses — c'est le contexte idéal pour mettre votre silhouette en avant.",
+            ),
+        },
+    }
+    morpho_key = sil if sil in MORPHO_LINES else "H"
+    ctx_morpho = contexte_n if contexte_n in MORPHO_LINES[morpho_key] else "quotidien"
+    morpho_l1, morpho_l2 = MORPHO_LINES[morpho_key][ctx_morpho]
+ 
+    # ── STYLE — différent par style ET par contexte ───────────────────────
+    STYLE_L1 = {
+        "minimaliste": f"Votre ADN style Minimaliste{' (' + pct_str + ')' if pct_str else ''} trouve ici son expression la plus pure : peu d'effets, des lignes nettes, une impression de qualité par la simplicité.",
+        "classique":   f"Votre registre Classique{' (' + pct_str + ')' if pct_str else ''} se lit dans chaque pièce : des coupes intemporelles, des finitions soignées, une élégance qui traversera les saisons.",
+        "chic":        f"Votre style Chic{' (' + pct_str + ')' if pct_str else ''} s'exprime dans la précision des coupes et la qualité des matières. Ce look envoie immédiatement un signal de soin et de maîtrise.",
+        "romantique":  f"Votre dimension Romantique{' (' + pct_str + ')' if pct_str else ''} est portée par des matières fluides, des détails délicats et des formes qui adoucissent la silhouette sans excès.",
+        "boheme":      f"Votre registre Bohème{' (' + pct_str + ')' if pct_str else ''} s'exprime librement ici : superpositions légères, imprimés organiques, matières naturelles qui respirent.",
+        "moderne":     f"Votre style Moderne{' (' + pct_str + ')' if pct_str else ''} se traduit par des proportions maîtrisées, un twist contemporain sur des bases solides, une silhouette actuelle.",
+        "casual":      f"Votre registre Casual{' (' + pct_str + ')' if pct_str else ''} trouve ici son meilleur niveau : des basiques bien choisis, des matières confortables, un rendu propre.",
+        "rock":        f"Votre ADN Rock{' (' + pct_str + ')' if pct_str else ''} s'exprime avec caractère : matières structurées, détails affirmés, une présence qui s'impose sans chercher à convaincre.",
+        "vintage":     f"Votre sensibilité Vintage{' (' + pct_str + ')' if pct_str else ''} transparaît dans les coupes rétro et les détails d'époque qui donnent à ce look une personnalité singulière.",
+        "sportswear":  f"Votre style Sporty Chic{' (' + pct_str + ')' if pct_str else ''} équilibre confort et présence : des pièces mobiles et modernes, un rendu soigné qui dépasse le seul sport.",
+    }
+    STYLE_L2 = {
+        "quotidien": "Pour votre quotidien, ce look est conçu pour être reproductible sans effort : chaque pièce s'assemble naturellement et vous permet d'être bien habillée sans y consacrer plus de 5 minutes.",
+        "travail":   "En contexte professionnel, ce look renvoie immédiatement une image de crédibilité et de soin. Les coupes structurées et les matières nobles parlent avant même que vous n'ouvriez la bouche.",
+        "sortie":    "Pour vos sorties, ce look monte d'un cran en présence tout en restant dans votre zone de confort stylistique. Vous êtes distinctement vous-même, sans costume ni effort visible.",
+    }
+    style_key    = style_n if style_n in STYLE_L1 else "classique"
+    contexte_key = contexte_n if contexte_n in STYLE_L2 else "quotidien"
+ 
+    return {
+        "color_line1":  color_l1,
+        "color_line2":  color_l2,
+        "morpho_line1": morpho_l1,
+        "morpho_line2": morpho_l2,
+        "style_line1":  STYLE_L1[style_key],
+        "style_line2":  STYLE_L2[contexte_key],
+    }
+ 
+ 
+
 def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
     """
     Construit le bloc 'looks_signature' pour injection dans liquid_data PDFMonkey.
-
-    Appelle pick_3_looks_styles + get_look_image_url pour chaque look.
-    Les textes (titre, projection, pièces) sont générés par OpenAI séparément
-    et attendus dans raw_data["styling"]["looks_texts"].
-
-    Args:
-        liquid_data : le dict Liquid en cours de construction
-        raw_data    : le dict brut des données du rapport (JSON complet)
-
-    Returns:
-        dict looks_signature avec les 3 looks prêts pour PDFMonkey
     """
-    # Extraction des données du profil
     silhouette  = raw_data.get("morphology", {}).get("silhouette_type", "H")
     saison_colo = raw_data.get("colorimetry", {}).get("saison_confirmee", "Automne")
     style_mix   = raw_data.get("styling", {}).get("page17", {}).get("style_mix", [])
-
-    # Sélection des 3 styles
+ 
     styles_3 = pick_3_looks_styles(style_mix)
-
-    # Textes générés par OpenAI (voir styling_prompt_part_looks.py)
+ 
+    # Dictionnaire style → pct pour le badge de pourcentage
+    styles_pct = {
+        _normalize_str(s["style"]): s.get("pct", 0)
+        for s in style_mix
+        if isinstance(s, dict) and s.get("style")
+    }
+ 
     looks_texts = raw_data.get("styling", {}).get("looks_texts", {})
-
-    # Données fixes par (style, contexte) issues du CSV — pièces visibles
+ 
     PIECES_PAR_LOOK = {
         ("classique",   "quotidien"): "Chemise blanche, pantalon tailleur droit taille haute, mocassins camel, sac cabas cuir, ceinture fine, montre soignée",
         ("classique",   "travail"):   "Blouse soie, jupe crayon midi, blazer structuré, escarpins bout amande, sac structuré cuir, perles classiques",
@@ -248,25 +487,21 @@ def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
         ("rock",        "travail"):   "Chemise sombre, pantalon cuir, perfecto cuir, derbies cloutées, sac structuré noir, bagues empilées",
         ("rock",        "sortie"):    "Body jersey, jupe cuir mini, blouson aviateur, bottes hautes cuir, sac à chaîne, colliers multiples",
     }
-
-    # Noms des looks par contexte
+ 
     LOOK_NAMES = {
         "quotidien": "Le Quotidien Signature",
         "travail":   "Le Travail Affirmé",
         "sortie":    "La Sortie Élégante",
     }
-
-    # Construction des 3 looks
+ 
     looks_signature = {}
-
+ 
     for contexte in ["quotidien", "travail", "sortie"]:
         style      = styles_3[contexte]
         image_url  = get_look_image_url(style, contexte, saison_colo, silhouette)
         pieces_str = PIECES_PAR_LOOK.get((style, contexte), "Pièces à définir")
-
-        # Textes OpenAI si disponibles, sinon fallback générique
-        look_text = looks_texts.get(contexte, {})
-
+        look_text  = looks_texts.get(contexte, {})
+ 
         looks_signature[f"look_{contexte}"] = {
             "style":       style,
             "style_label": style.capitalize(),
@@ -275,8 +510,15 @@ def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
             "pieces":      look_text.get("pieces", pieces_str),
             "projection":  look_text.get("projection", ""),
             "ideal_pour":  look_text.get("ideal_pour", ""),
+            "justification": _build_look_justification(
+                style       = style,
+                contexte    = contexte,
+                saison_colo = saison_colo,
+                silhouette  = silhouette,
+                style_pct   = styles_pct.get(style, 0),
+            ),
         }
-
+ 
     return looks_signature
 
 class PDFDataMapper:
