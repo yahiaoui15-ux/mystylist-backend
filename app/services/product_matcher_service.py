@@ -20,8 +20,12 @@ class ProductMatcherService:
     1) un produit affilié (TABLE: affiliate_products)
     2) sinon un visuel pédagogique (table `visuels`)
 
-    v9 (Points 1 + 2):
-    - PHASE 0: style-aware search via affiliate_product_enrichment
+    v10 (Fix précision produits):
+    - PHASE 1 COMPOUND: recherche "pantalon palazzo", "robe portefeuille", "jupe trapeze"
+      avant de rechercher uniquement "pantalon", "robe", "jupe"
+    - RE-SCORING FINAL: remonte les candidats contenant le plus de mots-clés
+      de la recommandation (nom de pièce + qualificatif de coupe)
+    - PHASE 0: style-aware search via affiliate_product_enrichment (inchangé)
     - Image-first selection: tente jusqu'à 4 candidats pour le produit principal
     """
 
@@ -40,12 +44,14 @@ class ProductMatcherService:
         "sac voyage", "bagage", "valise", "cosmetic",
         "beauty bag", "bébé", "bebe", "enfant", "garçon", "garcon", "fille",
         "maternité", "maternite", "sport", "jogging", "pyjama", "nuisette",
+        # Maroquinerie / accessoires financiers — évite de confondre
+        # "robe portefeuille" avec un vrai portefeuille en cuir
+        "portefeuille en cuir", "portefeuille effet cuir", "portefeuille graffiti",
+        "porte-cartes", "porte-monnaie", "porte carte", "porte monnaie",
     ]
 
     # ── Mapping styles styling → tags enrichment ──────────────────────────
-    # Les tags enrichment sont les clés du classifier v6 (lowercase, sans accent).
     STYLE_LABEL_TO_ENRICHMENT_TAG: Dict[str, str] = {
-        # Labels courts (style_mix dans styling)
         "Classique": "classique",
         "Chic": "chic",
         "Casual": "casual",
@@ -56,9 +62,8 @@ class ProductMatcherService:
         "Vintage": "vintage",
         "Bohème": "boheme",
         "Boheme": "boheme",
-        "Romantique": "romantique",       # ← manquait
-        "Minimaliste": "minimaliste",     # ← manquait
-        # Labels complets (styling._score_styles keys)
+        "Romantique": "romantique",
+        "Minimaliste": "minimaliste",
         "Style Classique / Intemporel": "classique",
         "Style Chic / Élégant": "chic",
         "Style Casual / Décontracté": "casual",
@@ -68,8 +73,8 @@ class ProductMatcherService:
         "Style Urbain / Streetwear": "sportswear",
         "Style Vintage": "vintage",
         "Style Bohème": "boheme",
-        "Style Romantique": "romantique",  # ← manquait
-        "Style Minimaliste": "minimaliste", # ← manquait
+        "Style Romantique": "romantique",
+        "Style Minimaliste": "minimaliste",
         "Style Naturel / Authentique": "boheme",
         "Style Féminin Moderne": "moderne",
         "Style Artistique / Créatif": "rock",
@@ -105,7 +110,7 @@ class ProductMatcherService:
         self,
         pieces: List[Dict[str, Any]],
         category: str,
-        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+        style_tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         out = []
         for p in pieces or []:
@@ -124,7 +129,7 @@ class ProductMatcherService:
         self,
         piece: Dict[str, Any],
         category: str,
-        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+        style_tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         piece_title = (piece.get("piece_title") or "").strip()
         spec = (piece.get("spec") or "").strip()
@@ -147,7 +152,6 @@ class ProductMatcherService:
             pass
 
         if valid_pool:
-            # Cherche le premier candidat avec une image qui fonctionne
             main = None
             safe_img = ""
             remaining = []
@@ -163,7 +167,6 @@ class ProductMatcherService:
                     remaining = valid_pool[idx + 1:]
                     break
 
-            # Si aucun candidat avec image → on prend le premier quand même
             if main is None:
                 main = valid_pool[0]
                 remaining = valid_pool[1:]
@@ -247,10 +250,9 @@ class ProductMatcherService:
         return results
 
     # -------------------------
-    # Style helpers (Point 1)
+    # Style helpers
     # -------------------------
     def _map_styles_to_enrichment_tags(self, style_labels: List[str]) -> List[str]:
-        """Convertit les labels styling (ex: 'Classique') en tags enrichment (ex: 'classique')."""
         tags = []
         for label in style_labels or []:
             label = (label or "").strip()
@@ -258,14 +260,13 @@ class ProductMatcherService:
             if tag:
                 tags.append(tag)
             else:
-                # Tentative par normalisation : lowercase + strip accents
                 normalized = self._strip_accents(label.lower())
                 if normalized.startswith("style "):
                     normalized = normalized[6:]
                 normalized = re.sub(r"[^a-z0-9]", "", normalized)
                 if len(normalized) >= 3:
                     tags.append(normalized)
-        return list(dict.fromkeys(tags))  # déduplique en préservant l'ordre
+        return list(dict.fromkeys(tags))
 
     def _find_affiliate_products_phase0_style(
         self,
@@ -275,9 +276,7 @@ class ProductMatcherService:
         limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
-        PHASE 0 — Style-aware: requête affiliate_product_enrichment sur style_primary,
-        puis récupère les produits correspondants dans affiliate_products.
-        Retourne une liste pré-filtrée par catégorie.
+        PHASE 0 — Style-aware: requête affiliate_product_enrichment sur style_primary.
         """
         if not style_tags:
             return []
@@ -294,7 +293,6 @@ class ProductMatcherService:
         ])
 
         try:
-            # 1) Récupère les product_ids dont style_primary est dans nos tags
             q_enrich = (
                 self.client.table("affiliate_product_enrichment")
                 .select("product_id")
@@ -308,11 +306,9 @@ class ProductMatcherService:
             if not product_ids:
                 return []
 
-            # 2) Récupère ces produits dans affiliate_products + filtre keyword
             kws = self._extract_keywords(piece_title, "")
             kw_safe = self._normalize_kw_for_ilike(kws[0]) if kws else ""
 
-            # On limite à 50 product_ids pour éviter une requête trop lourde
             q_products = (
                 self.client.table(self.AFFILIATE_TABLE)
                 .select(select_fields)
@@ -328,7 +324,6 @@ class ProductMatcherService:
             resp_products = self._execute(q_products)
             data = getattr(resp_products, "data", None) or []
 
-            # 3) Filtre catégorie
             filtered = [r for r in data if self._category_match(r, category)]
             if filtered:
                 print(f"✅ PHASE0 style [{category}] tags={enrichment_tags}: {len(filtered)} produits")
@@ -337,6 +332,61 @@ class ProductMatcherService:
         except Exception as e:
             print(f"⚠️ PHASE 0 style failed: {e}")
             return []
+
+    # -------------------------
+    # Relevance scoring  ← NEW
+    # -------------------------
+    def _score_candidate(self, candidate: Dict[str, Any], kws: List[str]) -> int:
+        """
+        Score un candidat selon le nombre de mots-clés de la recommandation
+        présents dans son product_name.
+        Chaque mot-clé trouvé vaut 1 point.
+        Les mots-clés de coupe (palazzo, portefeuille, trapèze...) rapportent
+        un bonus de 2 points supplémentaires car ils sont les plus discriminants.
+
+        Exemples :
+          "Pantalon palazzo Iro"    vs kws=["pantalon","palazzo"] → score 3 (1+2)
+          "Pantalon slim en coton"  vs kws=["pantalon","palazzo"] → score 1 (1+0)
+        """
+        name_raw = (candidate.get("product_name") or "").lower()
+        name = self._strip_accents(name_raw)
+
+        CUT_TOKENS = {
+            "empire", "portefeuille", "trapeze", "droit", "droite",
+            "palazzo", "evase", "evasee", "cintre", "cintree", "oversize", "fluide",
+            "ajuste", "ajustee", "structure", "structuree", "ceinture", "ceinturee",
+            "long", "longue", "midi", "mini", "court", "courte",
+            "croise", "croisee", "wrap", "flare", "wide", "large",
+        }
+
+        score = 0
+        for kw in kws:
+            kw_norm = self._strip_accents(kw.lower())
+            if kw_norm in name:
+                score += 1
+                # Bonus pour les qualificatifs de coupe — très discriminants
+                if kw_norm in CUT_TOKENS:
+                    score += 2
+        return score
+
+    def _rescore_collected(
+        self, collected: List[Dict[str, Any]], kws: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Trie `collected` par score décroissant de pertinence.
+        Les produits avec score 0 restent à la fin (fallback).
+        Préserve l'ordre d'arrivée à score égal (tri stable Python).
+        """
+        if not kws:
+            return collected
+        scored = [(self._score_candidate(c, kws), i, c) for i, c in enumerate(collected)]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        result = [c for _, _, c in scored]
+        # Log les 4 premiers pour diagnostic
+        for rank, (score, _, c) in enumerate(scored[:4]):
+            name = (c.get("product_name") or "")[:50]
+            print(f"   🏅 RANK {rank+1} score={score} '{name}'")
+        return result
 
     # -------------------------
     # Output helpers
@@ -359,14 +409,28 @@ class ProductMatcherService:
     # -------------------------
     # Candidate selection / dedupe
     # -------------------------
+    def _normalize_name_for_dedup(self, name: str) -> str:
+        """
+        Normalise un nom de produit pour la déduplication des variantes taille/couleur.
+        "Brand - Pantalon palazzo femme - Taille S - Marron"
+        "Brand - Pantalon palazzo femme - Taille L - Gris"
+        → deviennent le même key "brand - pantalon palazzo femme"
+        """
+        name = (name or "").strip().lower()
+        # Supprime le suffixe " - Taille XX - Couleur" et tout ce qui suit
+        name = re.sub(r"\s*-\s*taille\s+\S+.*$", "", name, flags=re.IGNORECASE)
+        # Supprime aussi les suffixes " - Couleur" seuls sans taille (ex: "- Noir - Place des T...")
+        name = re.sub(r"\s*-\s*(noir|blanc|beige|gris|rouge|bleu|vert|rose|marron|camel|kaki|marine|bordeaux|multicolore|imprim\w*).*$", "", name, flags=re.IGNORECASE)
+        return name.strip()[:80]
+
     def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return self._pick_top_n_valid_candidates(candidates, n=3)
 
     def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
-        seen_urls   = set()
-        seen_names  = set()
-        seen_images = set()
+        seen_urls        = set()
+        seen_names_dedup = set()   # ← clé normalisée (sans taille/couleur)
+        seen_images      = set()
 
         for c in candidates or []:
             if not isinstance(c, dict):
@@ -380,24 +444,28 @@ class ProductMatcherService:
                 continue
 
             url_key = buy_url or product_id or raw_img
-            product_name = (c.get("product_name") or "").strip().lower()[:60]
+
+            # Clé de déduplication normalisée — filtre les variantes taille/couleur
+            raw_name   = (c.get("product_name") or "").strip()
+            dedup_name = self._normalize_name_for_dedup(raw_name)
+
             img_base = raw_img.split("?")[0] if raw_img else ""
 
             if url_key in seen_urls:
                 continue
-            if product_name and product_name in seen_names:
+            if dedup_name and dedup_name in seen_names_dedup:
                 continue
             if img_base and img_base in seen_images:
                 continue
 
             seen_urls.add(url_key)
-            if product_name:
-                seen_names.add(product_name)
+            if dedup_name:
+                seen_names_dedup.add(dedup_name)
             if img_base:
                 seen_images.add(img_base)
 
             # Blacklist
-            product_name_lower = (c.get("product_name") or "").lower()
+            product_name_lower  = raw_name.lower()
             secondary_cat_lower = (c.get("secondary_category") or "").lower()
             combined_text = product_name_lower + " " + secondary_cat_lower
             if any(bk in combined_text for bk in self.PRODUCT_BLACKLIST_KEYWORDS):
@@ -580,8 +648,20 @@ class ProductMatcherService:
         spec: str,
         category: str,
         limit: int = 20,
-        style_tags: Optional[List[str]] = None,   # ← nouveau, rétrocompat
+        style_tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """
+        Recherche des produits affiliés en plusieurs phases par ordre de précision.
+
+        PHASE 0  — Style-aware (inchangée)
+        PHASE 1  — Mot-clé COMPOSÉ "pantalon palazzo" / "robe portefeuille" + filtre catégorie  ← NEW
+        PHASE 1b — Mot-clé NOM SEUL "pantalon" + filtre catégorie (fallback si peu de résultats)
+        PHASE 2  — Mot-clé composé SANS filtre catégorie
+        PHASE 2b — Mot-clé nom seul SANS filtre catégorie
+        PHASE 3  — Fallback catégorie (secondary_category)
+
+        RE-SCORING FINAL : remonte les candidats contenant le plus de mots-clés  ← NEW
+        """
         kws = self._extract_keywords(piece_title, spec)
 
         select_fields = ",".join([
@@ -620,28 +700,74 @@ class ProductMatcherService:
             _add_rows(phase0)
 
         # ────────────────────────────────────────────────────────
-        # PHASE 1 — Keyword + category filter (côté Python)
+        # PHASE 1 — Mot-clé COMPOSÉ (nom + coupe) + filtre catégorie  ← NEW
+        # Ex: "pantalon palazzo", "robe portefeuille", "jupe trapeze"
         # ────────────────────────────────────────────────────────
-        for kw in kws[:1]:
-            if len(collected) >= limit:
-                break
-            kw_safe = self._normalize_kw_for_ilike(kw)
-            if len(kw_safe) < 3:
-                continue
-            try:
-                pattern = self._ilike_pattern(kw_safe)
-                q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
-                resp = self._execute(q)
-                data = getattr(resp, "data", None) or []
-                filtered = [r for r in data if self._category_match(r, category)]
-                _add_rows(filtered)
-                if filtered:
-                    print(f"✅ KW+CAT [{category}] '{kw_safe}': {len(filtered)}")
-            except Exception as e:
-                print(f"⚠️ KW+CAT query failed: {e}")
+        if kws and len(collected) < limit:
+            # kws est trié [nouns, cuts, colors, rest]
+            # On compose le premier nom + le premier qualificatif de coupe
+            compound_kw = " ".join(kws[:2]) if len(kws) >= 2 else kws[0]
+            compound_safe = self._normalize_kw_for_ilike(compound_kw)
+
+            if len(compound_safe) >= 5:  # ex: "robe" seul = 4 chars → skip, traité en 1b
+                try:
+                    pattern = self._ilike_pattern(compound_safe)
+                    q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                    resp = self._execute(q)
+                    data = getattr(resp, "data", None) or []
+                    filtered = [r for r in data if self._category_match(r, category)]
+                    _add_rows(filtered)
+                    if filtered:
+                        print(f"✅ COMPOUND+CAT [{category}] '{compound_safe}': {len(filtered)}")
+                    elif data:
+                        # Produits trouvés mais pas dans la bonne catégorie → on les ajoute quand même
+                        _add_rows(data)
+                        print(f"✅ COMPOUND (no-cat) [{category}] '{compound_safe}': {len(data)}")
+                except Exception as e:
+                    print(f"⚠️ COMPOUND+CAT query failed: {e}")
 
         # ────────────────────────────────────────────────────────
-        # PHASE 2 — Keyword sans filtre catégorie
+        # PHASE 1b — Mot-clé NOM SEUL + filtre catégorie (fallback)
+        # ────────────────────────────────────────────────────────
+        if len(collected) < 6:
+            for kw in kws[:1]:
+                if len(collected) >= limit:
+                    break
+                kw_safe = self._normalize_kw_for_ilike(kw)
+                if len(kw_safe) < 3:
+                    continue
+                try:
+                    pattern = self._ilike_pattern(kw_safe)
+                    q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                    resp = self._execute(q)
+                    data = getattr(resp, "data", None) or []
+                    filtered = [r for r in data if self._category_match(r, category)]
+                    _add_rows(filtered)
+                    if filtered:
+                        print(f"✅ KW+CAT [{category}] '{kw_safe}': {len(filtered)}")
+                except Exception as e:
+                    print(f"⚠️ KW+CAT query failed: {e}")
+
+        # ────────────────────────────────────────────────────────
+        # PHASE 2 — Mot-clé composé SANS filtre catégorie
+        # ────────────────────────────────────────────────────────
+        if len(collected) < 6 and kws:
+            compound_kw = " ".join(kws[:2]) if len(kws) >= 2 else kws[0]
+            compound_safe = self._normalize_kw_for_ilike(compound_kw)
+            if len(compound_safe) >= 5:
+                try:
+                    pattern = self._ilike_pattern(compound_safe)
+                    q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                    resp = self._execute(q)
+                    data = getattr(resp, "data", None) or []
+                    _add_rows(data)
+                    if data:
+                        print(f"✅ COMPOUND [{category}] '{compound_safe}': {len(data)}")
+                except Exception as e:
+                    print(f"⚠️ COMPOUND query failed: {e}")
+
+        # ────────────────────────────────────────────────────────
+        # PHASE 2b — Mot-clé nom seul SANS filtre catégorie
         # ────────────────────────────────────────────────────────
         if len(collected) < 6:
             for kw in kws[:1]:
@@ -688,8 +814,15 @@ class ProductMatcherService:
                 except Exception as e:
                     print(f"⚠️ CAT secondary query failed: {e}")
 
-        print(f"📊 Total [{category}]: {len(collected)} produits collectés")
-        return collected[:limit]
+        print(f"📊 Total [{category}]: {len(collected)} produits collectés avant re-scoring")
+
+        # ────────────────────────────────────────────────────────
+        # RE-SCORING FINAL — remonte les meilleurs matches  ← NEW
+        # Ex: "pantalon palazzo" score 3 > "pantalon slim" score 1
+        # ────────────────────────────────────────────────────────
+        rescored = self._rescore_collected(collected, kws)
+
+        return rescored[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
         # Noms de pièces — PRIORITÉ ABSOLUE
@@ -708,13 +841,14 @@ class ProductMatcherService:
             "vert", "verte", "kaki", "moutarde", "rouille", "aubergine", "caramel",
             "ivoire", "ecru", "crème", "gris", "marron", "rose", "corail", "orange",
         }
-        # Mots de coupe (adjectifs)
+        # Mots de coupe (adjectifs) — enrichis
         CUT_TOKENS = {
             "empire", "portefeuille", "trapèze", "trapeze", "droit", "droite",
             "palazzo", "évasé", "evasée", "cintré", "cintrée", "oversize", "fluide",
             "ajusté", "ajustée", "structuré", "structurée", "ceinturé", "ceinturée",
             "long", "longue", "midi", "mini", "court", "courte", "col", "encolure",
-            "croisé", "croisée",
+            "croisé", "croisée", "large", "flare", "wide", "slim", "skinny",
+            "taille haute", "tailleur", "wrap",
         }
 
         text = f"{piece_title} {spec}".lower()
