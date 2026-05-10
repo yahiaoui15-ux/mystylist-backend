@@ -433,10 +433,13 @@ class ColorimetryService:
                 "saison_confirmee": result_part1.get("saison_confirmee", "Indéterminée"),
                 "sous_ton_detecte": result_part1.get("sous_ton_detecte", "neutre"),
                 "justification_saison": result_part1.get("justification_saison", ""),
+                "valeur_peau": result_part1.get("valeur_peau", ""),
+                "intensite": result_part1.get("intensite", ""),
+                "contraste_naturel": result_part1.get("contraste_naturel", ""),
                 "eye_color": result_part1.get("eye_color", eye_color),
                 "hair_color": result_part1.get("hair_color", hair_color),
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
-
+                
                 # ✅ PAGE 3: Palette personnalisée (10 couleurs, 8-10/10)
                 "palette_personnalisee": palette,
 
