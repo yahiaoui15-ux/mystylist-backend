@@ -661,7 +661,7 @@ class ColorimetryService:
             response = await self.openai.analyze_image(
                 image_urls=[thumb_url],
                 prompt=user_prompt,
-                max_tokens=600,
+                max_tokens=850,
                 vision_detail_override="low",
             )
 
