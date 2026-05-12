@@ -587,24 +587,18 @@ class ProductMatcherService:
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             }
 
-            proxy_target = base_url or image_url
-            try:
-                u = urlparse(proxy_target)
-                target_no_scheme = f"{u.netloc}{u.path}"
-                proxy_url = f"https://images.weserv.nl/?url={quote(target_no_scheme, safe='')}"
-            except Exception:
-                proxy_url = f"https://images.weserv.nl/?url={quote(proxy_target, safe='')}"
-
             try_url = base_url or image_url
-            r = httpx.get(try_url, headers=headers, timeout=20.0, follow_redirects=True)
+            r = httpx.get(try_url, headers=headers, timeout=6.0, follow_redirects=True)
 
-            if r.status_code in (401, 403):
-                r2 = httpx.get(proxy_url, headers={"User-Agent": headers["User-Agent"]}, timeout=20.0, follow_redirects=True)
-                print("🧪 proxy status:", r2.status_code, "proxy_url:", proxy_url)
-                r = r2
+            # 403 = IP bloquée par PDT → inutile de retenter
+            if r.status_code == 403:
+                print(f"⛔ 403 Forbidden — skip immédiat: {try_url[:80]}")
+                return ""
 
-            if r.status_code >= 400 and try_url != image_url:
-                r = httpx.get(image_url, headers=headers, timeout=20.0, follow_redirects=True)
+            # Autre erreur → skip sans retry
+            if r.status_code >= 400:
+                print(f"⚠️ HTTP {r.status_code} — skip: {try_url[:80]}")
+                return ""
 
             r.raise_for_status()
 
