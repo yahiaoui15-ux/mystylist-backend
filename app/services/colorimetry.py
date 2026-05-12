@@ -825,7 +825,7 @@ class ColorimetryService:
             response = await self.openai.call_chat(
                 prompt=user_prompt,
                 model="gpt-4",
-                max_tokens=1400,
+                max_tokens=1800,
             )
             print(f"✅ RÉPONSE REÇUE")
 
