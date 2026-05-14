@@ -21,6 +21,125 @@ from typing import Any
 
 class ReportGenerator:
     """Orchestre génération rapport - SÉQUENTIELLE"""
+
+    async def generate_colorimetry_report(self, user_data: dict) -> dict:
+        """
+        Rapport colorimétrie uniquement — 3 appels OpenAI (colorimetry_service).
+        Pas d'appel morphology ni styling.
+        """
+        try:
+            print("\n" + "="*80)
+            print("🎨 GÉNÉRATION RAPPORT COLORIMÉTRIE")
+            print("="*80)
+
+            # PHASE 1: COLORIMETRY (3 appels)
+            print("\n" + "█"*80)
+            print("█ PHASE 1: COLORIMETRY (3 appels)")
+            print("█"*80)
+
+            colorimetry_result = await colorimetry_service.analyze(user_data)
+
+            if not colorimetry_result:
+                print("\n❌ Erreur colorimetry - arrêt")
+                call_tracker.print_summary()
+                return {}
+
+            # Stockage profil IA (colorimétrie seulement)
+            self._upsert_user_ai_profile(
+                user_id=user_data.get("user_id"),
+                colorimetry_result=colorimetry_result,
+                morphology_result={},
+                styling_result={},
+                user_data=user_data,
+            )
+
+            report = {
+                "user_name":   user_data.get("user_name", ""),
+                "user_email":  user_data.get("user_email", ""),
+                "colorimetry": colorimetry_result,
+                "morphology":  {},
+                "styling":     {},
+                "visuals":     {},
+                "products":    {},
+            }
+
+            print("✅ Rapport colorimétrie généré avec succès!")
+            call_tracker.print_summary()
+            return report
+
+        except Exception as e:
+            print(f"\n❌ ERREUR RAPPORT COLORIMÉTRIE: {e}")
+            call_tracker.log_error("ReportGenerator.colorimetry", str(e))
+            call_tracker.print_summary()
+            import traceback
+            traceback.print_exc()
+            raise
+
+    async def generate_morphology_report(self, user_data: dict) -> dict:
+        """
+        Rapport morphologie uniquement — 2 appels OpenAI (morphology_service).
+        Pas d'appel colorimetry ni styling.
+        """
+        try:
+            print("\n" + "="*80)
+            print("📐 GÉNÉRATION RAPPORT MORPHOLOGIE")
+            print("="*80)
+
+            # PHASE 1: MORPHOLOGY (2 appels)
+            print("\n" + "█"*80)
+            print("█ PHASE 1: MORPHOLOGY (2 appels - Part 1 vision + Part 2 text)")
+            print("█"*80)
+
+            morphology_result = await morphology_service.analyze(user_data)
+
+            if not morphology_result:
+                print("\n⚠️ Erreur morphology - continuation avec données vides")
+                morphology_result = {}
+
+            # PHASE 2: VISUALS uniquement (pas de products sans colorimétrie)
+            print("\n" + "█"*80)
+            print("█ PHASE 2: VISUALS morphologie")
+            print("█"*80)
+
+            loop = asyncio.get_event_loop()
+            visuals = await loop.run_in_executor(
+                None,
+                visuals_service.fetch_for_recommendations,
+                morphology_result
+            )
+
+            print("✅ Visuals récupérés\n")
+
+            # Stockage profil IA (morphologie seulement)
+            self._upsert_user_ai_profile(
+                user_id=user_data.get("user_id"),
+                colorimetry_result={},
+                morphology_result=morphology_result,
+                styling_result={},
+                user_data=user_data,
+            )
+
+            report = {
+                "user_name":   user_data.get("user_name", ""),
+                "user_email":  user_data.get("user_email", ""),
+                "colorimetry": {},
+                "morphology":  morphology_result,
+                "styling":     {},
+                "visuals":     visuals,
+                "products":    {},
+            }
+
+            print("✅ Rapport morphologie généré avec succès!")
+            call_tracker.print_summary()
+            return report
+
+        except Exception as e:
+            print(f"\n❌ ERREUR RAPPORT MORPHOLOGIE: {e}")
+            call_tracker.log_error("ReportGenerator.morphology", str(e))
+            call_tracker.print_summary()
+            import traceback
+            traceback.print_exc()
+            raise
     
     async def generate_complete_report(self, user_data: dict) -> dict:
         """Génère rapport complet"""

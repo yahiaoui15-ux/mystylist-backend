@@ -27,29 +27,37 @@ class PDFGenerationService:
             print(f"✅ PDFMONKEY_API_KEY configurée")
     
     async def generate_report_pdf(
-        self,
-        report_data: dict,
-        user_data: dict,
-        document_name: Optional[str] = None
-    ) -> str:
-        """
-        Génère un PDF via PDFMonkey (alias pour main.py)
-        
-        Args:
-            report_data: Rapport généré par report_generator
-            user_data: Données utilisateur
-            document_name: Nom optionnel du document
-        
-        Returns:
-            str: URL du PDF généré
-        """
-        return await self.generate_pdf(report_data, user_data, document_name)
+            self,
+            report_data: dict,
+            user_data: dict,
+            document_name: Optional[str] = None,
+            template_id: Optional[str] = None        # ← NOUVEAU
+        ) -> str:
+            """
+            Génère un PDF via PDFMonkey (alias pour main.py)
+            
+            Args:
+                report_data: Rapport généré par report_generator
+                user_data: Données utilisateur
+                document_name: Nom optionnel du document
+                template_id: ID template PDFMonkey (override de self.template_id)
+            
+            Returns:
+                str: URL du PDF généré
+            """
+            return await self.generate_pdf(
+                report_data,
+                user_data,
+                document_name,
+                template_id=template_id             # ← NOUVEAU
+            )
     
     async def generate_pdf(
         self,
         report_data: dict,
         user_data: dict,
-        document_name: Optional[str] = None
+        document_name: Optional[str] = None,
+        template_id: Optional[str] = None        # ← NOUVEAU
     ) -> str:
         """
         Génère un PDF via PDFMonkey
@@ -57,6 +65,10 @@ class PDFGenerationService:
         """
         try:
             print("🎨 Génération PDF via PDFMonkey...")
+
+            # ← NOUVEAU : utilise le template passé en paramètre, sinon fallback sur self.template_id
+            effective_template_id = template_id or self.template_id
+            print(f"   Template utilisé: {effective_template_id}")
 
             liquid_variables = PDFDataMapper.prepare_liquid_variables(
                 report_data,
@@ -71,14 +83,14 @@ class PDFGenerationService:
 
             payload = {
                 "document": {
-                    "document_template_id": self.template_id,
+                    "document_template_id": effective_template_id,   # ← MODIFIÉ
                     "payload": liquid_variables,
                     "status": "pending"
                 }
             }
 
             print("📤 Envoi à PDFMonkey...")
-            print(f"   Template ID: {self.template_id}")
+            print(f"   Template ID: {effective_template_id}")        # ← MODIFIÉ
             print(f"   Data fields: {len(liquid_variables)} champs")
 
             headers = {

@@ -37,6 +37,21 @@ def log(message: str):
     logger.info(message)
     sys.stdout.flush()
 
+# =====================================================
+# MAPPING STRIPE PRODUCT → RAPPORT TYPE + PDFMONKEY
+# =====================================================
+STRIPE_PRODUCT_REPORT_TYPE = {
+    "prod_UVCryuc1tCV03U":  "colorimetrie",
+    "prod_UVCt4ANPFNtWDR":  "morphologie",
+    "prod_TDbm2sXLsIH6fa":  "complet",
+}
+
+PDFMONKEY_TEMPLATES = {
+    "colorimetrie": "0122AF49-B0B9-4D10-9F1A-A2528FFE0CDD",
+    "morphologie":  "59236C09-5823-43A0-99F2-5C7DF689DD16",
+    "complet":      "4D4A47D1-361F-4133-B998-188B6AB08A37",
+}
+
 app = FastAPI()
 
 app.add_middleware(
@@ -85,6 +100,43 @@ async def debug_supabase_write():
         return {"ok": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+        
+@app.get("/api/searches/{search_id}/recommendations")
+async def get_search_recommendations(search_id: str):
+    """
+    Retourne les recommandations déjà générées pour une recherche,
+    sans relancer une nouvelle génération.
+    """
+    try:
+        log(f"[SEARCH_RECO] Fetch existing recommendations for search_id={search_id}")
+        result = await search_recommendation_service.get_saved_recommendations_for_search(search_id)
+        log(
+            f"[SEARCH_RECO] Existing recommendations result for search_id={search_id}: "
+            f"ok={result.get('ok')} found={result.get('found')}"
+        )
+
+        if result.get("ok") and result.get("found"):
+            return result
+
+        return JSONResponse(
+            status_code=404,
+            content={
+                "ok": False,
+                "search_id": search_id,
+                "error": "recommendations_not_found",
+            },
+        )
+
+    except Exception as e:
+        log(f"[SEARCH_RECO] GET exception for search_id={search_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "search_id": search_id,
+                "error": str(e),
+            },
+        )
 
 @app.post("/api/searches/{search_id}/generate-recommendations")
 async def generate_search_recommendations(search_id: str):
@@ -289,9 +341,30 @@ async def handle_stripe_webhook(
         except Exception as e:
             log(f"[WEBHOOK] Lookup reports failed (on continue): {e}")
 
-        # 5) Lancer le job asynchrone et ACK 200 tout de suite
-        log(f">>> LANCEMENT TACHE ASYNC user={user_id} payment={payment_id}")
-        background_tasks.add_task(process_checkout_session_job, user_id, payment_id)
+        # 5) Identifier le type de rapport depuis le produit Stripe acheté
+        report_type = "complet"  # fallback par défaut
+        template_id = PDFMONKEY_TEMPLATES["complet"]
+
+        try:
+            line_items = stripe.checkout.Session.list_line_items(payment_id, limit=1)
+            if line_items.data:
+                product_id = line_items.data[0].price.product
+                log(f">>> Produit Stripe détecté: {product_id}")
+                report_type = STRIPE_PRODUCT_REPORT_TYPE.get(product_id, "complet")
+                template_id = PDFMONKEY_TEMPLATES.get(report_type, PDFMONKEY_TEMPLATES["complet"])
+                log(f">>> Type rapport: {report_type} | Template PDFMonkey: {template_id}")
+        except Exception as e:
+            log(f"[WEBHOOK] Impossible de lire les line_items (fallback complet): {e}")
+
+        # 6) Lancer le job asynchrone et ACK 200 tout de suite
+        log(f">>> LANCEMENT TACHE ASYNC user={user_id} payment={payment_id} type={report_type}")
+        background_tasks.add_task(
+            process_checkout_session_job,
+            user_id,
+            payment_id,
+            report_type,
+            template_id
+        )
         log(f">>> Tache ajoutee, retour 200 a Stripe")
         return JSONResponse(status_code=200, content={"ok": True})
 
@@ -305,11 +378,18 @@ async def handle_stripe_webhook(
 # =====================================================
 # TACHE ASYNCHRONE : IA + PDF + MAIL
 # =====================================================
-async def process_checkout_session_job(user_id: str, payment_id: str):
+async def process_checkout_session_job(
+    user_id: str,
+    payment_id: str,
+    report_type: str = "complet",
+    template_id: str = None
+):
     """Tache de generation de rapport - logs forces"""
     log(f"========== DEBUT TACHE ASYNC ==========")
     log(f">>> user_id={user_id}")
     log(f">>> payment_id={payment_id}")
+    log(f">>> report_type={report_type}")
+    log(f">>> template_id={template_id}")
     
     try:
         log(">>> Etape 1: Recuperation profil utilisateur...")
@@ -413,14 +493,21 @@ async def process_checkout_session_job(user_id: str, payment_id: str):
             log(">>> Email deja envoye -> on arrete ici.")
             return
 
-        # IA : Generation du rapport complet
-        log(">>> Etape 2: GENERATION RAPPORT IA...")
-        report = await report_generator.generate_complete_report(user_data)
+        # IA : Generation du rapport selon le type acheté
+        log(f">>> Etape 2: GENERATION RAPPORT IA (type={report_type})...")
+        if report_type == "colorimetrie":
+            report = await report_generator.generate_colorimetry_report(user_data)
+        elif report_type == "morphologie":
+            report = await report_generator.generate_morphology_report(user_data)
+        else:
+            report = await report_generator.generate_complete_report(user_data)
         log(f">>> Rapport IA genere!")
 
         # PDF - Generer via PDFMonkey
         log(">>> Etape 3: GENERATION PDF...")
-        pdf_url_temporary = await pdf_generation.generate_report_pdf(report, user_data)
+        pdf_url_temporary = await pdf_generation.generate_report_pdf(
+            report, user_data, template_id=template_id
+        )
         log(f">>> PDF genere (temporaire): {pdf_url_temporary[:60]}...")
 
         # Sauvegarder dans Supabase (lien PERMANENT)
