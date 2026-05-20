@@ -630,7 +630,7 @@ class ColorimetryService:
         try:
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Vision (gpt-4-turbo)")
-            print(f"   • Max tokens: 1000")
+            print(f"   • Max tokens: 850")
             print(f"   • Image: {face_photo_url[:60]}...")
 
             self.openai.set_context("Colorimetry", "Part 1")
@@ -809,7 +809,7 @@ class ColorimetryService:
 
             print("\n📌 AVANT APPEL:")
             print(f"   • Type: OpenAI Chat (gpt-4)")
-            print(f"   • Max tokens: 1400")
+            print(f"   • Max tokens: 1800")
             print(f"   • Couleurs refusées: {unwanted_str}")
 
             self.openai.set_context("Colorimetry", "Part 3")
