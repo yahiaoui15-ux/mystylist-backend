@@ -537,6 +537,7 @@ async def process_checkout_session_job(
                 user_email=user_email,
                 user_name=user_name,
                 pdf_url=pdf_url,
+                report_type=report_type,
                 report_data=report
             )
             log(">>> Email envoye!")
