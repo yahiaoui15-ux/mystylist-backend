@@ -217,7 +217,19 @@ class MorphologyService:
                 else:
                     part1_result = {}
 
-            silhouette = part1_result.get("silhouette_type") or "O"
+            silhouette = part1_result.get("silhouette_type")
+
+            if not silhouette:
+                silhouette = self._compute_silhouette_from_measurements(
+                    shoulder=user_data.get("shoulder_circumference", 0),
+                    bust=user_data.get("bust_circumference", 0),
+                    waist=user_data.get("waist_circumference", 0),
+                    hip=user_data.get("hip_circumference", 0),
+                )
+                if silhouette:
+                    print(f"   ⚠️ Silhouette calculée depuis mensurations (fallback photo): {silhouette}")
+                else:
+                    print("   ⚠️ Mensurations insuffisantes — silhouette non déterminée")
             styling_objectives = part1_result.get("styling_objectives", []) or ["Harmoniser la silhouette"]
             body_parts_highlight = part1_result.get("body_parts_to_highlight", []) or []
             body_parts_minimize = part1_result.get("body_parts_to_minimize", []) or []
@@ -332,7 +344,8 @@ class MorphologyService:
                 minimizes_data.setdefault("tips", [])
 
             final_result = {
-                "silhouette_type": part1_result.get("silhouette_type"),
+                "silhouette_type": silhouette,  # utilise la variable déjà définie avec fallback
+                "bodyType": silhouette,
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),
@@ -356,13 +369,13 @@ class MorphologyService:
             traceback.print_exc()
 
             return {
-                "silhouette_type": part1_result.get("silhouette_type"),
+                "silhouette_type": part1_result.get("silhouette_type") or silhouette,
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
-                "bodyType": part1_result.get("silhouette_type"),
+                "bodyType": part1_result.get("silhouette_type") or silhouette,
                 "highlights": part1_result.get("highlights", {}),
                 "minimizes": part1_result.get("minimizes", {}),
                 "morphology_mvp": self._generate_default_morphology_mvp(
@@ -573,7 +586,42 @@ EXPLICATION: {explanation}"""
                 "Une paire de chaussures qui allonge la jambe",
             ],
         }
-        
+    @staticmethod
+    def _compute_silhouette_from_measurements(
+        shoulder: float,
+        bust: float,
+        waist: float,
+        hip: float,
+    ) -> str:
+        """
+        Calcule la silhouette morphologique à partir des mensurations seules.
+        Utilisé comme fallback si l'analyse vision OpenAI échoue.
+        Retourne: "A" | "V" | "X" | "H" | "O"
+        """
+        if not all([shoulder, hip, waist]):
+            return None  # Mensurations insuffisantes → on ne peut pas décider
+
+        ref = bust if bust else shoulder
+
+        # O : taille peu différente des hanches (corps arrondi, peu de définition)
+        if waist >= hip * 0.88:
+            return "O"
+
+        # A : hanches significativement plus larges que les épaules
+        if hip > shoulder * 1.05:
+            return "A"
+
+        # V : épaules significativement plus larges que les hanches
+        if shoulder > hip * 1.05:
+            return "V"
+
+        # X : épaules ≈ hanches ET taille bien marquée
+        if waist <= hip * 0.75:
+            return "X"
+
+        # H : épaules ≈ hanches, taille peu marquée
+        return "H"
+ 
     def _generate_default_recommendations(self, silhouette: str) -> dict:
         """Génère des recommandations par défaut si OpenAI échoue (structure SAFE complète)"""
         print("   ✅ Génération recommandations par défaut")
