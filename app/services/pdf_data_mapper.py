@@ -2318,9 +2318,109 @@ class PDFDataMapper:
         waist_hip_ratio = round(waist_float / hips_float, 2) if hips_float > 0 else ""
         waist_shoulder_ratio = round(waist_float / shoulders_float, 2) if shoulders_float > 0 else ""
 
+        # ── FALLBACK coherence ──────────────────────────────────────────────────
+        # Descriptions statiques par type de silhouette, utilisées quand la vision
+        # OpenAI échoue et que silhouette_explanation est vide.
+        SILHOUETTE_EXPLANATIONS = {
+            "H": (
+                "La silhouette est de type H, caractérisée par des épaules et des hanches "
+                "de largeur similaire, avec une taille peu marquée. L'objectif stylistique "
+                "principal est de créer l'illusion d'une taille plus définie et d'ajouter "
+                "des courbes à la silhouette. En jouant sur les coupes et les détails, on "
+                "peut accentuer l'équilibre naturel de la silhouette."
+            ),
+            "A": (
+                "La silhouette est de type A (poire), caractérisée par des hanches plus "
+                "larges que les épaules. L'objectif est d'équilibrer la silhouette en "
+                "valorisant le haut du corps et en minimisant visuellement les hanches."
+            ),
+            "V": (
+                "La silhouette est de type V (triangle inversé), caractérisée par des "
+                "épaules plus larges que les hanches. L'objectif est d'équilibrer la "
+                "silhouette en apportant du volume au bas du corps."
+            ),
+            "X": (
+                "La silhouette est de type X (sablier), caractérisée par des épaules et "
+                "des hanches équilibrées avec une taille bien marquée. L'objectif est de "
+                "mettre en valeur cette taille naturellement dessinée."
+            ),
+            "O": (
+                "La silhouette est de type O (ronde), caractérisée par une répartition "
+                "harmonieuse des volumes. L'objectif est de créer de la verticalité et "
+                "d'affiner visuellement la silhouette."
+            ),
+            "8": (
+                "La silhouette est de type 8, avec des courbes prononcées au niveau de la "
+                "poitrine et des hanches. L'objectif est de valoriser ces courbes tout en "
+                "soulignant la taille."
+            ),
+        }
+
+        # Descriptions statiques des objectifs par type de silhouette
+        SILHOUETTE_GOALS = {
+            "H": [
+                "Créer l'illusion d'une taille marquée",
+                "Ajouter des courbes à la silhouette",
+                "Structurer l'allure générale",
+            ],
+            "A": [
+                "Équilibrer les volumes haut/bas",
+                "Valoriser le décolleté et les épaules",
+                "Minimiser visuellement les hanches",
+            ],
+            "V": [
+                "Équilibrer les épaules avec le bas du corps",
+                "Apporter du volume aux hanches",
+                "Adoucir la ligne des épaules",
+            ],
+            "X": [
+                "Mettre en valeur la taille naturelle",
+                "Valoriser les courbes existantes",
+                "Maintenir l'équilibre haut/bas",
+            ],
+            "O": [
+                "Créer de la verticalité dans la silhouette",
+                "Affiner visuellement l'ensemble",
+                "Valoriser le décolleté",
+            ],
+            "8": [
+                "Valoriser les courbes naturelles",
+                "Accentuer la taille",
+                "Équilibrer poitrine et hanches",
+            ],
+        }
+
+        # Utiliser les données réelles si disponibles, sinon les fallbacks statiques
+        if not silhouette_explanation and silhouette_type:
+            silhouette_explanation = SILHOUETTE_EXPLANATIONS.get(
+                silhouette_type,
+                f"Silhouette de type {silhouette_type}. L'objectif est de valoriser "
+                "votre morphologie naturelle en choisissant des coupes adaptées."
+            )
+
+        if not styling_objectives and silhouette_type:
+            styling_objectives = SILHOUETTE_GOALS.get(
+                silhouette_type,
+                ["Valoriser la silhouette naturelle", "Choisir des coupes adaptées"]
+            )
+
+        # Récupérer également les goals onboarding si disponibles
+        morphology_goals = user_data.get("morphology_goals", {})
+        highlight_parts = PDFDataMapper._safe_list(
+            morphology_goals.get("body_parts_to_highlight", [])
+        )
+        minimize_parts = PDFDataMapper._safe_list(
+            morphology_goals.get("body_parts_to_minimize", [])
+        )
+
+        # Si on a des goals onboarding, les intégrer dans les styling_objectives
+        if highlight_parts and not morphology_raw.get("styling_objectives"):
+            parts_str = ", ".join(highlight_parts)
+            styling_objectives = [f"Valoriser : {parts_str}"] + styling_objectives[1:]
+
         return {
             "bodyType": silhouette_type,
-            "coherence": silhouette_explanation,
+            "coherence": silhouette_explanation or None,
             "ratios": {
                 "waistToHips": str(waist_hip_ratio),
                 "waistToShoulders": str(waist_shoulder_ratio),
@@ -2338,7 +2438,7 @@ class PDFDataMapper:
                 "body": user_data.get("body_photo_url", "")
             },
         }
-    
+
     @staticmethod
     def _is_dress(item: dict) -> bool:
         """True si l'item ressemble à une robe/combinaison plutôt qu'une veste."""
