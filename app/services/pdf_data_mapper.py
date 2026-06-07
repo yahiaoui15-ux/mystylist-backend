@@ -73,6 +73,46 @@ STYLE_CONTEXT_AFFINITY = {
     "rock":        {"quotidien": 3, "travail": 1, "sortie": 2},
 }
 
+COLOR_NAME_TO_HEX = {
+    "blanc": "#FFFFFF", "ivoire": "#FFFFF0", "ecru": "#F5F5DC",
+    "creme": "#FFFDD0", "sable": "#D9CAB3", "beige": "#F5F5DC",
+    "taupeclair": "#B0A090", "taupe": "#8B7355",
+    "vertamande": "#9CAF88", "vertpistache": "#93C572", "vertprairie": "#7CFC00",
+    "verteau": "#40E0D0", "vertsauge": "#708238", "vertfonce": "#006400",
+    "olive": "#808000", "olivefonce": "#556B2F", "kaki": "#C3B091",
+    "jaunepale": "#FFF2A6", "jaunemoutarde": "#FFDB58", "jaune": "#FFFF00",
+    "moutarde": "#FFDB58", "abricot": "#FBCEB1", "orange": "#FFA500",
+    "peche": "#FFE5B4", "corail": "#FF7F50", "saumon": "#FF8C69",
+    "rose": "#FFB6C1", "rosepale": "#FFB6C1", "rosecorail": "#FF7F50",
+    "rosefuchsia": "#FF1493", "rouge": "#FF0000", "rougeterre": "#E9967A",
+    "terracotta": "#E2725B", "rouille": "#B7410E", "bordeaux": "#800020",
+    "aubergine": "#614051", "violet": "#800080",
+    "bleu": "#0000FF", "bleuciel": "#87CEEB", "marine": "#000080",
+    "denim": "#3B4F5A", "turquoise": "#40E0D0",
+    "camel": "#C19A6B", "marron": "#8B4513", "caramel": "#FFD59A",
+    "bronze": "#CD7F32", "or": "#FFD700", "orclair": "#F5D06A",
+    "orvieilli": "#B08D57", "dore": "#FFD700", "cuivre": "#B87333",
+    "noir": "#000000", "gris": "#808080", "anthracite": "#383838",
+    "lavande": "#E6E6FA",
+}
+
+@staticmethod
+def _resolve_hex_from_name(name: str, palette: list = None) -> str:
+    """Retourne le hex d'une couleur depuis son nom normalisé, puis la palette."""
+    if not name:
+        return ""
+    normalized = (name.lower()
+        .replace(" ", "").replace("-", "").replace("_", "")
+        .replace("'", "").replace("é", "e").replace("è", "e")
+        .replace("ê", "e").replace("â", "a").replace("î", "i")
+        .replace("û", "u").replace("ô", "o").replace("ç", "c"))
+    hex_val = PDFDataMapper.COLOR_NAME_TO_HEX.get(normalized, "")
+    if not hex_val and palette:
+        for p in palette:
+            if p.get("name", "").lower() == name.lower():
+                hex_val = p.get("hex", "")
+                break
+    return hex_val
 
 def _normalize_str(s: str) -> str:
     """
@@ -717,12 +757,20 @@ class PDFDataMapper:
             # 1) Si le service a déjà injecté color_details (Solution 1 DB), on le respecte
             existing_details = assoc.get("color_details")
             if isinstance(existing_details, list) and len(existing_details) > 0:
+                fixed_details = []
+                for detail in existing_details:
+                    hex_val = detail.get("hex", "")
+                    if not hex_val or hex_val.upper() == "#DDDDDD":
+                        hex_val = PDFDataMapper._resolve_hex_from_name(
+                            detail.get("name", ""), palette
+                        )
+                    fixed_details.append({**detail, "hex": hex_val or "#CCCCCC"})
                 transformed = {
                     "occasion": assoc.get("occasion", ""),
                     "description": assoc.get("description", ""),
                     "colors": assoc.get("colors", []),
                     "color_hex": assoc.get("color_hex", []),
-                    "color_details": existing_details,
+                    "color_details": fixed_details,
                     "image_url": assoc.get("image_url"),
                     "image_filename": assoc.get("image_filename"),
                 }
