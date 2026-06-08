@@ -906,8 +906,8 @@ class PDFDataMapper:
             # ── Chemises / blouses ──
             (["chemise cintree", "chemisier cintre"], "chemise_cintree"),
             (["chemise droite fluide imprimee", "chemise fluide imprimee"], "chemise_droite_fluide_imprimee"),
-            (["chemise droite fluide", "chemisier fluide", "chemise fluide",
-              "chemisier", "blouse fluide"], "chemise_droite_fluide"),
+            (["blouse fluide"], "blouse_fluide_col_v"),
+            (["chemise droite fluide", "chemisier fluide", "chemise fluide","chemisier"], "chemise_droite_fluide"),
             (["chemise oversize rayee"], "chemise_oversize_rayee"),
             (["chemise oversize souple", "chemise oversize"], "chemise_oversize_souple"),
             (["blouse droite satinee", "blouse droite", "blouse satinee"], "blouse_droite_satinee"),
