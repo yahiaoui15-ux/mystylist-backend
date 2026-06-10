@@ -735,9 +735,31 @@ JSON À CORRIGER :
             recommendations = morphology_result.get("recommendations", {})
             # On laisse plutôt un résumé court mais utile
             recommendations_simple = f"Silhouette {silhouette_type}"
+            morpho_avoid_summary = ""
             if isinstance(recommendations, dict):
                 try:
-                    recommendations_simple = json.dumps(recommendations, ensure_ascii=False)[:1200] if isinstance(recommendations, dict) else str(recommendations)[:1200]
+                    recommendations_simple = json.dumps(recommendations, ensure_ascii=False)[:1200]
+                    # Extraire uniquement les a_eviter par catégorie
+                    avoid_lines = []
+                    for cat, cat_data in recommendations.items():
+                        if not isinstance(cat_data, dict):
+                            continue
+                        a_eviter = cat_data.get("a_eviter", [])
+                        if not isinstance(a_eviter, list):
+                            continue
+                        labels = []
+                        for item in a_eviter:
+                            if isinstance(item, dict):
+                                label = item.get("cut_display") or item.get("visual_key") or item.get("name") or ""
+                            elif isinstance(item, str):
+                                label = item
+                            else:
+                                label = ""
+                            if label:
+                                labels.append(label)
+                        if labels:
+                            avoid_lines.append(f"{cat}: {', '.join(labels)}")
+                    morpho_avoid_summary = " | ".join(avoid_lines) if avoid_lines else ""
                 except Exception:
                     recommendations_simple = f"Silhouette {silhouette_type}"
 
@@ -898,6 +920,8 @@ JSON À CORRIGER :
                 "palette": palette_str,
                 "silhouette_type": silhouette_type,
                 "recommendations": recommendations_simple,
+                "morpho_avoid_summary": morpho_avoid_summary,
+
 
                 "personal_info": personal_info,
                 "measurements": measurements,
