@@ -1715,13 +1715,20 @@ class PDFDataMapper:
         ]
         print(f"🎨 Style tags pour matching affilié: {_style_tags_matching}")
 
+        # Couleurs à éviter pour filtre produits affiliés
+        _colors_to_avoid = [
+            c.get("displayName", c.get("name", ""))
+            for c in PDFDataMapper._safe_list(couleurs_eviter)
+            if c.get("displayName") or c.get("name")
+        ]
+        print(f"🎨 Couleurs à éviter pour matching affilié: {_colors_to_avoid}")
+        
         # Page 18 - enrich affiliate matches
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             items = styling_raw["page18"]["categories"].get(k, [])
 
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching)
-
+            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching, colors_to_avoid=_colors_to_avoid)
             # 🔴 DEBUG TEMPORAIRE – À NE FAIRE QUE POUR tops
             if k == "tops" and items:
                 import json
@@ -1743,7 +1750,7 @@ class PDFDataMapper:
         for k in ["swim_lingerie", "shoes", "accessories"]:
             items = styling_raw["page19"]["categories"].get(k, [])
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching)
+            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching, colors_to_avoid=_colors_to_avoid)
             # 2) fallback pédagogique si pas de match
             items = _apply_fallback_visuals(items)
             styling_raw["page19"]["categories"][k] = items

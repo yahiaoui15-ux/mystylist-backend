@@ -111,13 +111,14 @@ class ProductMatcherService:
         pieces: List[Dict[str, Any]],
         category: str,
         style_tags: Optional[List[str]] = None,
+        colors_to_avoid: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         out = []
         for p in pieces or []:
             if not isinstance(p, dict):
                 continue
             p2 = dict(p)
-            p2["match"] = self.match_piece(p2, category, style_tags=style_tags)
+            p2["match"] = self.match_piece(p2, category, style_tags=style_tags, colors_to_avoid=colors_to_avoid)
             m = p2.get("match") or {}
             p2["image_url"] = (m.get("image_url") or "").strip()
             p2["product_url"] = (m.get("product_url") or "").strip()
@@ -130,6 +131,7 @@ class ProductMatcherService:
         piece: Dict[str, Any],
         category: str,
         style_tags: Optional[List[str]] = None,
+        colors_to_avoid: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         piece_title = (piece.get("piece_title") or "").strip()
         spec = (piece.get("spec") or "").strip()
@@ -144,7 +146,7 @@ class ProductMatcherService:
         )
 
         # ── IMAGE-FIRST: on tente jusqu'à 4 candidats pour trouver une image ──
-        valid_pool = self._pick_top_n_valid_candidates(candidates, n=4)
+        valid_pool = self._pick_top_n_valid_candidates(candidates, n=4, colors_to_avoid=colors_to_avoid)
 
         try:
             print(f"🧩 MATCH [{category}] '{piece_title[:60]}' → {len(candidates)} candidats / {len(valid_pool)} retenus")
@@ -426,7 +428,7 @@ class ProductMatcherService:
     def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return self._pick_top_n_valid_candidates(candidates, n=3)
 
-    def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4) -> List[Dict[str, Any]]:
+    def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4, colors_to_avoid: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         seen_urls        = set()
         seen_names_dedup = set()   # ← clé normalisée (sans taille/couleur)
@@ -470,6 +472,13 @@ class ProductMatcherService:
             combined_text = product_name_lower + " " + secondary_cat_lower
             if any(bk in combined_text for bk in self.PRODUCT_BLACKLIST_KEYWORDS):
                 continue
+
+            # Filtre couleurs incompatibles avec la colorimétrie cliente
+            if colors_to_avoid:
+                name_norm = self._strip_accents(raw_name.lower())
+                if any(self._strip_accents(col.lower()) in name_norm for col in colors_to_avoid):
+                    print(f"   🚫 Couleur exclue: '{raw_name[:60]}'")
+                    continue
 
             out.append(c)
             if len(out) >= n:
