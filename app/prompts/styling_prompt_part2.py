@@ -59,6 +59,7 @@ CONTRAINTES IA :
 - Silhouette : {silhouette_type}
 - Zones à valoriser : {morphology_goals.body_parts_to_highlight}
 - Zones à minimiser : {morphology_goals.body_parts_to_minimize}
+- Pièces et accessoires ABSOLUMENT À ÉVITER pour cette morphologie : {recommendations}
 
 RÈGLES MORPHOLOGIQUES CRITIQUES PAR CATÉGORIE :
 Ces règles sont ABSOLUES et priment sur tout autre critère (style, confort, préférence) :
