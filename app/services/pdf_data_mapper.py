@@ -517,7 +517,40 @@ def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
     }
  
     looks_texts = raw_data.get("styling", {}).get("looks_texts", {})
- 
+
+    PIECES_PAR_LOOK_RONDE = {
+        ("classique",   "quotidien"): "Pantalon tailleur droit taille haute, blouse fluide col V, mocassins camel à talon, sac cabas cuir, ceinture fine, montre soignée",
+        ("classique",   "travail"):   "Robe chemise midi ceinturée, blazer structuré, escarpins kitten heel, sac structuré cuir, collier fin",
+        ("classique",   "sortie"):    "Robe portefeuille midi crêpe, escarpins kitten heel dorés, sac demi-lune bordeaux, ceinture fine dorée, collier perles",
+        ("chic",        "quotidien"): "Pantalon palazzo crêpe taille haute, top drapé col bénitier, mules talons, sac demi-lune, sautoir or",
+        ("chic",        "travail"):   "Robe portefeuille midi satin mat, escarpins pointus nude, sac baguette cuir, ceinture fine, boucles statement",
+        ("chic",        "sortie"):    "Jupe midi évasée satin, bustier structuré, sandales talons fins, pochette verni, manchette dorée, boucles statement",
+        ("minimaliste", "quotidien"): "Pantalon large lin taille haute, tee-shirt col V coton, mocassins cuir, sac cabas épuré, collier fin or",
+        ("minimaliste", "travail"):   "Ensemble pantalon palazzo + blazer tailleur, top col rond fin, escarpins bout carré, sac géométrique",
+        ("minimaliste", "sortie"):    "Combinaison palazzo crêpe, ceinture fine mate, sandales talons fins, sac pochette rigide, boucles géométriques",
+        ("casual",      "quotidien"): "Jean droit taille haute, blouse fluide rayures verticales, ceinture tressée camel, sneakers cuir blanc, sac hobo souple",
+        ("casual",      "travail"):   "Robe chemise midi ceinturée large, bottines plates cuir, tote bag toile cuir, bracelets empilés",
+        ("casual",      "sortie"):    "Jupe midi évasée imprimé fleuri, top jersey col V, veste en jean, sandales compensées, sac raphia",
+        ("romantique",  "quotidien"): "Jupe midi trapèze, top drapé col V mauve, ceinture fine satin, ballerines pointues, sac demi-lune rose",
+        ("romantique",  "travail"):   "Pantalon palazzo crêpe lavande, blouse manches bouffantes col V, escarpins kitten heel, sac structuré, boucles pendantes",
+        ("romantique",  "sortie"):    "Robe portefeuille midi mousseline fleurie, ceinture satin fine, sandales talons fins dorés, sac soirée satin, boucles cristal",
+        ("boheme",      "quotidien"): "Jupe longue évasée imprimé terracotta, blouse brodée manches bouffantes, ceinture tressée, sandales compensées, sac raphia XXL, colliers superposés",
+        ("boheme",      "travail"):   "Pantalon palazzo lin rouille, tunique fluide ivoire, kimono imprimé léger, sandales talons épais, sac hobo naturel",
+        ("boheme",      "sortie"):    "Robe longue fluide imprimé cachemire, ceinture fine dorée, sandales talons fins dorées, sac pochette brodé, colliers superposés",
+        ("moderne",     "quotidien"): "Pantalon cargo évasé kaki, top asymétrique blanc, ceinture large noire, sneakers plateforme, sac géométrique rigide",
+        ("moderne",     "travail"):   "Pantalon wide-leg crêpe, chemise oversize architecturale col asymétrique, ceinture fine, mules architecturales, sac rigide géométrique",
+        ("moderne",     "sortie"):    "Combinaison palazzo géométrique noir/blanc, ceinture corset large, sandales talons sculptés, sac demi-lune verni, boucles statement",
+        ("sportswear",  "quotidien"): "Pantalon wide-leg technique, sweatshirt premium col rond, ceinture fine, sneakers chunky, sac banane cuir",
+        ("sportswear",  "travail"):   "Pantalon jogging tailleur crêpe, polo jersey qualité, blazer sport-chic, sneakers plateforme, sac à dos sport-chic",
+        ("sportswear",  "sortie"):    "Jupe midi plissée technique, top bustier sport-chic, bomber technique, sneakers montantes, sac bandoulière technique",
+        ("vintage",     "quotidien"): "Jupe midi trapèze imprimé pois, blouse manches bouffantes col lavallière, ceinture fine, ballerines vernies, sac kelly vintage",
+        ("vintage",     "travail"):   "Ensemble jupe A-line + veste tweed rayures verticales, chemise col noué, escarpins kitten heel, sac à fermoir doré",
+        ("vintage",     "sortie"):    "Robe trapèze midi années 60 imprimé cachemire, ceinture fine dorée, escarpins dorés, sac pochette années 70, boucles clips statement",
+        ("rock",        "quotidien"): "Pantalon palazzo cuir vegan taille haute, tee-shirt vintage bordeaux, ceinture cloutée large, bottines biker talon bloc, sac bandoulière clouté",
+        ("rock",        "travail"):   "Pantalon large anthracite, blouse satinée noire col bénitier, blazer oversize revers larges, bottines talon bloc, manchettes argent",
+        ("rock",        "sortie"):    "Jupe midi évasée cuir vegan bordeaux, bustier corset terracotta, perfecto cognac, bottes talon bloc mi-mollet, colliers chaînes multiples",
+    }
+
     PIECES_PAR_LOOK = {
         ("classique",   "quotidien"): "Chemise blanche, pantalon tailleur droit taille haute, mocassins camel, sac cabas cuir, ceinture fine, montre soignée",
         ("classique",   "travail"):   "Blouse soie, jupe crayon midi, blazer structuré, escarpins bout amande, sac structuré cuir, perles classiques",
@@ -569,7 +602,13 @@ def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
             weight_kg=float(raw_data.get("weight", 0) or 0),
             height_cm=float(raw_data.get("height", 0) or 0),
         )
-        pieces_str = PIECES_PAR_LOOK.get((style, contexte), "Pièces à définir")
+        morpho_group = _get_morpho_group(
+            silhouette,
+            float(raw_data.get("weight", 0) or 0),
+            float(raw_data.get("height", 0) or 0),
+        )
+        pieces_lookup = PIECES_PAR_LOOK_RONDE if morpho_group == "ronde" else PIECES_PAR_LOOK
+        pieces_str = pieces_lookup.get((style, contexte), "Pièces à définir")
         look_text  = looks_texts.get(contexte, {})
  
         looks_signature[f"look_{contexte}"] = {
