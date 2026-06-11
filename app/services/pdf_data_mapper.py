@@ -36,6 +36,27 @@ SILHOUETTE_TO_MORPHO = {
     "X": "droite",
 }
 
+def _get_morpho_group(silhouette: str, weight_kg: float = 0, height_cm: float = 0) -> str:
+    """
+    Détermine le groupe mannequin selon silhouette + IMC.
+    IMC > 30 → ronde systématiquement
+    IMC 25-30 + silhouette O/A → ronde
+    Sinon → logique silhouette standard
+    """
+    sil = (silhouette or "H").upper()
+    
+    # Calcul IMC si données disponibles
+    imc = 0
+    if weight_kg and height_cm and height_cm > 0:
+        imc = weight_kg / ((height_cm / 100) ** 2)
+    
+    if imc >= 30:
+        return "ronde"
+    if imc >= 25 and sil in ("O", "A"):
+        return "ronde"
+    
+    return SILHOUETTE_TO_MORPHO.get(sil, "droite")
+
 # Tier par style (détermine la logique de saison dans le filename)
 STYLE_TIERS = {
     "classique":   1,
@@ -136,6 +157,8 @@ def get_look_image_url(
     contexte: str,
     saison_colo: str,
     silhouette: str,
+    weight_kg: float = 0,
+    height_cm: float = 0,
 ) -> str:
     """
     Retourne l'URL Supabase de l'image de look la plus adaptée au profil.
@@ -153,7 +176,7 @@ def get_look_image_url(
     style_n    = _normalize_str(style)
     contexte_n = _normalize_str(contexte)
     saison_n   = _normalize_str(saison_colo)  # ex: "automne", "ete"
-    morpho     = SILHOUETTE_TO_MORPHO.get(silhouette.upper(), "droite")
+    morpho = _get_morpho_group(silhouette, weight_kg, height_cm)
     tier       = STYLE_TIERS.get(style_n, 1)
 
     # Construction du filename selon le tier
@@ -538,7 +561,14 @@ def build_looks_signature(liquid_data: dict, raw_data: dict) -> dict:
  
     for contexte in ["quotidien", "travail", "sortie"]:
         style      = styles_3[contexte]
-        image_url  = get_look_image_url(style, contexte, saison_colo, silhouette)
+        image_url = get_look_image_url(
+            style=style,
+            contexte=contexte,
+            saison_colo=saison_colo,
+            silhouette=silhouette,
+            weight_kg=float(raw_data.get("weight", 0) or 0),
+            height_cm=float(raw_data.get("height", 0) or 0),
+        )
         pieces_str = PIECES_PAR_LOOK.get((style, contexte), "Pièces à définir")
         look_text  = looks_texts.get(contexte, {})
  
@@ -1716,9 +1746,10 @@ class PDFDataMapper:
         print(f"🎨 Style tags pour matching affilié: {_style_tags_matching}")
 
         # Couleurs à éviter pour filtre produits affiliés
+        _colors_to_avoid_raw = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
         _colors_to_avoid = [
             c.get("displayName", c.get("name", ""))
-            for c in PDFDataMapper._safe_list(couleurs_eviter)
+            for c in _colors_to_avoid_raw
             if c.get("displayName") or c.get("name")
         ]
         print(f"🎨 Couleurs à éviter pour matching affilié: {_colors_to_avoid}")
