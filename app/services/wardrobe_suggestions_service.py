@@ -26,6 +26,15 @@ class WardrobeSuggestionsService:
         "chaussures": "Chaussures",
     }
 
+    # Mapping category_key vers product_family pour les règles de coupe
+    CATEGORY_TO_PRODUCT_FAMILY = {
+        "hauts": "top",
+        "bas": "bottom",
+        "robes": "dress",
+        "vestes": "outerwear",
+        "chaussures": "shoe",
+    }
+ 
     COMPLEMENTARY_CATEGORY_MAP = {
         "hauts": ["bas", "vestes", "chaussures"],
         "bas": ["hauts", "vestes", "chaussures"],
@@ -386,9 +395,18 @@ class WardrobeSuggestionsService:
 
         suggestions_by_category = []
 
+        silhouette = (ai_profile.get("silhouette_type") or "").upper()
+        cut_rules = self._get_cut_rules_for_silhouette(silhouette)
+        central_style = item.get("detected_style") or ""
+ 
         for category_key in target_categories:
-            candidates = self._fetch_candidates_for_category(category_key=category_key, limit=260)
-
+            candidates = self._fetch_candidates_for_category(
+                category_key=category_key,
+                user_id=user_id,
+                central_style=central_style,
+                limit=400,
+            )
+ 
             scored: List[Dict[str, Any]] = []
             for row in candidates:
                 scored_row = self._score_product_for_wardrobe(
@@ -397,7 +415,9 @@ class WardrobeSuggestionsService:
                     wardrobe_item=item,
                     ai_profile=ai_profile,
                     brand_counter=brand_counter,
+                    cut_rules=cut_rules,
                 )
+ 
                 if scored_row is not None:
                     scored.append(scored_row)
 
@@ -503,11 +523,78 @@ class WardrobeSuggestionsService:
         )
         return response.data[0] if response.data else None
 
-    def _fetch_candidates_for_category(self, category_key: str, limit: int = 250) -> List[Dict[str, Any]]:
+
+    def _get_cut_rules_for_silhouette(self, silhouette: str) -> List[Dict[str, Any]]:
+        if not silhouette:
+            return []
+        try:
+            resp = (
+                self.client.table("silhouette_cut_rules")
+                .select("keyword,weight,product_family,action")
+                .eq("silhouette", silhouette.upper())
+                .in_("action", ["boost", "penalty"])
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"_get_cut_rules_for_silhouette failed: {e}")
+            return []
+ 
+    def _compute_cut_score_from_text(
+        self,
+        search_text_normalized: str,
+        cut_rules: List[Dict[str, Any]],
+        product_family: str = "all",
+    ) -> float:
+        if not search_text_normalized or not cut_rules:
+            return 0.0
+        score = 0.0
+        for rule in cut_rules:
+            if rule.get("product_family") in ("all", product_family):
+                kw = (rule.get("keyword") or "").lower()
+                if kw and kw in search_text_normalized:
+                    score += rule.get("weight", 0)
+        return score
+ 
+
+    def _fetch_candidates_for_category(
+        self,
+        category_key: str,
+        user_id: str,
+        central_style: str,
+        limit: int = 400,
+    ) -> List[Dict[str, Any]]:
         allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
         if not allowed_secondaries:
             return []
-
+ 
+        central_norm = self._normalize_text(central_style or "")
+        compat_matrix = self.STYLE_COMPATIBILITY_MATRIX.get(central_norm, {})
+        compatible_styles = [s for s, sc in compat_matrix.items() if sc > 0]
+        if not compatible_styles:
+            compatible_styles = list(self.STYLE_COMPATIBILITY_MATRIX.keys())
+ 
+        try:
+            resp = self.client.rpc(
+                "search_wardrobe_v2",
+                {
+                    "p_user_id":              user_id,
+                    "p_compatible_styles":    compatible_styles,
+                    "p_secondary_categories": allowed_secondaries,
+                    "p_sample_size":          limit,
+                },
+            ).execute()
+            rows = resp.data or []
+            print(f"search_wardrobe_v2 [{category_key}] style={central_style} -> {len(rows)}")
+            return rows
+        except Exception as e:
+            print(f"search_wardrobe_v2 failed {category_key}: {e}")
+            return self._fetch_candidates_legacy(category_key=category_key, limit=min(limit, 120))
+ 
+    def _fetch_candidates_legacy(self, category_key: str, limit: int = 120) -> List[Dict[str, Any]]:
+        allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
+        if not allowed_secondaries:
+            return []
         enrichment_rows = self._fetch_enrichment_rows_for_category(
             category_key=category_key,
             allowed_secondaries=allowed_secondaries,
@@ -515,78 +602,48 @@ class WardrobeSuggestionsService:
         )
         if not enrichment_rows:
             return []
-
         product_rows = self._fetch_affiliate_products_for_enrichments(enrichment_rows)
         if not product_rows:
             return []
-
         product_map = {
             (int(r["merchant_id"]), str(r["product_id"])): r
             for r in product_rows
             if r.get("merchant_id") is not None and r.get("product_id") is not None
         }
-
         merged: List[Dict[str, Any]] = []
         seen: Set[str] = set()
-
         for e in enrichment_rows:
-            merchant_id = e.get("merchant_id")
-            product_id = e.get("product_id")
-            if merchant_id is None or product_id is None:
+            mid = e.get("merchant_id")
+            pid = e.get("product_id")
+            if mid is None or pid is None:
                 continue
-
-            key_tuple = (int(merchant_id), str(product_id))
-            p = product_map.get(key_tuple)
-            if not p:
+            p = product_map.get((int(mid), str(pid)))
+            if not p or not self._has_usable_image(p):
                 continue
-
-            uniq = f"{merchant_id}::{product_id}"
+            uniq = f"{mid}::{pid}"
             if uniq in seen:
                 continue
             seen.add(uniq)
-
-            if not self._has_usable_image(p):
-                continue
-
             merged.append({
-                "merchant_id": merchant_id,
-                "product_id": product_id,
-                "sid": p.get("sid") or e.get("sid"),
+                "merchant_id": mid, "product_id": pid,
                 "product_name": p.get("product_name") or e.get("source_product_name"),
                 "brand": p.get("brand") or e.get("source_brand"),
-                "primary_category": p.get("primary_category") or e.get("source_primary_category"),
                 "secondary_category": p.get("secondary_category") or e.get("source_secondary_category"),
                 "product_url": (p.get("product_url") or "").strip(),
                 "image_url": (p.get("image_url") or "").strip(),
                 "buy_url": (p.get("buy_url") or "").strip(),
-                "price": p.get("price"),
-                "sale_price": p.get("sale_price"),
+                "price": p.get("price"), "sale_price": p.get("sale_price"),
                 "currency": p.get("currency"),
-                "availability": p.get("availability"),
-                "is_deleted": p.get("is_deleted"),
-                "last_seen_at": p.get("last_seen_at"),
-                "keywords": p.get("keywords"),
                 "style_primary": e.get("style_primary"),
                 "style_tags": e.get("style_tags") or [],
                 "style_scores_json": e.get("style_scores_json") or {},
                 "confidence_score": e.get("confidence_score"),
-                "source_product_name": e.get("source_product_name"),
-                "source_brand": e.get("source_brand"),
-                "source_primary_category": e.get("source_primary_category"),
-                "source_secondary_category": e.get("source_secondary_category"),
-                "source_keywords": e.get("source_keywords"),
                 "source_description": e.get("source_description"),
-                "secondary_category_levels": e.get("secondary_category_levels") or [],
-                "classifier_version": e.get("classifier_version"),
-                "classifier_meta_json": e.get("classifier_meta_json") or {},
-                "signals_json": e.get("signals_json") or {},
             })
-
             if len(merged) >= limit:
                 break
-
         return merged
-
+ 
     def _fetch_enrichment_rows_for_category(
         self,
         category_key: str,
@@ -690,13 +747,17 @@ class WardrobeSuggestionsService:
         wardrobe_item: Dict[str, Any],
         ai_profile: Dict[str, Any],
         brand_counter: Dict[str, int],
+        cut_rules: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
+ 
         title = (product.get("product_name") or "").strip()
         brand = (product.get("brand") or "").strip()
         secondary_category = (product.get("secondary_category") or "").strip()
         source_description = (product.get("source_description") or "").strip()
         style_primary = self._normalize_text(str(product.get("style_primary") or ""))
-        style_tags = self._normalize_text_list(product.get("style_tags"))
+        style_tags = self._normalize_text_list(
+            product.get("style_tags_col") or product.get("style_tags")
+        )
         style_scores_json = product.get("style_scores_json") or {}
         confidence_score = self._safe_float(product.get("confidence_score")) or 0.0
 
@@ -741,7 +802,9 @@ class WardrobeSuggestionsService:
             extracted_color=extracted_color,
             wardrobe_item=wardrobe_item,
             ai_profile=ai_profile,
+            color_match_sql=(product.get("color_match") or "neutral"),
         )
+ 
 
         style_score, style_reason = self._compute_style_score(
             style_primary=style_primary,
@@ -754,12 +817,12 @@ class WardrobeSuggestionsService:
             ai_profile=ai_profile,
         )
 
-        morphology_score, morphology_reason = self._compute_morphology_score(
-            title=title,
-            secondary_category=secondary_category,
-            source_description=source_description,
-            ai_profile=ai_profile,
-        )
+        product_family = self.CATEGORY_TO_PRODUCT_FAMILY.get(category_key, "all")
+        stn = (product.get("search_text_normalized") or "").lower()
+        morphology_score = self._compute_cut_score_from_text(stn, cut_rules or [], product_family)
+        morphology_reason = f"Score coupe: {morphology_score}"
+ 
+ 
 
         pattern_score, pattern_reason = self._compute_pattern_harmony_score(
             category_key=category_key,
@@ -888,7 +951,9 @@ class WardrobeSuggestionsService:
         extracted_color: Optional[str],
         wardrobe_item: Dict[str, Any],
         ai_profile: Dict[str, Any],
+        color_match_sql: str = "neutral",
     ) -> Tuple[float, str]:
+ 
         dominant = self._normalize_text(str(
             wardrobe_item.get("dominant_color") or wardrobe_item.get("detected_color") or ""
         ))
@@ -904,8 +969,6 @@ class WardrobeSuggestionsService:
 
         c = self._normalize_text(extracted_color)
 
-        if c in avoid:
-            return -35, f"Couleur peu favorable pour votre palette : {extracted_color}"
 
         if c in secondary_colors:
             if c in best:
@@ -934,7 +997,12 @@ class WardrobeSuggestionsService:
         if c in ok:
             return 10, "Couleur compatible avec votre palette"
 
+        if color_match_sql == "best":
+            return 20, "Couleur best palette (SQL)"
+        if color_match_sql == "ok":
+            return 10, "Couleur ok palette (SQL)"
         return 0, "Couleur sans lien fort détecté avec le vêtement central"
+ 
 
     def _compute_style_score(
         self,

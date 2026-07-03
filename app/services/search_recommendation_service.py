@@ -13,22 +13,15 @@ class SearchRecommendationService:
     """
     Génère des recommandations affiliées pour une recherche utilisateur.
 
-    Nouvelle logique V2 :
-    1. Lit user_searches
-    2. Lit user_ai_profiles
-    3. Crée un run dans user_search_runs
-    4. Cherche des candidats dans affiliate_product_enrichment (style_v6)
-    5. Récupère les données commerciales dans affiliate_products
-    6. Score les candidats selon style/catégorie/budget/couleurs/morphologie
-    7. Insère les meilleurs dans user_search_recommendations
-    8. Met le run en completed / failed
+    v4 (SQL-first) :
+    - search_products_v2 (fonction PostgreSQL) remplace les 2 requêtes + fusion Python
+    - Filtres stricts en SQL : style, prix, couleurs saison/profil, coupes hard_exclude
+    - ORDER BY random() côté SQL → diversité garantie à chaque appel
+    - score morphologique via silhouette_cut_rules (Python, chargé une fois par requête)
     """
 
-    ALGORITHM_VERSION = "search_reco_v2_v6"
+    ALGORITHM_VERSION = "search_reco_v4_sql"
 
-    # =========================
-    # Scope MVP strict
-    # =========================
     MVP_CATEGORY_TO_SOURCE_SECONDARY = {
         "hauts": {
             "Vêtements~~Top & Blouse",
@@ -70,40 +63,27 @@ class SearchRecommendationService:
 
     CATEGORY_KEY_NORMALIZATION = {
         "tenue_complete": "tenue_complete",
-        "hauts": "hauts",
-        "haut": "hauts",
+        "hauts": "hauts", "haut": "hauts",
         "bas": "bas",
-        "robes": "robes",
-        "robe": "robes",
-        "chaussures": "chaussures",
-        "chaussure": "chaussures",
-        "vestes": "vestes",
-        "vestes_manteaux": "vestes",
-        "vestes_et_manteaux": "vestes",
-        "vestes_&_manteaux": "vestes",
-        "veste": "vestes",
-        "manteaux": "vestes",
-        "manteau": "vestes",
-        # catégories hors scope MVP volontairement ignorées
-        "accessoires": None,
-        "sacs": None,
-        "bijoux": None,
-        "sous-vetements": None,
-        "sous_vetements": None,
-        "lingerie": None,
-        "maillots_bain": None,
-        "maillots_de_bain": None,
-        "tenue_sport": None,
-        "vetements_sport": None,
-        "vetements_de_sport": None,
+        "robes": "robes", "robe": "robes",
+        "chaussures": "chaussures", "chaussure": "chaussures",
+        "vestes": "vestes", "vestes_manteaux": "vestes", "vestes_et_manteaux": "vestes",
+        "vestes_&_manteaux": "vestes", "veste": "vestes", "manteaux": "vestes", "manteau": "vestes",
+        "accessoires": None, "sacs": None, "bijoux": None,
+        "sous-vetements": None, "sous_vetements": None, "lingerie": None,
+        "maillots_bain": None, "maillots_de_bain": None,
+        "tenue_sport": None, "vetements_sport": None, "vetements_de_sport": None,
     }
 
     CATEGORY_LABELS = {
-        "hauts": "Hauts",
-        "bas": "Bas",
-        "robes": "Robes",
-        "vestes": "Vestes",
-        "chaussures": "Chaussures",
+        "hauts": "Hauts", "bas": "Bas", "robes": "Robes",
+        "vestes": "Vestes", "chaussures": "Chaussures",
+    }
+
+    # Mapping category_key → product_family pour les règles de coupe
+    CATEGORY_TO_PRODUCT_FAMILY = {
+        "hauts": "top", "bas": "bottom", "robes": "dress",
+        "vestes": "outerwear", "chaussures": "shoe",
     }
 
     COLOR_WORDS = [
@@ -119,163 +99,43 @@ class SearchRecommendationService:
 
     CATEGORY_SUBTYPE_HINTS = {
         "hauts": {
-            "chemise": ["chemise"],
-            "blouse": ["blouse"],
-            "pull": ["pull", "maille"],
-            "gilet": ["gilet", "cardigan"],
+            "chemise": ["chemise"], "blouse": ["blouse"],
+            "pull": ["pull", "maille"], "gilet": ["gilet", "cardigan"],
             "tee_shirt": ["tee-shirt", "tee shirt", "t-shirt", "t shirt"],
             "top": ["top"],
             "caraco": ["caraco", "camisole", "bretelles fines", "debardeur", "débardeur"],
         },
         "bas": {
-            "pantalon": ["pantalon", "tailleur"],
-            "jean": ["jean", "denim"],
-            "jupe": ["jupe"],
-            "short": ["short", "bermuda"],
+            "pantalon": ["pantalon", "tailleur"], "jean": ["jean", "denim"],
+            "jupe": ["jupe"], "short": ["short", "bermuda"],
         },
-        "robes": {
-            "robe": ["robe"],
-            "combinaison": ["combinaison", "jumpsuit"],
-        },
+        "robes": {"robe": ["robe"], "combinaison": ["combinaison", "jumpsuit"]},
         "vestes": {
-            "blazer": ["blazer", "tailleur"],
-            "veste": ["veste", "blouson"],
+            "blazer": ["blazer", "tailleur"], "veste": ["veste", "blouson"],
             "manteau": ["manteau", "trench"],
             "doudoune": ["doudoune", "matelassee", "matelassée", "puffer"],
             "sans_manches": ["sans manches"],
         },
         "chaussures": {
             "baskets": ["basket", "sneaker", "running"],
-            "boots": ["boots", "bottine", "bottes"],
-            "sandales": ["sandale"],
+            "boots": ["boots", "bottine", "bottes"], "sandales": ["sandale"],
             "escarpins": ["escarpin", "heel", "heels"],
-            "mocassins": ["mocassin", "loafer"],
-            "derbies": ["derby"],
+            "mocassins": ["mocassin", "loafer"], "derbies": ["derby"],
             "ballerines": ["ballerine"],
         },
     }
 
     STYLE_COMPATIBILITY_MATRIX = {
-        "chic": {
-            "chic": 38,
-            "classique": 28,
-            "minimaliste": 20,
-            "moderne": 14,
-            "romantique": 8,
-            "vintage": 4,
-            "rock": -4,
-            "boheme": -10,
-            "casual": -14,
-            "sportswear": -24,
-        },
-        "classique": {
-            "classique": 36,
-            "chic": 24,
-            "minimaliste": 18,
-            "moderne": 10,
-            "casual": 4,
-            "vintage": 4,
-            "romantique": 2,
-            "rock": -8,
-            "boheme": -10,
-            "sportswear": -18,
-        },
-        "casual": {
-            "casual": 34,
-            "sportswear": 16,
-            "classique": 8,
-            "minimaliste": 6,
-            "moderne": 6,
-            "rock": 4,
-            "boheme": 2,
-            "romantique": 0,
-            "vintage": 0,
-            "chic": -6,
-        },
-        "sportswear": {
-            "sportswear": 36,
-            "casual": 16,
-            "moderne": 8,
-            "rock": 4,
-            "classique": -8,
-            "chic": -14,
-            "boheme": -12,
-            "romantique": -14,
-            "minimaliste": -2,
-            "vintage": -4,
-        },
-        "boheme": {
-            "boheme": 34,
-            "romantique": 18,
-            "vintage": 10,
-            "chic": 4,
-            "casual": 2,
-            "classique": -4,
-            "minimaliste": -8,
-            "moderne": -8,
-            "rock": -6,
-            "sportswear": -16,
-        },
-        "romantique": {
-            "romantique": 34,
-            "boheme": 16,
-            "chic": 10,
-            "classique": 8,
-            "vintage": 6,
-            "minimaliste": -2,
-            "casual": -4,
-            "moderne": -4,
-            "rock": -12,
-            "sportswear": -16,
-        },
-        "rock": {
-            "rock": 34,
-            "moderne": 12,
-            "casual": 8,
-            "chic": 2,
-            "sportswear": 2,
-            "classique": -6,
-            "boheme": -8,
-            "romantique": -10,
-            "minimaliste": 0,
-            "vintage": 4,
-        },
-        "minimaliste": {
-            "minimaliste": 34,
-            "classique": 22,
-            "chic": 18,
-            "moderne": 16,
-            "casual": 6,
-            "romantique": -2,
-            "boheme": -10,
-            "rock": -4,
-            "sportswear": -8,
-            "vintage": -4,
-        },
-        "moderne": {
-            "moderne": 34,
-            "minimaliste": 18,
-            "chic": 12,
-            "classique": 10,
-            "rock": 8,
-            "casual": 6,
-            "sportswear": 2,
-            "boheme": -8,
-            "romantique": -6,
-            "vintage": 2,
-        },
-        "vintage": {
-            "vintage": 34,
-            "romantique": 12,
-            "boheme": 10,
-            "classique": 6,
-            "rock": 4,
-            "chic": 2,
-            "casual": 2,
-            "minimaliste": -6,
-            "moderne": -4,
-            "sportswear": -10,
-        },
+        "chic": {"chic": 38, "classique": 28, "minimaliste": 20, "moderne": 14, "romantique": 8, "vintage": 4, "rock": -4, "boheme": -10, "casual": -14, "sportswear": -24},
+        "classique": {"classique": 36, "chic": 24, "minimaliste": 18, "moderne": 10, "casual": 4, "vintage": 4, "romantique": 2, "rock": -8, "boheme": -10, "sportswear": -18},
+        "casual": {"casual": 34, "sportswear": 16, "classique": 8, "minimaliste": 6, "moderne": 6, "rock": 4, "boheme": 2, "romantique": 0, "vintage": 0, "chic": -6},
+        "sportswear": {"sportswear": 36, "casual": 16, "moderne": 8, "rock": 4, "classique": -8, "chic": -14, "boheme": -12, "romantique": -14, "minimaliste": -2, "vintage": -4},
+        "boheme": {"boheme": 34, "romantique": 18, "vintage": 10, "chic": 4, "casual": 2, "classique": -4, "minimaliste": -8, "moderne": -8, "rock": -6, "sportswear": -16},
+        "romantique": {"romantique": 34, "boheme": 16, "chic": 10, "classique": 8, "vintage": 6, "minimaliste": -2, "casual": -4, "moderne": -4, "rock": -12, "sportswear": -16},
+        "rock": {"rock": 34, "moderne": 12, "casual": 8, "chic": 2, "sportswear": 2, "classique": -6, "boheme": -8, "romantique": -10, "minimaliste": 0, "vintage": 4},
+        "minimaliste": {"minimaliste": 34, "classique": 22, "chic": 18, "moderne": 16, "casual": 6, "romantique": -2, "boheme": -10, "rock": -4, "sportswear": -8, "vintage": -4},
+        "moderne": {"moderne": 34, "minimaliste": 18, "chic": 12, "classique": 10, "rock": 8, "casual": 6, "sportswear": 2, "boheme": -8, "romantique": -6, "vintage": 2},
+        "vintage": {"vintage": 34, "romantique": 12, "boheme": 10, "classique": 6, "rock": 4, "chic": 2, "casual": 2, "minimaliste": -6, "moderne": -4, "sportswear": -10},
     }
 
     OCCASION_STYLE_BOOSTS = {
@@ -309,22 +169,10 @@ class SearchRecommendationService:
     }
 
     SEASON_HINTS = {
-        "hiver": {
-            "positive": {"laine", "maille", "cachemire", "manteau", "doudoune", "boots", "bottes", "velours", "tweed"},
-            "negative": {"sandale", "maillot", "lin", "crochet"},
-        },
-        "ete": {
-            "positive": {"sandale", "lin", "crochet", "robe", "blouse", "top", "combinaison"},
-            "negative": {"laine", "cachemire", "doudoune", "manteau", "boots"},
-        },
-        "printemps": {
-            "positive": {"blouse", "chemise", "veste", "blazer", "jupe", "pantalon", "mocassin", "ballerine"},
-            "negative": {"doudoune", "maillot"},
-        },
-        "automne": {
-            "positive": {"maille", "pull", "gilet", "veste", "bottine", "boots", "manteau"},
-            "negative": {"maillot"},
-        },
+        "hiver": {"positive": {"laine", "maille", "cachemire", "manteau", "doudoune", "boots", "bottes", "velours", "tweed"}, "negative": {"sandale", "maillot", "lin", "crochet"}},
+        "ete": {"positive": {"sandale", "lin", "crochet", "robe", "blouse", "top", "combinaison"}, "negative": {"laine", "cachemire", "doudoune", "manteau", "boots"}},
+        "printemps": {"positive": {"blouse", "chemise", "veste", "blazer", "jupe", "pantalon", "mocassin", "ballerine"}, "negative": {"doudoune", "maillot"}},
+        "automne": {"positive": {"maille", "pull", "gilet", "veste", "bottine", "boots", "manteau"}, "negative": {"maillot"}},
     }
 
     OFFICE_NEGATIVE_HINTS = {
@@ -334,7 +182,7 @@ class SearchRecommendationService:
         "too_casual_outerwear": ["doudoune", "matelassee", "matelassée", "capuche", "sherpa"],
         "too_loose": ["oversize", "ample", "large"],
         "too_casual_bottoms": ["jean", "denim", "cargo", "jogger", "legging"],
-        "too_bold_bottoms": ["cuir", "simili", "vinyle", "croco", "brode", "brodé", "dentelle", "tulle", "filet", "délavé", "delave", "washed", "jacquard", "python"],    
+        "too_bold_bottoms": ["cuir", "simili", "vinyle", "croco", "brode", "brodé", "dentelle", "tulle", "filet", "délavé", "delave", "washed", "jacquard", "python"],
     }
 
     OFFICE_POSITIVE_HINTS = {
@@ -371,8 +219,7 @@ class SearchRecommendationService:
 
             normalized_article_types = [
                 self._normalize_text(x).replace(" ", "_")
-                for x in selected_article_types
-                if x
+                for x in selected_article_types if x
             ]
 
             if normalized_article_types == ["tenue_complete"]:
@@ -393,18 +240,11 @@ class SearchRecommendationService:
                 raise ValueError("Aucune catégorie MVP exploitable dans la recherche")
 
             weights_json = {
-                "style_v6_primary": 38,
-                "style_v6_tags": 16,
-                "style_v6_confidence": 10,
-                "category_specificity": 14,
-                "budget": 20,
-                "color_best": 24,
-                "color_ok": 10,
-                "color_avoid": -40,
-                "brand_preferred": 12,
-                "morphology_match": 12,
-                "occasion_context": 12,
-                "season_context": 8,
+                "style_v6_primary": 38, "style_v6_tags": 16, "style_v6_confidence": 10,
+                "category_specificity": 14, "budget": 20,
+                "color_best": 24, "color_ok": 10, "color_avoid": "exclusion_sql",
+                "brand_preferred": 12, "morphology_cut_rules": 12,
+                "occasion_context": 12, "season_context": 8,
             }
 
             filters_json = {
@@ -414,7 +254,7 @@ class SearchRecommendationService:
                 "selected_article_types": normalized_categories,
                 "selected_budgets": search_row.get("selected_budgets") or {},
                 "classifier_version": "style_v6",
-                "scope": "mvp_femme_useful",
+                "scope": "mvp_femme_sql_v4",
             }
 
             run_id = self._create_run(
@@ -430,15 +270,25 @@ class SearchRecommendationService:
             inserted_family_keys: Set[str] = set()
             inserted_url_keys: Set[str] = set()
 
-            for category_key in normalized_categories:
-                candidates = self._fetch_candidates_for_category(
-                    category_key=category_key,
-                    limit=280,
-                )
+            # ── Charger les règles morpho UNE FOIS pour cette cliente ──
+            silhouette = (ai_profile.get("silhouette_type") or "").upper()
+            cut_rules = self._get_cut_rules_for_silhouette(silhouette)
+            selected_styles = search_row.get("selected_styles") or []
 
+            for category_key in normalized_categories:
+
+                # Budget calculé AVANT le fetch (passé à la fonction SQL)
                 budget = self._extract_budget_for_category(
                     category_key=category_key,
                     budgets=search_row.get("selected_budgets") or {},
+                )
+
+                candidates = self._fetch_candidates_for_category(
+                    category_key=category_key,
+                    user_id=user_id,
+                    selected_styles=selected_styles,
+                    price_max=budget,
+                    limit=400,
                 )
 
                 scored: List[Dict[str, Any]] = []
@@ -449,6 +299,7 @@ class SearchRecommendationService:
                         search_row=search_row,
                         ai_profile=ai_profile,
                         budget=budget,
+                        cut_rules=cut_rules,
                     )
                     if scored_row is not None:
                         scored.append(scored_row)
@@ -472,11 +323,7 @@ class SearchRecommendationService:
                 )
                 all_inserted += inserted
 
-            self._update_run(
-                run_id=run_id,
-                status="success",
-                error_message=None,
-            )
+            self._update_run(run_id=run_id, status="success", error_message=None)
 
             return {
                 "status": "success",
@@ -487,224 +334,142 @@ class SearchRecommendationService:
         except Exception as e:
             if run_id:
                 try:
-                    self._update_run(
-                        run_id=run_id,
-                        status="failed",
-                        error_message=str(e)[:1000],
-                    )
+                    self._update_run(run_id=run_id, status="failed", error_message=str(e)[:1000])
                 except Exception:
                     pass
-
-            return {
-                "status": "error",
-                "error": str(e),
-                "run_id": run_id,
-            }
+            return {"status": "error", "error": str(e), "run_id": run_id}
 
     # =========================
-    # Data fetch
+    # Morpho helpers (nouveaux v4)
+    # =========================
+    def _get_cut_rules_for_silhouette(self, silhouette: str) -> List[Dict[str, Any]]:
+        """
+        Récupère les règles boost/penalty de coupe pour la silhouette.
+        Appelé UNE FOIS par generate_for_search (pas par produit).
+        """
+        if not silhouette:
+            return []
+        try:
+            resp = (
+                self.client.table("silhouette_cut_rules")
+                .select("keyword,weight,product_family,action")
+                .eq("silhouette", silhouette.upper())
+                .in_("action", ["boost", "penalty"])
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"⚠️ _get_cut_rules_for_silhouette failed: {e}")
+            return []
+
+    def _compute_cut_score_from_text(
+        self,
+        search_text_normalized: str,
+        cut_rules: List[Dict[str, Any]],
+        product_family: str = "all",
+    ) -> float:
+        """
+        Score morphologique via keywords contre search_text_normalized.
+        Rapide : pure Python string ops, pas de requête DB supplémentaire.
+        """
+        if not search_text_normalized or not cut_rules:
+            return 0.0
+        score = 0.0
+        for rule in cut_rules:
+            if rule.get("product_family") in ("all", product_family):
+                kw = (rule.get("keyword") or "").lower()
+                if kw and kw in search_text_normalized:
+                    score += rule.get("weight", 0)
+        return score
+
+    # =========================
+    # Data fetch (v4 : RPC → search_products_v2)
     # =========================
     def _get_search(self, search_id: str) -> Optional[Dict[str, Any]]:
-        response = self.supabase.query(
-            "user_searches",
-            select_fields="*",
-            filters={"id": search_id},
-        )
+        response = self.supabase.query("user_searches", select_fields="*", filters={"id": search_id})
         return response.data[0] if response.data else None
 
     def _get_ai_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        response = self.supabase.query(
-            "user_ai_profiles",
-            select_fields="*",
-            filters={"user_id": user_id},
-        )
+        response = self.supabase.query("user_ai_profiles", select_fields="*", filters={"user_id": user_id})
         return response.data[0] if response.data else None
 
-    def _fetch_candidates_for_category(self, category_key: str, limit: int = 250) -> List[Dict[str, Any]]:
+    def _fetch_candidates_for_category(
+        self,
+        category_key: str,
+        user_id: str,
+        selected_styles: List[str],
+        price_max: Optional[float],
+        limit: int = 400,
+    ) -> List[Dict[str, Any]]:
+        """
+        v4 — Appelle search_products_v2 (fonction PostgreSQL).
+        Filtres stricts en SQL : style, prix, couleurs, coupes hard_exclude.
+        ORDER BY random() côté SQL → diversité garantie.
+        """
         allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
         if not allowed_secondaries:
             return []
 
-        # 1) on récupère d'abord les produits enrichis V6
-        enrichment_rows = self._fetch_enrichment_rows_for_category(
-            category_key=category_key,
-            allowed_secondaries=allowed_secondaries,
-            limit=max(limit * 2, 250),
-        )
-        if not enrichment_rows:
+        style_tags = [self._normalize_text(s) for s in (selected_styles or []) if s]
+
+        try:
+            resp = self.client.rpc(
+                "search_products_v2",
+                {
+                    "p_user_id":              user_id,
+                    "p_style_tags":           style_tags if style_tags else None,
+                    "p_secondary_categories": allowed_secondaries,
+                    "p_price_max":            price_max,
+                    "p_sample_size":          limit,
+                },
+            ).execute()
+
+            rows = resp.data or []
+            print(
+                f"🔍 search_products_v2 [{category_key}] "
+                f"styles={style_tags} prix_max={price_max} → {len(rows)} candidats"
+            )
+            return rows
+
+        except Exception as e:
+            print(f"⚠️ search_products_v2 failed pour {category_key}: {e}")
+            return self._fetch_candidates_legacy(category_key=category_key, limit=min(limit, 120))
+
+    def _fetch_candidates_legacy(self, category_key: str, limit: int = 120) -> List[Dict[str, Any]]:
+        """Fallback sans filtres SQL avancés."""
+        allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
+        if not allowed_secondaries:
             return []
-
-        # 2) puis on hydrate avec les données commerciales depuis affiliate_products
-        product_rows = self._fetch_affiliate_products_for_enrichments(enrichment_rows)
-        if not product_rows:
-            return []
-
-        product_map = {
-            (int(r["merchant_id"]), str(r["product_id"])): r
-            for r in product_rows
-            if r.get("merchant_id") is not None and r.get("product_id") is not None
-        }
-
-        merged: List[Dict[str, Any]] = []
-        seen: Set[str] = set()
-
-        for e in enrichment_rows:
-            merchant_id = e.get("merchant_id")
-            product_id = e.get("product_id")
-            if merchant_id is None or product_id is None:
-                continue
-
-            key_tuple = (int(merchant_id), str(product_id))
-            p = product_map.get(key_tuple)
-            if not p:
-                continue
-
-            uniq = f"{merchant_id}::{product_id}"
-            if uniq in seen:
-                continue
-            seen.add(uniq)
-
-            merged.append({
-                "merchant_id": merchant_id,
-                "product_id": product_id,
-                "sid": p.get("sid") or e.get("sid"),
-                "product_name": p.get("product_name") or e.get("source_product_name"),
-                "brand": p.get("brand") or e.get("source_brand"),
-                "primary_category": p.get("primary_category") or e.get("source_primary_category"),
-                "secondary_category": p.get("secondary_category") or e.get("source_secondary_category"),
-                "product_url": (p.get("product_url") or "").strip(),
-                "image_url": (p.get("image_url") or "").strip(),
-                "buy_url": (p.get("buy_url") or "").strip(),
-                "price": p.get("price"),
-                "sale_price": p.get("sale_price"),
-                "currency": p.get("currency"),
-                "availability": p.get("availability"),
-                "is_deleted": p.get("is_deleted"),
-                "last_seen_at": p.get("last_seen_at"),
-                "keywords": p.get("keywords"),
-                "style_primary": e.get("style_primary"),
-                "style_tags": e.get("style_tags") or [],
-                "style_scores_json": e.get("style_scores_json") or {},
-                "confidence_score": e.get("confidence_score"),
-                "source_product_name": e.get("source_product_name"),
-                "source_brand": e.get("source_brand"),
-                "source_primary_category": e.get("source_primary_category"),
-                "source_secondary_category": e.get("source_secondary_category"),
-                "source_keywords": e.get("source_keywords"),
-                "source_description": e.get("source_description"),
-                "secondary_category_levels": e.get("secondary_category_levels") or [],
-                "classifier_version": e.get("classifier_version"),
-                "classifier_meta_json": e.get("classifier_meta_json") or {},
-                "signals_json": e.get("signals_json") or {},
-            })
-
-            if len(merged) >= limit:
-                break
-
-        return merged
-
-    def _fetch_enrichment_rows_for_category(
-        self,
-        category_key: str,
-        allowed_secondaries: List[str],
-        limit: int,
-    ) -> List[Dict[str, Any]]:
         collected: List[Dict[str, Any]] = []
         seen: Set[str] = set()
-
-        # On interroge par secondary_category autorisée pour garder un contrôle fin
         for secondary in allowed_secondaries:
             try:
-                response = (
+                resp = (
                     self.client.table("affiliate_product_enrichment")
                     .select(
-                        "merchant_id,product_id,sid,style_primary,style_tags,style_scores_json,"
-                        "confidence_score,source_product_name,source_brand,source_primary_category,"
-                        "source_secondary_category,source_keywords,source_description,"
-                        "secondary_category_levels,classifier_version,classifier_meta_json,signals_json"
+                        "merchant_id,product_id,style_primary,style_tags,style_scores_json,"
+                        "confidence_score,source_description,source_secondary_category"
                     )
                     .eq("classifier_version", "style_v6")
                     .eq("source_secondary_category", secondary)
-                    .limit(min(120, limit))
+                    .limit(min(60, limit))
                     .execute()
                 )
-
-                rows = response.data or []
-                for row in rows:
-                    if self._normalize_text(str(row.get("source_primary_category") or "")) != "femme":
-                        continue
-
-                    product_key = f"{row.get('merchant_id')}::{row.get('product_id')}"
-                    if product_key in seen:
-                        continue
-                    seen.add(product_key)
-                    collected.append(row)
-
-                    if len(collected) >= limit:
-                        return collected
-
-            except Exception as e:
-                print(f"⚠️ Erreur fetch enrichment {secondary}: {e}")
-
-        return collected
-
-    def _fetch_affiliate_products_for_enrichments(self, enrichment_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        by_merchant: Dict[int, List[str]] = defaultdict(list)
-
-        for row in enrichment_rows:
-            merchant_id = row.get("merchant_id")
-            product_id = row.get("product_id")
-            if merchant_id is None or product_id is None:
-                continue
-            by_merchant[int(merchant_id)].append(str(product_id))
-
-        collected: List[Dict[str, Any]] = []
-        seen: Set[str] = set()
-
-        for merchant_id, product_ids in by_merchant.items():
-            unique_ids = list(dict.fromkeys(product_ids))
-            chunks = [unique_ids[i:i + 150] for i in range(0, len(unique_ids), 150)]
-
-            for chunk in chunks:
-                try:
-                    response = (
-                        self.client.table("affiliate_products")
-                        .select(
-                            "merchant_id,sid,product_id,product_name,brand,primary_category,"
-                            "secondary_category,product_url,image_url,buy_url,price,sale_price,"
-                            "currency,availability,keywords,is_deleted,last_seen_at"
-                        )
-                        .eq("merchant_id", merchant_id)
-                        .eq("is_deleted", False)
-                        .eq("primary_category", "Femme")
-                        .in_("product_id", chunk)
-                        .execute()
-                    )
-
-                    rows = response.data or []
-                    for row in rows:
-                        key = f"{row.get('merchant_id')}::{row.get('product_id')}"
-                        if key in seen:
-                            continue
+                for row in (resp.data or []):
+                    key = f"{row.get('merchant_id')}::{row.get('product_id')}"
+                    if key not in seen:
                         seen.add(key)
                         collected.append(row)
-
-                except Exception as e:
-                    print(f"⚠️ Erreur fetch affiliate_products merchant={merchant_id}: {e}")
-
+                    if len(collected) >= limit:
+                        return collected
+            except Exception as ex:
+                print(f"⚠️ Legacy fetch {secondary}: {ex}")
         return collected
 
     # =========================
     # Run management
     # =========================
-    def _create_run(
-        self,
-        user_search_id: str,
-        status: str,
-        algorithm_version: str,
-        weights_json: Dict[str, Any],
-        filters_json: Dict[str, Any],
-    ) -> str:
+    def _create_run(self, user_search_id, status, algorithm_version, weights_json, filters_json) -> str:
         run_id = str(uuid.uuid4())
         payload = {
             "id": run_id,
@@ -720,18 +485,8 @@ class SearchRecommendationService:
         return run_id
 
     def _update_run(self, run_id: str, status: str, error_message: Optional[str]) -> None:
-        payload = {
-            "status": status,
-            "error_message": error_message,
-        }
-
-        response = (
-            self.client.table("user_search_runs")
-            .update(payload)
-            .eq("id", run_id)
-            .execute()
-        )
-
+        payload = {"status": status, "error_message": error_message}
+        response = self.client.table("user_search_runs").update(payload).eq("id", run_id).execute()
         if not response or response.data is None:
             raise Exception(f"Impossible de mettre à jour user_search_runs pour run_id={run_id}")
 
@@ -797,7 +552,7 @@ class SearchRecommendationService:
         return inserted
 
     # =========================
-    # Scoring
+    # Scoring (v4)
     # =========================
     def _score_product(
         self,
@@ -806,13 +561,17 @@ class SearchRecommendationService:
         search_row: Dict[str, Any],
         ai_profile: Dict[str, Any],
         budget: Optional[float],
+        cut_rules: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
         title = (product.get("product_name") or "").strip()
         brand = (product.get("brand") or "").strip()
         secondary_category = (product.get("secondary_category") or "").strip()
         source_description = (product.get("source_description") or "").strip()
         style_primary = self._normalize_text(str(product.get("style_primary") or ""))
-        style_tags = self._normalize_text_list(product.get("style_tags"))
+        # style_tags peut arriver sous l'alias style_tags_col (SQL) ou style_tags (legacy)
+        style_tags = self._normalize_text_list(
+            product.get("style_tags_col") or product.get("style_tags")
+        )
         style_scores_json = product.get("style_scores_json") or {}
         confidence_score = self._safe_float(product.get("confidence_score")) or 0.0
 
@@ -827,85 +586,68 @@ class SearchRecommendationService:
         if not merchant_id or not product_id or not title:
             return None
 
-        extracted_color = self._extract_color_from_title(title)
         subtype = self._infer_subtype(category_key, title, secondary_category)
 
-        color_score, color_reason = self._compute_color_score(extracted_color, ai_profile)
+        # ── COULEUR : color_match pré-calculé par SQL ─────────────────────
+        # Les couleurs avoid ont déjà été exclues côté SQL (is_excluded impossible ici)
+        color_match_sql = (product.get("color_match") or "neutral").lower()
+        if color_match_sql == "best":
+            color_score, color_reason = 24, "Couleur best (filtrage SQL)"
+        elif color_match_sql == "ok":
+            color_score, color_reason = 10, "Couleur ok (filtrage SQL)"
+        else:
+            # Couleur neutre : +4 si connue, 0 sinon
+            extracted_color = self._extract_color_from_title(title)
+            if extracted_color and self._normalize_text(extracted_color) in self.NEUTRAL_COLORS:
+                color_score, color_reason = 4, f"Couleur neutre: {extracted_color}"
+            else:
+                color_score, color_reason = 0, "Couleur neutre/non reconnue"
+
+        # ── MORPHOLOGIE : score via silhouette_cut_rules ──────────────────
+        product_family = self.CATEGORY_TO_PRODUCT_FAMILY.get(category_key, "all")
+        stn = (product.get("search_text_normalized") or "").lower()
+        morphology_score = self._compute_cut_score_from_text(stn, cut_rules or [], product_family)
+        morphology_reason = f"Score coupe: {morphology_score}"
+
         style_score, style_reason = self._compute_style_score(
-            style_primary=style_primary,
-            style_tags=style_tags,
-            style_scores_json=style_scores_json,
-            confidence_score=confidence_score,
-            category_key=category_key,
-            subtype=subtype,
-            search_row=search_row,
-            ai_profile=ai_profile,
-        )
-        morphology_score, morphology_reason = self._compute_morphology_score(
-            title=title,
-            secondary_category=secondary_category,
-            source_description=source_description,
-            ai_profile=ai_profile,
+            style_primary=style_primary, style_tags=style_tags,
+            style_scores_json=style_scores_json, confidence_score=confidence_score,
+            category_key=category_key, subtype=subtype,
+            search_row=search_row, ai_profile=ai_profile,
         )
         budget_score, budget_reason = self._compute_budget_score(price, budget)
         brand_score, brand_reason = self._compute_brand_score(brand, ai_profile)
         season_score, season_reason = self._compute_season_score(
-            title=title,
-            secondary_category=secondary_category,
-            source_description=source_description,
-            search_row=search_row,
+            title=title, secondary_category=secondary_category,
+            source_description=source_description, search_row=search_row,
         )
         category_specificity_score, category_specificity_reason = self._compute_category_specificity_score(
-            category_key=category_key,
-            subtype=subtype,
-            search_row=search_row,
+            category_key=category_key, subtype=subtype, search_row=search_row,
         )
         office_visual_score, office_visual_reason = self._compute_office_visual_penalty(
-            category_key=category_key,
-            title=title,
-            secondary_category=secondary_category,
-            source_description=source_description,
+            category_key=category_key, title=title,
+            secondary_category=secondary_category, source_description=source_description,
             search_row=search_row,
         )
 
         total_score = (
-            10
-            + color_score
-            + style_score
-            + morphology_score
-            + budget_score
-            + brand_score
-            + season_score
-            + category_specificity_score
-            + office_visual_score
+            10 + color_score + style_score + morphology_score + budget_score
+            + brand_score + season_score + category_specificity_score + office_visual_score
         )
 
         reasons_json = {
-            "style": style_reason,
-            "category_specificity": category_specificity_reason,
-            "season": season_reason,
-            "color": color_reason,
-            "morphology": morphology_reason,
-            "budget": budget_reason,
-            "brand": brand_reason,
-            "style_primary": style_primary,
-            "style_tags": style_tags,
-            "confidence_score": confidence_score,
-            "secondary_category": secondary_category,
-            "subtype": subtype,
-            "extracted_color": extracted_color,
+            "style": style_reason, "category_specificity": category_specificity_reason,
+            "season": season_reason, "color": color_reason, "morphology": morphology_reason,
+            "budget": budget_reason, "brand": brand_reason,
+            "style_primary": style_primary, "style_tags": style_tags,
+            "confidence_score": confidence_score, "secondary_category": secondary_category,
+            "subtype": subtype, "color_match_sql": color_match_sql,
             "office_visual": office_visual_reason,
         }
 
         return {
-            "merchant_id": merchant_id,
-            "product_id": product_id,
-            "title": title,
-            "brand": brand,
-            "price": price,
-            "currency": currency,
-            "image_url": image_url,
-            "buy_url": buy_url,
+            "merchant_id": merchant_id, "product_id": product_id, "title": title, "brand": brand,
+            "price": price, "currency": currency, "image_url": image_url, "buy_url": buy_url,
             "product_url": product_url,
             "score_total": round(max(total_score, 0), 2),
             "score_color": round(max(color_score, 0), 2),
@@ -920,102 +662,46 @@ class SearchRecommendationService:
             raise ValueError(f"user_searches introuvable: {search_id}")
 
         latest_run_response = (
-            self.client.table("v_user_search_latest_run")
-            .select("*")
-            .eq("search_id", search_id)
-            .limit(1)
-            .execute()
+            self.client.table("v_user_search_latest_run").select("*")
+            .eq("search_id", search_id).limit(1).execute()
         )
 
         latest_runs = latest_run_response.data or []
         if not latest_runs:
-            return {
-                "ok": True,
-                "found": False,
-                "search_id": search_id,
-                "recommendations_by_category": [],
-            }
+            return {"ok": True, "found": False, "search_id": search_id, "recommendations_by_category": []}
 
         latest_run = latest_runs[0]
         run_id = latest_run.get("run_id") or latest_run.get("id")
         if not run_id:
-            return {
-                "ok": True,
-                "found": False,
-                "search_id": search_id,
-                "recommendations_by_category": [],
-            }
+            return {"ok": True, "found": False, "search_id": search_id, "recommendations_by_category": []}
 
         recommendations_response = (
-            self.client.table("user_search_recommendations")
-            .select("*")
-            .eq("run_id", run_id)
-            .order("category_key")
-            .order("rank")
-            .execute()
+            self.client.table("user_search_recommendations").select("*")
+            .eq("run_id", run_id).order("category_key").order("rank").execute()
         )
 
         recommendation_rows = recommendations_response.data or []
         if not recommendation_rows:
-            return {
-                "ok": True,
-                "found": False,
-                "search_id": search_id,
-                "run_id": run_id,
-                "recommendations_by_category": [],
-            }
+            return {"ok": True, "found": False, "search_id": search_id, "run_id": run_id, "recommendations_by_category": []}
 
         recommendations_by_category = self._group_saved_recommendations(recommendation_rows)
 
         return {
-            "ok": True,
-            "found": True,
-            "search_id": search_id,
-            "run_id": run_id,
-            "generated_at": latest_run.get("created_at"),
-            "updated_at": latest_run.get("created_at"),
+            "ok": True, "found": True, "search_id": search_id, "run_id": run_id,
+            "generated_at": latest_run.get("created_at"), "updated_at": latest_run.get("created_at"),
             "search": {
-                "id": search_row.get("id"),
-                "title": search_row.get("title"),
-                "style": search_row.get("style"),
-                "season": search_row.get("season"),
+                "id": search_row.get("id"), "title": search_row.get("title"),
+                "style": search_row.get("style"), "season": search_row.get("season"),
                 "occasion": search_row.get("occasion"),
             },
             "recommendations_by_category": recommendations_by_category,
         }
 
-    def _compute_color_score(self, extracted_color: Optional[str], ai_profile: Dict[str, Any]) -> Tuple[float, str]:
-        if not extracted_color:
-            return 0, "Couleur non détectée dans le titre produit"
-
-        best = self._extract_profile_color_names(ai_profile.get("colors_best"))
-        ok = self._extract_profile_color_names(ai_profile.get("colors_ok"))
-        avoid = self._extract_profile_color_names(ai_profile.get("colors_avoid"))
-        keywords = [self._normalize_text(x) for x in (ai_profile.get("color_keywords") or []) if x]
-
-        c = self._normalize_text(extracted_color)
-
-        if c in avoid:
-            return -40, f"Couleur déconseillée pour ce profil: {extracted_color}"
-        if c in best or c in keywords:
-            return 24, f"Couleur très favorable pour ce profil: {extracted_color}"
-        if c in ok:
-            return 10, f"Couleur acceptable pour ce profil: {extracted_color}"
-        if c in self.NEUTRAL_COLORS:
-            return 4, f"Couleur neutre facile à porter: {extracted_color}"
-
-        return 0, f"Couleur neutre/non reconnue: {extracted_color}"
-
     def _compute_style_score(
         self,
-        style_primary: str,
-        style_tags: List[str],
-        style_scores_json: Dict[str, Any],
-        confidence_score: float,
-        category_key: str,
-        subtype: str,
-        search_row: Dict[str, Any],
-        ai_profile: Dict[str, Any],
+        style_primary: str, style_tags: List[str], style_scores_json: Dict[str, Any],
+        confidence_score: float, category_key: str, subtype: str,
+        search_row: Dict[str, Any], ai_profile: Dict[str, Any],
     ) -> Tuple[float, str]:
         requested_styles = [self._normalize_text(x) for x in (search_row.get("selected_styles") or []) if x]
         profile_styles = [self._normalize_text(x) for x in (ai_profile.get("style_keywords") or []) if x]
@@ -1028,9 +714,8 @@ class SearchRecommendationService:
 
         if not target_styles:
             if style_primary:
-                base_conf_bonus = min(max(confidence_score, 0.0), 1.0) * 6
-                return round(base_conf_bonus, 2), f"Style V6 détecté: {style_primary}"
-            return 0, "Aucun style cible explicite"
+                return round(min(max(confidence_score, 0.0), 1.0) * 6, 2), f"Style V6: {style_primary}"
+            return 0, "Aucun style cible"
 
         score = 0.0
         reasons: List[str] = []
@@ -1041,16 +726,13 @@ class SearchRecommendationService:
             if base:
                 score += base
                 reasons.append(f"{target_style}→{style_primary}")
-
             if target_style in style_tags:
                 score += 8
                 reasons.append(f"tag:{target_style}")
+            raw = self._safe_float(style_scores_json.get(target_style))
+            if raw is not None:
+                score += min(raw * 2.5, 10)
 
-            raw_style_score = self._safe_float(style_scores_json.get(target_style))
-            if raw_style_score is not None:
-                score += min(raw_style_score * 2.5, 10)
-
-        # bonus/malus contexte occasion
         occasion_delta = 0.0
         for occasion in occasions:
             mapping = self.OCCASION_STYLE_BOOSTS.get(occasion)
@@ -1060,354 +742,182 @@ class SearchRecommendationService:
             score += occasion_delta
             reasons.append(f"occasion:{round(occasion_delta, 1)}")
 
-        # bonus confiance
         confidence_bonus = min(max(confidence_score, 0.0), 1.0) * 10.0
         score += confidence_bonus
         reasons.append(f"conf:{round(confidence_bonus, 1)}")
 
-        # règle catégorie/sous-type selon le style principal demandé
         if requested_styles:
-            main_requested_style = requested_styles[0]
-            score += self._compute_category_style_rule_bonus(
-                requested_style=main_requested_style,
-                category_key=category_key,
-                subtype=subtype,
-            )
+            score += self._compute_category_style_rule_bonus(requested_styles[0], category_key, subtype)
 
-        reason = " / ".join(reasons[:4]) if reasons else f"Style V6 principal: {style_primary or 'n/a'}"
-        return round(score, 2), reason
+        return round(score, 2), " / ".join(reasons[:4]) if reasons else f"Style: {style_primary or 'n/a'}"
 
     def _compute_category_style_rule_bonus(self, requested_style: str, category_key: str, subtype: str) -> float:
-        style_rules = self.CATEGORY_STYLE_RULES.get(requested_style, {})
-        category_rules = style_rules.get(category_key, {})
-        return float(category_rules.get(subtype, 0))
-
-    def _compute_morphology_score(
-        self,
-        title: str,
-        secondary_category: str,
-        source_description: str,
-        ai_profile: Dict[str, Any],
-    ) -> Tuple[float, str]:
-        hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
-
-        recommended = self._extract_string_list(ai_profile.get("cuts_recommended"))
-        avoided = self._extract_string_list(ai_profile.get("cuts_avoid"))
-
-        positive_matches = [cut for cut in recommended if self._token_match(cut, hay)]
-        negative_matches = [cut for cut in avoided if self._token_match(cut, hay)]
-
-        if negative_matches:
-            return -12, f"Coupe plutôt déconseillée: {negative_matches[0]}"
-        if positive_matches:
-            return 12, f"Coupe compatible avec la morphologie: {positive_matches[0]}"
-
-        return 0, "Pas d’indice morphologique explicite détecté"
+        return float(self.CATEGORY_STYLE_RULES.get(requested_style, {}).get(category_key, {}).get(subtype, 0))
 
     def _compute_budget_score(self, price: Optional[float], budget: Optional[float]) -> Tuple[float, str]:
-        if price is None:
-            return 0, "Prix absent"
-        if budget is None:
-            return 0, "Budget non défini pour cette catégorie"
-        if price <= budget:
-            return 20, f"Dans le budget ({price} <= {budget})"
-        if price <= budget * 1.15:
-            return -6, f"Légèrement au-dessus du budget ({price} > {budget})"
+        if price is None: return 0, "Prix absent"
+        if budget is None: return 0, "Budget non défini"
+        if price <= budget: return 20, f"Dans le budget ({price} <= {budget})"
+        if price <= budget * 1.15: return -6, f"Légèrement au-dessus ({price} > {budget})"
         return -24, f"Hors budget ({price} > {budget})"
 
     def _compute_brand_score(self, brand: str, ai_profile: Dict[str, Any]) -> Tuple[float, str]:
         preferred = [self._normalize_text(x) for x in (ai_profile.get("preferred_brands") or []) if x]
         b = self._normalize_text(brand)
-
         for p in preferred:
             if p and p in b:
-                return 12, f"Marque préférée détectée: {brand}"
-
+                return 12, f"Marque préférée: {brand}"
         return 0, "Marque non préférée"
 
     def _compute_season_score(
-        self,
-        title: str,
-        secondary_category: str,
-        source_description: str,
-        search_row: Dict[str, Any],
+        self, title: str, secondary_category: str, source_description: str, search_row: Dict[str, Any],
     ) -> Tuple[float, str]:
         selected_seasons = [self._normalize_text(x) for x in (search_row.get("selected_seasons") or []) if x]
         if not selected_seasons:
             return 0, "Pas de saison ciblée"
-
         hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
         total = 0.0
         reasons: List[str] = []
-
         for season in selected_seasons[:2]:
             hints = self.SEASON_HINTS.get(season)
-            if not hints:
-                continue
-
-            positive = sum(1 for token in hints["positive"] if self._normalize_text(token) in hay)
-            negative = sum(1 for token in hints["negative"] if self._normalize_text(token) in hay)
-
+            if not hints: continue
+            positive = sum(1 for t in hints["positive"] if self._normalize_text(t) in hay)
+            negative = sum(1 for t in hints["negative"] if self._normalize_text(t) in hay)
             delta = min(positive * 4, 8) - min(negative * 6, 12)
             if delta != 0:
                 total += delta
                 reasons.append(f"{season}:{delta}")
-
-        if reasons:
-            return round(total, 2), " / ".join(reasons)
-        return 0, "Cohérence saisonnière neutre"
+        return (round(total, 2), " / ".join(reasons)) if reasons else (0, "Saisonnalité neutre")
 
     def _compute_category_specificity_score(
-        self,
-        category_key: str,
-        subtype: str,
-        search_row: Dict[str, Any],
+        self, category_key: str, subtype: str, search_row: Dict[str, Any],
     ) -> Tuple[float, str]:
         requested_styles = [self._normalize_text(x) for x in (search_row.get("selected_styles") or []) if x]
         requested_occasions = [self._normalize_text(x) for x in (search_row.get("selected_occasions") or []) if x]
-
         score = 0.0
         reasons: List[str] = []
-
         office_context = any(x in {"bureau", "travail", "pro"} for x in requested_occasions)
 
         if office_context:
             if category_key == "hauts":
-                if subtype in {"chemise", "blouse"}:
-                    score += 16
-                    reasons.append("haut bureau pertinent")
-                elif subtype in {"pull", "gilet", "top"}:
-                    score += 6
-                    reasons.append("haut sobre exploitable")
-                elif subtype == "tee_shirt":
-                    score -= 18
-                    reasons.append("tee-shirt peu bureau")
-                elif subtype == "caraco":
-                    score -= 22
-                    reasons.append("top trop délicat pour bureau")
-
+                if subtype in {"chemise", "blouse"}: score += 16; reasons.append("haut bureau")
+                elif subtype in {"pull", "gilet", "top"}: score += 6; reasons.append("haut sobre")
+                elif subtype == "tee_shirt": score -= 18; reasons.append("tee-shirt peu bureau")
+                elif subtype == "caraco": score -= 22; reasons.append("caraco peu bureau")
             elif category_key == "bas":
-                if subtype == "pantalon":
-                    score += 22
-                    reasons.append("pantalon bureau très pertinent")
-                elif subtype == "jupe":
-                    score += 8
-                    reasons.append("jupe bureau pertinente")
-                elif subtype == "jean":
-                    score -= 22
-                    reasons.append("jean peu bureau")
-                elif subtype == "short":
-                    score -= 26
-                    reasons.append("short/bermuda hors cible bureau")
-
+                if subtype == "pantalon": score += 22; reasons.append("pantalon bureau")
+                elif subtype == "jupe": score += 8; reasons.append("jupe bureau")
+                elif subtype == "jean": score -= 22; reasons.append("jean peu bureau")
+                elif subtype == "short": score -= 26; reasons.append("short hors bureau")
             elif category_key == "vestes":
-                if subtype == "blazer":
-                    score += 18
-                    reasons.append("blazer très pertinent")
-                elif subtype in {"veste", "manteau"}:
-                    score += 8
-                    reasons.append("veste bureau pertinente")
-                elif subtype == "doudoune":
-                    score -= 22
-                    reasons.append("doudoune trop casual")
-                elif subtype == "sans_manches":
-                    score -= 18
-                    reasons.append("sans manches peu bureau")
-
+                if subtype == "blazer": score += 18; reasons.append("blazer bureau")
+                elif subtype in {"veste", "manteau"}: score += 8; reasons.append("veste bureau")
+                elif subtype == "doudoune": score -= 22; reasons.append("doudoune casual")
+                elif subtype == "sans_manches": score -= 18; reasons.append("sans manches peu bureau")
             elif category_key == "chaussures":
-                if subtype in {"escarpins", "mocassins", "derbies", "ballerines"}:
-                    score += 14
-                    reasons.append("chaussure bureau pertinente")
-                elif subtype == "boots":
-                    score += 2
-                    reasons.append("boots acceptables si sobres")
-                elif subtype == "baskets":
-                    score -= 22
-                    reasons.append("basket peu bureau")
-
+                if subtype in {"escarpins", "mocassins", "derbies", "ballerines"}: score += 14; reasons.append("chaussure bureau")
+                elif subtype == "boots": score += 2; reasons.append("boots ok si sobres")
+                elif subtype == "baskets": score -= 22; reasons.append("basket peu bureau")
             elif category_key == "robes":
-                if subtype in {"robe", "combinaison"}:
-                    score += 12
-                    reasons.append("pièce une-pièce pertinente")
+                if subtype in {"robe", "combinaison"}: score += 12; reasons.append("robe/combi bureau")
 
         if requested_styles:
-            main_style = requested_styles[0]
+            main = requested_styles[0]
+            if main == "chic":
+                if category_key == "bas" and subtype == "jean": score -= 14; reasons.append("jean peu chic")
+                if category_key == "bas" and subtype == "short": score -= 20; reasons.append("short peu chic")
+                if category_key == "hauts" and subtype == "tee_shirt": score -= 10; reasons.append("tee-shirt peu chic")
+                if category_key == "hauts" and subtype == "caraco": score -= 8; reasons.append("caraco peu chic")
+                if category_key == "chaussures" and subtype == "baskets": score -= 14; reasons.append("basket peu chic")
+                if category_key == "vestes" and subtype == "doudoune": score -= 14; reasons.append("doudoune peu chic")
+            elif main == "classique":
+                if category_key == "bas" and subtype == "jean": score -= 12; reasons.append("jean peu classique")
+                if category_key == "bas" and subtype == "short": score -= 16; reasons.append("short peu classique")
+                if category_key == "chaussures" and subtype == "baskets": score -= 10; reasons.append("basket peu classique")
 
-            if main_style == "chic":
-                if category_key == "bas" and subtype == "jean":
-                    score -= 14
-                    reasons.append("jean peu chic")
-                if category_key == "bas" and subtype == "short":
-                    score -= 20
-                    reasons.append("short peu chic")
-                if category_key == "hauts" and subtype == "tee_shirt":
-                    score -= 10
-                    reasons.append("tee-shirt peu chic")
-                if category_key == "hauts" and subtype == "caraco":
-                    score -= 8
-                    reasons.append("caraco moins pertinent")
-                if category_key == "chaussures" and subtype == "baskets":
-                    score -= 14
-                    reasons.append("basket peu chic")
-                if category_key == "vestes" and subtype == "doudoune":
-                    score -= 14
-                    reasons.append("doudoune peu chic")
-
-            elif main_style == "classique":
-                if category_key == "bas" and subtype == "jean":
-                    score -= 12
-                    reasons.append("jean peu classique")
-                if category_key == "bas" and subtype == "short":
-                    score -= 16
-                    reasons.append("short peu classique")
-                if category_key == "chaussures" and subtype == "baskets":
-                    score -= 10
-                    reasons.append("basket peu classique")
-
-        if reasons:
-            return round(score, 2), " / ".join(reasons)
-        return 0, "Catégorie/sous-type neutre"
+        return (round(score, 2), " / ".join(reasons)) if reasons else (0, "Catégorie neutre")
 
     def _compute_office_visual_penalty(
-        self,
-        category_key: str,
-        title: str,
-        secondary_category: str,
-        source_description: str,
-        search_row: Dict[str, Any],
+        self, category_key: str, title: str, secondary_category: str,
+        source_description: str, search_row: Dict[str, Any],
     ) -> Tuple[float, str]:
         requested_occasions = [self._normalize_text(x) for x in (search_row.get("selected_occasions") or []) if x]
         requested_styles = [self._normalize_text(x) for x in (search_row.get("selected_styles") or []) if x]
-
         office_context = any(x in {"bureau", "travail", "pro"} for x in requested_occasions)
         chic_or_classic = any(x in {"chic", "classique", "minimaliste"} for x in requested_styles)
-
         if not office_context and not chic_or_classic:
-            return 0, "Pas de pénalité visuelle spécifique"
+            return 0, "Pas de pénalité visuelle"
 
         hay = self._normalize_text(f"{title} {secondary_category} {source_description}")
         score = 0.0
         reasons: List[str] = []
 
         if category_key in {"hauts", "bas", "robes"}:
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["sequins"]):
-                score -= 24
-                reasons.append("effet trop soirée")
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_evening"]):
-                score -= 14
-                reasons.append("registre trop soirée")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["sequins"]): score -= 24; reasons.append("trop soirée")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_evening"]): score -= 14; reasons.append("registre soirée")
 
         if category_key == "bas":
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
-                score -= 20
-                reasons.append("imprimé trop présent pour bureau")
-
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]): score -= 20; reasons.append("imprimé bureau")
         elif category_key == "robes":
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]):
-                score -= 12
-                reasons.append("imprimé peu bureau")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_playful_print"]): score -= 12; reasons.append("imprimé peu bureau")
 
         if category_key == "vestes":
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_outerwear"]):
-                score -= 18
-                reasons.append("outerwear trop casual")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_outerwear"]): score -= 18; reasons.append("outerwear casual")
 
         if category_key == "hauts":
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_loose"]):
-                score -= 6
-                reasons.append("coupe trop casual")
-
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_loose"]): score -= 6; reasons.append("coupe casual")
             if self._contains_any_text(hay, ["chemise", "blouse"]):
                 if not self._contains_any_text(hay, ["imprime", "imprimé", "fleuri", "floral", "carreaux", "check"]):
-                    score += 6
-                    reasons.append("chemise/blouse sobre premium")
-
-            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_tops"]):
-                score += 6
-                reasons.append("registre bureau")
-
+                    score += 6; reasons.append("chemise sobre")
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_tops"]): score += 6; reasons.append("registre bureau")
         elif category_key == "bas":
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_bottoms"]):
-                score -= 18
-                reasons.append("bas trop casual")
-
-            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]):
-                score -= 28
-                reasons.append("matière ou effet trop mode pour bureau")
-
-            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]):
-                score += 12
-                reasons.append("bas structuré")
-
-            if self._contains_any_text(hay, ["crayon", "midi"]) and self._contains_any_text(hay, ["cuir", "croco", "simili"]):
-                score -= 10
-                reasons.append("jupe crayon trop marquée")
-
-            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit"]):
-                score += 12
-                reasons.append("pantalon bureau premium")
-
-            elif self._contains_any_text(hay, ["jupe midi"]):
-                score += 6
-                reasons.append("jupe midi acceptable bureau")
-
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_casual_bottoms"]): score -= 18; reasons.append("bas casual")
+            if self._contains_any_text(hay, self.OFFICE_NEGATIVE_HINTS["too_bold_bottoms"]): score -= 28; reasons.append("matière trop mode")
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_bottoms"]): score += 12; reasons.append("bas structuré")
+            if self._contains_any_text(hay, ["crayon", "midi"]) and self._contains_any_text(hay, ["cuir", "croco", "simili"]): score -= 10; reasons.append("jupe crayon marquée")
+            if self._contains_any_text(hay, ["pantalon cigarette", "pantalon droit"]): score += 12; reasons.append("pantalon bureau premium")
+            elif self._contains_any_text(hay, ["jupe midi"]): score += 6; reasons.append("jupe midi bureau")
         elif category_key == "vestes":
-            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]):
-                score += 8
-                reasons.append("veste structurée")
-
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]): score += 8; reasons.append("veste structurée")
         elif category_key == "chaussures":
-            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_shoes"]):
-                score += 8
-                reasons.append("chaussure habillée")
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_shoes"]): score += 8; reasons.append("chaussure habillée")
 
-        if reasons:
-            return round(score, 2), " / ".join(reasons)
-        return 0, "Ajustement visuel neutre"
+        return (round(score, 2), " / ".join(reasons)) if reasons else (0, "Ajustement visuel neutre")
 
     # =========================
     # Helpers
     # =========================
     def _normalize_category_key(self, raw: str) -> Optional[str]:
-        if not raw:
-            return None
+        if not raw: return None
         key = self._normalize_text(raw).replace(" ", "_")
         return self.CATEGORY_KEY_NORMALIZATION.get(key, key if key in self.MVP_CATEGORY_TO_SOURCE_SECONDARY else None)
 
     def _contains_any_text(self, haystack: str, tokens: List[str]) -> bool:
         h = self._normalize_text(haystack)
-        return any(self._normalize_text(token) in h for token in tokens)
+        return any(self._normalize_text(t) in h for t in tokens)
 
     def _extract_budget_for_category(self, category_key: str, budgets: Dict[str, Any]) -> Optional[float]:
         if not budgets:
             return None
-
-        candidates = [
-            category_key,
-            category_key.replace("_", " "),
-            category_key.replace("_", "-"),
-        ]
-
+        candidates = [category_key, category_key.replace("_", " "), category_key.replace("_", "-")]
         if category_key == "vestes":
             candidates += ["vestes", "vestes_manteaux", "vestes et manteaux", "vestes & manteaux"]
-        elif category_key == "chaussures":
-            candidates += ["chaussures"]
-        elif category_key == "robes":
-            candidates += ["robes", "robe"]
-        elif category_key == "hauts":
-            candidates += ["hauts", "haut"]
-        elif category_key == "bas":
-            candidates += ["bas"]
+        elif category_key in ("chaussures", "robes", "hauts", "bas"):
+            candidates += [category_key]
 
-        normalized_map = {
-            self._normalize_text(str(k)).replace(" ", "_"): v
-            for k, v in budgets.items()
-        }
+        normalized_map = {self._normalize_text(str(k)).replace(" ", "_"): v for k, v in budgets.items()}
 
         for key in candidates:
             nk = self._normalize_text(str(key)).replace(" ", "_")
             if nk in normalized_map:
                 return self._safe_float(normalized_map[nk])
+
+        # Fallback : tenue_complete divisé par 5
+        tc_key = self._normalize_text("tenue_complete").replace(" ", "_")
+        if tc_key in normalized_map:
+            tc_budget = self._safe_float(normalized_map[tc_key])
+            if tc_budget:
+                return tc_budget / 5.0
 
         return None
 
@@ -1425,60 +935,37 @@ class SearchRecommendationService:
             if isinstance(row, dict):
                 display_name = row.get("displayName") or row.get("display_name")
                 name = row.get("name")
-                if display_name:
-                    out.append(self._normalize_text(str(display_name)))
-                if name:
-                    out.append(self._normalize_text(str(name)))
+                if display_name: out.append(self._normalize_text(str(display_name)))
+                if name: out.append(self._normalize_text(str(name)))
             elif isinstance(row, str):
                 out.append(self._normalize_text(row))
         return list(dict.fromkeys([x for x in out if x]))
 
     def _extract_string_list(self, value: Any) -> List[str]:
-        rows = self._ensure_list(value)
-        out: List[str] = []
-        for row in rows:
-            if isinstance(row, str):
-                out.append(row)
-        return out
+        return [row for row in self._ensure_list(value) if isinstance(row, str)]
 
     def _token_match(self, phrase: str, haystack_normalized: str) -> bool:
         phrase_n = self._normalize_text(phrase)
-        if not phrase_n:
-            return False
-
+        if not phrase_n: return False
         tokens = [t for t in phrase_n.split() if len(t) >= 3]
-        if not tokens:
-            return False
-
-        return any(token in haystack_normalized for token in tokens[:3])
+        return any(token in haystack_normalized for token in tokens[:3]) if tokens else False
 
     def _normalize_currency(self, value: Any) -> str:
         v = (str(value).strip() if value is not None else "")
-        if v.upper() in {"EUR", "USD", "GBP"}:
-            return v.upper()
-        return "EUR"
+        return v.upper() if v.upper() in {"EUR", "USD", "GBP"} else "EUR"
 
     def _safe_float(self, value: Any) -> Optional[float]:
-        if value is None or value == "":
-            return None
-        try:
-            return float(value)
-        except Exception:
-            return None
+        if value is None or value == "": return None
+        try: return float(value)
+        except Exception: return None
 
     def _ensure_list(self, value: Any) -> List[Any]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return []
+        if value is None: return []
+        return value if isinstance(value, list) else []
 
     def _normalize_text(self, value: str) -> str:
         s = (value or "").strip().lower()
-        s = "".join(
-            c for c in unicodedata.normalize("NFD", s)
-            if unicodedata.category(c) != "Mn"
-        )
+        s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
         s = re.sub(r"[^a-z0-9\s\-_&]", " ", s)
         s = re.sub(r"\s{2,}", " ", s).strip()
         return s
@@ -1503,74 +990,46 @@ class SearchRecommendationService:
         return f"{brand}::{title}"
 
     def _canonicalize_product_url(self, url: str) -> str:
-        if not url:
-            return ""
-
+        if not url: return ""
         try:
             parsed = urlparse(url.strip())
-            clean = urlunparse((
-                parsed.scheme.lower(),
-                parsed.netloc.lower(),
-                parsed.path.rstrip("/"),
-                "",
-                "",
-                ""
-            ))
-            clean = clean.replace("http://", "https://")
-            return clean
+            clean = urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/"), "", "", ""))
+            return clean.replace("http://", "https://")
         except Exception:
             return (url or "").strip().lower()
 
     def _infer_subtype(self, category_key: str, title: str, secondary_category: str) -> str:
         hay = self._normalize_text(f"{title} {secondary_category}")
         rules = self.CATEGORY_SUBTYPE_HINTS.get(category_key, {})
-
         for subtype, tokens in rules.items():
             for token in tokens:
                 if self._normalize_text(token) in hay:
                     return subtype
-
         return "other"
 
     def _group_saved_recommendations(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         grouped: Dict[str, Dict[str, Any]] = {}
-
         for row in rows:
             category_key = str(row.get("category_key") or "").strip().lower()
-            if not category_key:
-                continue
-
+            if not category_key: continue
             if category_key not in grouped:
                 grouped[category_key] = {
                     "category_key": category_key,
                     "category_label": self.CATEGORY_LABELS.get(category_key, category_key.capitalize()),
                     "items": [],
                 }
-
             reasons_json = row.get("reasons_json") or {}
-
-            # 👉 On récupère UNE raison propre pour le front
-            reason = (
-                reasons_json.get("category")
-                or reasons_json.get("style")
-                or reasons_json.get("color")
-                or ""
-            )
-
+            reason = reasons_json.get("category") or reasons_json.get("style") or reasons_json.get("color") or ""
             grouped[category_key]["items"].append({
-                "id": str(row.get("id")),
-                "product_id": str(row.get("product_id")),
-                "title": row.get("title") or "",
-                "brand": row.get("brand") or "",
+                "id": str(row.get("id")), "product_id": str(row.get("product_id")),
+                "title": row.get("title") or "", "brand": row.get("brand") or "",
                 "image_url": row.get("image_url") or "",
                 "price": float(row.get("price")) if row.get("price") else None,
                 "currency": row.get("currency") or "EUR",
-                "buy_url": row.get("buy_url") or "",
-                "product_url": row.get("product_url") or "",
-                "score_total": float(row.get("score_total") or 0),
-                "reason": reason,
+                "buy_url": row.get("buy_url") or "", "product_url": row.get("product_url") or "",
+                "score_total": float(row.get("score_total") or 0), "reason": reason,
             })
-
         return list(grouped.values())
+
 
 search_recommendation_service = SearchRecommendationService()
