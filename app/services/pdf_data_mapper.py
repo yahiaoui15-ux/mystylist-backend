@@ -1596,7 +1596,11 @@ class PDFDataMapper:
         return "tops"
 
     @staticmethod
-    def _enrich_shopping_priorities_with_products(shopping_priorities: list) -> list:
+    def _enrich_shopping_priorities_with_products(
+        shopping_priorities: list,
+        colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
+    ) -> list:
         """
         Pour chaque priorité shopping, retourne 4 produits complets via match_piece_top4.
         Chaque item: {name, category, visual_key, products: list[4 dicts]}
@@ -1628,7 +1632,12 @@ class PDFDataMapper:
             piece = {"piece_title": name, "spec": "", "visual_key": visual_key}
  
             try:
-                products = product_matcher_service.match_piece_top4(piece, product_cat)
+                products = product_matcher_service.match_piece_top4(
+                    piece, product_cat,
+                    colors_to_avoid=colors_to_avoid,
+                    colors_best=colors_best,
+                )
+ 
             except Exception as e:
                 print(f"⚠️ match_piece_top4 failed for '{name}': {e}")
                 products = []
@@ -1785,20 +1794,43 @@ class PDFDataMapper:
         print(f"🎨 Style tags pour matching affilié: {_style_tags_matching}")
 
         # Couleurs à éviter pour filtre produits affiliés
-        _colors_to_avoid_raw = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
+        # Couleurs à exclure = "à éviter" + "à manier avec prudence"
+        # (prudence = mieux vaut ne pas les proposer sans contexte stylistique)
+        _colors_to_avoid_raw = (
+            PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
+            + PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_prudence", []))
+        )
         _colors_to_avoid = [
-            c.get("displayName", c.get("name", ""))
+            c.get("displayName", c.get("name", "")).lower()
             for c in _colors_to_avoid_raw
             if c.get("displayName") or c.get("name")
         ]
-        print(f"🎨 Couleurs à éviter pour matching affilié: {_colors_to_avoid}")
-        
+        # Dédoublonnage (une couleur peut apparaître dans les deux listes)
+        _colors_to_avoid = list(dict.fromkeys(_colors_to_avoid))
+        print(f"🎨 Couleurs exclues pour matching affilié (eviter + prudence): {_colors_to_avoid}")
+ 
+        # Couleurs favorites (palette personnalisée) → boost dans le scoring
+        _colors_best_raw = PDFDataMapper._safe_list(colorimetry_raw.get("palette_personnalisee", []))
+        _colors_best = [
+            (c.get("name") or c.get("displayName", "")).lower()
+            for c in _colors_best_raw
+            if c.get("name") or c.get("displayName")
+        ]
+        _colors_best = [c for c in _colors_best if c]
+        print(f"🎨 Couleurs favorites pour matching affilié: {_colors_best}")
+ 
+ 
         # Page 18 - enrich affiliate matches
         for k in ["tops", "bottoms", "dresses_playsuits", "outerwear"]:
             items = styling_raw["page18"]["categories"].get(k, [])
 
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching, colors_to_avoid=_colors_to_avoid)
+            items = product_matcher_service.enrich_pieces(
+                items, k,
+                style_tags=_style_tags_matching,
+                colors_to_avoid=_colors_to_avoid,
+                colors_best=_colors_best,
+            )
             # 🔴 DEBUG TEMPORAIRE – À NE FAIRE QUE POUR tops
             if k == "tops" and items:
                 import json
@@ -1820,7 +1852,12 @@ class PDFDataMapper:
         for k in ["swim_lingerie", "shoes", "accessories"]:
             items = styling_raw["page19"]["categories"].get(k, [])
             # 1) match affilié
-            items = product_matcher_service.enrich_pieces(items, k, style_tags=_style_tags_matching, colors_to_avoid=_colors_to_avoid)
+            items = product_matcher_service.enrich_pieces(
+                items, k,
+                style_tags=_style_tags_matching,
+                colors_to_avoid=_colors_to_avoid,
+                colors_best=_colors_best,
+            )
             # 2) fallback pédagogique si pas de match
             items = _apply_fallback_visuals(items)
             styling_raw["page19"]["categories"][k] = items
@@ -1952,8 +1989,12 @@ class PDFDataMapper:
         shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
         print(f"   📋 shopping_priorities raw: {shopping_priorities_raw}")  # ← AJOUTER
 
-        shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(shopping_priorities_raw)
-
+        shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(
+            shopping_priorities_raw,
+            colors_to_avoid=_colors_to_avoid,
+            colors_best=_colors_best,
+        )
+ 
         # ── FALLBACK : dériver depuis essentials si GPT-4 a retourné [] ──────────
         if not shopping_priorities_raw:
             _essentials_for_sp = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
@@ -2384,7 +2425,10 @@ class PDFDataMapper:
                             },
                             _product_cat,
                             style_tags=_capsule_style_tags,
+                            colors_to_avoid=_colors_to_avoid,
+                            colors_best=_colors_best,
                         )
+ 
                         _enriched["match"]       = _match
                         _enriched["product_url"] = (_match.get("product_url") or "").strip()
                         _enriched["image_url"]   = (_match.get("image_url") or "").strip()

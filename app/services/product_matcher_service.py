@@ -112,13 +112,16 @@ class ProductMatcherService:
         category: str,
         style_tags: Optional[List[str]] = None,
         colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         out = []
         for p in pieces or []:
             if not isinstance(p, dict):
                 continue
             p2 = dict(p)
-            p2["match"] = self.match_piece(p2, category, style_tags=style_tags, colors_to_avoid=colors_to_avoid)
+            p2["match"] = self.match_piece(p2, category, style_tags=style_tags,
+                                            colors_to_avoid=colors_to_avoid,
+                                            colors_best=colors_best)
             m = p2.get("match") or {}
             p2["image_url"] = (m.get("image_url") or "").strip()
             p2["product_url"] = (m.get("product_url") or "").strip()
@@ -132,7 +135,9 @@ class ProductMatcherService:
         category: str,
         style_tags: Optional[List[str]] = None,
         colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
+ 
         piece_title = (piece.get("piece_title") or "").strip()
         spec = (piece.get("spec") or "").strip()
         visual_key = (piece.get("visual_key") or "").strip()
@@ -143,10 +148,18 @@ class ProductMatcherService:
             category=category,
             limit=20,
             style_tags=style_tags,
+            colors_to_avoid=colors_to_avoid,
+            colors_best=colors_best,
         )
-
+ 
         # ── IMAGE-FIRST: on tente jusqu'à 4 candidats pour trouver une image ──
-        valid_pool = self._pick_top_n_valid_candidates(candidates, n=4, colors_to_avoid=colors_to_avoid)
+        valid_pool = self._pick_top_n_valid_candidates(
+            candidates, n=4,
+            colors_to_avoid=colors_to_avoid,
+            colors_best=colors_best,
+            piece_title=piece_title,
+        )
+ 
 
         try:
             print(f"🧩 MATCH [{category}] '{piece_title[:60]}' → {len(candidates)} candidats / {len(valid_pool)} retenus")
@@ -219,7 +232,14 @@ class ProductMatcherService:
             "alt2_label": "",
         }
 
-    def match_piece_top4(self, piece: Dict[str, Any], category: str) -> List[Dict[str, Any]]:
+    def match_piece_top4(
+        self,
+        piece: Dict[str, Any],
+        category: str,
+        colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+ 
         """
         Comme match_piece mais retourne une LISTE de 4 produits complets.
         Utilisé pour shopping_products_flat (page 12).
@@ -232,9 +252,16 @@ class ProductMatcherService:
             spec=spec,
             category=category,
             limit=30,
+            colors_to_avoid=colors_to_avoid,
+            colors_best=colors_best,
         )
-        top4 = self._pick_top_n_valid_candidates(candidates, n=4)
-
+        top4 = self._pick_top_n_valid_candidates(
+            candidates, n=4,
+            colors_to_avoid=colors_to_avoid,
+            colors_best=colors_best,
+            piece_title=piece_title,
+        )
+ 
         results = []
         for candidate in top4:
             raw_img  = (candidate.get("image_url") or "").strip()
@@ -338,7 +365,13 @@ class ProductMatcherService:
     # -------------------------
     # Relevance scoring  ← NEW
     # -------------------------
-    def _score_candidate(self, candidate: Dict[str, Any], kws: List[str]) -> int:
+    def _score_candidate(
+        self,
+        candidate: Dict[str, Any],
+        kws: List[str],
+        colors_best: Optional[List[str]] = None,
+    ) -> int:
+ 
         """
         Score un candidat selon le nombre de mots-clés de la recommandation
         présents dans son product_name.
@@ -369,10 +402,22 @@ class ProductMatcherService:
                 # Bonus pour les qualificatifs de coupe — très discriminants
                 if kw_norm in CUT_TOKENS:
                     score += 2
+        # Bonus couleurs favorites (palette cliente)
+        if colors_best:
+            name_for_color = self._strip_accents((candidate.get("product_name") or "").lower())
+            for col in (colors_best or []):
+                col_norm = self._strip_accents(col.lower())
+                if col_norm and col_norm in name_for_color:
+                    score += 4
+                    break
         return score
+ 
 
     def _rescore_collected(
-        self, collected: List[Dict[str, Any]], kws: List[str]
+        self,
+        collected: List[Dict[str, Any]],
+        kws: List[str],
+        colors_best: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Trie `collected` par score décroissant de pertinence.
@@ -381,7 +426,11 @@ class ProductMatcherService:
         """
         if not kws:
             return collected
-        scored = [(self._score_candidate(c, kws), i, c) for i, c in enumerate(collected)]
+        scored = [
+            (self._score_candidate(c, kws, colors_best=colors_best), i, c)
+            for i, c in enumerate(collected)
+        ]
+ 
         scored.sort(key=lambda x: (-x[0], x[1]))
         result = [c for _, _, c in scored]
         # Log les 4 premiers pour diagnostic
@@ -428,7 +477,26 @@ class ProductMatcherService:
     def _pick_top3_valid_candidates(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return self._pick_top_n_valid_candidates(candidates, n=3)
 
-    def _pick_top_n_valid_candidates(self, candidates: List[Dict[str, Any]], n: int = 4, colors_to_avoid: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def _pick_top_n_valid_candidates(
+        self,
+        candidates: List[Dict[str, Any]],
+        n: int = 4,
+        colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
+        piece_title: str = "",
+    ) -> List[Dict[str, Any]]:
+ 
+         # Termes structurels requis : si la pièce précise "peplum", "portefeuille", etc.
+        # le produit DOIT contenir ce terme. Évite "top ample" quand on cherche "top peplum".
+        _STRUCTURAL_TERMS = {
+            "peplum", "portefeuille", "trapeze", "palazzo", "empire",
+            "cache coeur", "cache-coeur", "croise", "wrap", "evase",
+            "cargo", "fourreau", "bustier", "col v", "col u",
+            "col bateau", "col carre", "manches bouffantes", "raglan",
+        }
+        _title_norm = self._strip_accents((piece_title or "").lower())
+        _required = [t for t in _STRUCTURAL_TERMS if t in _title_norm]
+ 
         out: List[Dict[str, Any]] = []
         seen_urls        = set()
         seen_names_dedup = set()   # ← clé normalisée (sans taille/couleur)
@@ -466,6 +534,12 @@ class ProductMatcherService:
             if img_base:
                 seen_images.add(img_base)
 
+            # Filtre terme structurel obligatoire
+            if _required:
+                _name_norm = self._strip_accents((raw_name or "").lower())
+                if not any(t in _name_norm for t in _required):
+                    continue
+ 
             # Blacklist
             product_name_lower  = raw_name.lower()
             secondary_cat_lower = (c.get("secondary_category") or "").lower()
@@ -476,11 +550,25 @@ class ProductMatcherService:
             # Filtre couleurs incompatibles avec la colorimétrie cliente
             if colors_to_avoid:
                 name_norm = self._strip_accents(raw_name.lower())
-                if any(self._strip_accents(col.lower()) in name_norm for col in colors_to_avoid):
+                if any(self._strip_accents(col.lower()) in name_norm for col in colors_to_avoid if col):
                     print(f"   🚫 Couleur exclue: '{raw_name[:60]}'")
                     continue
+ 
+            # Bonus couleurs favorites : on les place en tête via un flag
+            _color_preferred = False
+            if colors_best:
+                name_norm_cb = self._strip_accents(raw_name.lower())
+                _color_preferred = any(
+                    self._strip_accents(col.lower()) in name_norm_cb
+                    for col in colors_best if col
+                )
+ 
 
-            out.append(c)
+            # Couleurs favorites en priorité absolue
+            if _color_preferred:
+                out.insert(0, c)
+            else:
+                out.append(c)
             if len(out) >= n:
                 break
 
@@ -654,7 +742,10 @@ class ProductMatcherService:
         category: str,
         limit: int = 20,
         style_tags: Optional[List[str]] = None,
+        colors_to_avoid: Optional[List[str]] = None,
+        colors_best: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+ 
         """
         Recherche des produits affiliés en plusieurs phases par ordre de précision.
 
@@ -687,11 +778,16 @@ class ProductMatcherService:
                     key = hashlib.sha256((row.get("image_url") or "").encode("utf-8")).hexdigest()[:12]
                 if key in seen:
                     continue
+                # Exclusion couleurs interdites dès la collecte
+                if colors_to_avoid:
+                    name_norm = self._strip_accents((row.get("product_name") or "").lower())
+                    if any(self._strip_accents(col.lower()) in name_norm for col in colors_to_avoid if col):
+                        continue
                 seen.add(key)
                 collected.append(row)
                 if len(collected) >= limit:
                     return
-
+ 
         # ────────────────────────────────────────────────────────
         # PHASE 0 — Style-aware via affiliate_product_enrichment
         # ────────────────────────────────────────────────────────
@@ -825,8 +921,9 @@ class ProductMatcherService:
         # RE-SCORING FINAL — remonte les meilleurs matches  ← NEW
         # Ex: "pantalon palazzo" score 3 > "pantalon slim" score 1
         # ────────────────────────────────────────────────────────
-        rescored = self._rescore_collected(collected, kws)
+        rescored = self._rescore_collected(collected, kws, colors_best=colors_best)
 
+ 
         return rescored[:limit]
 
     def _extract_keywords(self, piece_title: str, spec: str) -> List[str]:
