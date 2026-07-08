@@ -1158,17 +1158,15 @@ class ProductMatcherService:
                 final.append(k)
 
         # ── Normalisation aliases GPT → Rakuten ──────────────────────────────
-        # Traduit les termes générés par GPT vers la nomenclature réelle Rakuten.
-        # Ex: "col u" → "col rond", "a-line" → "evase", "wrap" → "portefeuille"
-        normalized_kws = []
-        for kw in kws:
-            alias = self._GPT_TO_RAKUTEN_KW.get(kw.lower())
-            normalized_kws.append(alias if alias else kw)
-        kws = normalized_kws
- 
-        return kws
- 
-        return final[:8]
+                # Traduit les termes générés par GPT vers la nomenclature réelle Rakuten.
+                # Ex: "col u" → "col rond", "a-line" → "evase", "wrap" → "portefeuille"
+                normalized_final = []
+                for kw in final:
+                    alias = self._GPT_TO_RAKUTEN_KW.get(kw.lower())
+                    normalized_final.append(alias if alias else kw)
+                final = normalized_final
+
+                return final[:8]
 
 
 product_matcher_service = ProductMatcherService()
