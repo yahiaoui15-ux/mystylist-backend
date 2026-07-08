@@ -422,6 +422,7 @@ class ProductMatcherService:
                 return []
 
             kws = self._extract_keywords(piece_title, "")
+            print(f"🔑 KWS (phase0) pour '{piece_title}': {kws}")   # ← à ajouter, à retirer une fois le diagnostic fait
             kw_safe = self._normalize_kw_for_ilike(kws[0]) if kws else ""
 
             q_products = (
@@ -554,7 +555,7 @@ class ProductMatcherService:
         if not visual_key:
             return None
         try:
-            client = self.supabase.get_client()
+            client = self.client
 
             # 1. Correspondance exacte sur nom_simplifie (ex: "pull_col_u")
             resp = (
@@ -902,6 +903,8 @@ class ProductMatcherService:
         RE-SCORING FINAL : remonte les candidats contenant le plus de mots-clés  ← NEW
         """
         kws = self._extract_keywords(piece_title, spec)
+        print(f"🔑 KWS pour '{piece_title}': {kws}")   # ← à ajouter, à retirer une fois le diagnostic fait
+
 
         select_fields = ",".join([
             "product_id", "product_name", "brand", "primary_category",
