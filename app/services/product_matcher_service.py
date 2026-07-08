@@ -50,6 +50,92 @@ class ProductMatcherService:
         "porte-cartes", "porte-monnaie", "porte carte", "porte monnaie",
     ]
 
+    # ── Termes structurels obligatoires ──────────────────────────────────────
+    # Si la pièce GPT contient l'un de ces termes, le produit affilié DOIT
+    # contenir ce terme (ou un de ses alias). Sinon exclu.
+    # Seuls les termes avec ≥30 produits en base sont pertinents ici.
+    _STRUCTURAL_TERMS = {
+        "peplum",        # 11 produits  — très spécifique, garder
+        "portefeuille",  # 601 produits ✅
+        "cache coeur",   # 33 produits  — silhouette unique
+        "cache-coeur",   # alias normalisé
+        "trapeze",       # 134 produits — accepte aussi "evase" via aliases
+        "evase",         # 1891 produits ✅ terme Rakuten pour "trapèze"
+        "palazzo",       # 55 produits  ✅
+        "wide leg",      # 108 produits ✅ terme anglais utilisé par Rakuten
+        "cargo",         # 94 produits  ✅
+    }
+    # Supprimés vs version précédente :
+    # "empire" (6 produits), "fourreau" (8), "col v", "col u", "col bateau",
+    # "col carre", "bustier", "croise", "wrap" (0), "manches bouffantes", "raglan"
+ 
+    # ── Aliases : terme GPT → terme(s) réellement utilisés par Rakuten ───────
+    # Quand GPT génère un terme qui ne correspond pas à la nomenclature Rakuten,
+    # on le traduit AVANT la recherche ET avant le filtre structurel.
+    # Format : "terme_gpt": ["alias1", "alias2", ...]
+    _STRUCTURAL_TERM_ALIASES: Dict[str, List[str]] = {
+        # Coupes — termes GPT → équivalents Rakuten
+        "trapeze":          ["trapeze", "evase", "patineuse"],   # 134+1891+36
+        "evase":            ["evase", "trapeze", "patineuse"],   # même silhouette
+        "a-line":           ["evase", "trapeze"],                # anglais → fr
+        "a line":           ["evase", "trapeze"],
+        "cache coeur":      ["cache coeur", "cache-coeur"],
+        "cache-coeur":      ["cache coeur", "cache-coeur"],
+        "portefeuille":     ["portefeuille"],                    # 601 ✅
+        "wrap":             ["portefeuille", "cache coeur"],     # 0 → 601
+        "peplum":           ["peplum"],                          # 11 ✅
+        "palazzo":          ["palazzo", "wide leg"],             # 55+108
+        "wide leg":         ["wide leg", "palazzo"],
+        "jambe large":      ["wide leg", "palazzo"],             # 0 → 108
+        "cargo":            ["cargo"],                           # 94 ✅
+        "empire":           ["empire"],                          # 6 — pas structural mais garde keyword
+        "fourreau":         ["fourreau"],                        # 8 — idem
+        "droite":           ["droite"],                          # 4410 mais trop générique
+        # Cols — GPT utilise souvent la terminologie morphologique
+        "col u":            ["col rond"],                        # 11 → 10715
+        "encolure u":       ["col rond"],
+        "col en u":         ["col rond"],
+        "ras du cou":       ["col rond"],
+        "col arrondi":      ["col rond"],
+        "col v":            ["col v", "decollete v", "encolure v"],  # 6130+82+75
+        "decollete v":      ["col v", "decollete v"],
+        "encolure v":       ["col v", "encolure v"],
+        "col bateau":       ["col bateau"],                      # 423 ✅
+        "col mariniere":    ["col bateau"],                      # 0 → 423
+        "col carre":        ["col carre"],                       # 301 ✅
+        "col montant":      ["col montant"],                     # 1179 ✅
+        "col claudine":     ["col claudine", "col montant"],     # 51+1179
+        # Manches
+        "manches bouffantes": ["manches bouffantes", "manches ballon"],  # 38+28
+        "manches ballon":     ["manches ballon", "manches bouffantes"],
+        "manches volantees":  ["manches bouffantes", "manches ballon"],  # 0 → 38
+        "sans manches":       ["sans manches"],                  # 1749 ✅
+        # Anglicismes présents dans la base Rakuten
+        "wide":             ["wide leg", "large"],
+        "flare":            ["evase", "trapeze"],
+    }
+ 
+    # ── Aliases simples pour la recherche keyword ─────────────────────────────
+    # Traduction directe d'un terme GPT vers SON équivalent Rakuten principal.
+    # Utilisé dans _extract_keywords pour normaliser les termes avant ILIKE.
+    _GPT_TO_RAKUTEN_KW: Dict[str, str] = {
+        "col u":            "col rond",
+        "encolure u":       "col rond",
+        "col en u":         "col rond",
+        "ras du cou":       "col rond",
+        "col arrondi":      "col rond",
+        "a-line":           "evase",
+        "a line":           "evase",
+        "wrap":             "portefeuille",
+        "jambe large":      "wide leg",
+        "jambe droite":     "droite",
+        "col mariniere":    "col bateau",
+        "manches volantees": "manches bouffantes",
+        "manches bishope":  "manches bouffantes",
+        "decollete v":      "col v",
+        "encolure v":       "col v",
+    }
+ 
     # ── Mapping styles styling → tags enrichment ──────────────────────────
     STYLE_LABEL_TO_ENRICHMENT_TAG: Dict[str, str] = {
         "Classique": "classique",
@@ -457,6 +543,57 @@ class ProductMatcherService:
             return title[:48] + ("…" if len(title) > 48 else "")
         return "Alternative"
 
+    def _find_visual_by_key(
+        self, visual_key: str, category: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fallback pédagogique : cherche un visuel dans la table 'visuels'
+        quand aucun produit affilié ne correspond.
+        Colonnes : type_vetement, coupe, nom_simplifie, url_image
+        """
+        if not visual_key:
+            return None
+        try:
+            client = self.supabase.get_client()
+
+            # 1. Correspondance exacte sur nom_simplifie (ex: "pull_col_u")
+            resp = (
+                client.table("visuels")
+                .select("*")
+                .eq("nom_simplifie", visual_key)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                return resp.data[0]
+
+            # 2. Correspondance partielle sur coupe
+            kw = self._strip_accents(visual_key.replace("_", " ").lower())
+            resp2 = (
+                client.table("visuels")
+                .select("*")
+                .ilike("coupe", f"%{kw}%")
+                .limit(1)
+                .execute()
+            )
+            if resp2.data:
+                return resp2.data[0]
+
+            # 3. Fallback sur type_vetement selon la catégorie
+            cat = self._strip_accents(category.lower())
+            resp3 = (
+                client.table("visuels")
+                .select("*")
+                .ilike("type_vetement", f"%{cat}%")
+                .limit(1)
+                .execute()
+            )
+            return resp3.data[0] if resp3.data else None
+
+        except Exception as e:
+            print(f"⚠️ _find_visual_by_key failed key='{visual_key}': {e}")
+            return None
+        
     # -------------------------
     # Candidate selection / dedupe
     # -------------------------
@@ -486,16 +623,11 @@ class ProductMatcherService:
         piece_title: str = "",
     ) -> List[Dict[str, Any]]:
  
-         # Termes structurels requis : si la pièce précise "peplum", "portefeuille", etc.
-        # le produit DOIT contenir ce terme. Évite "top ample" quand on cherche "top peplum".
-        _STRUCTURAL_TERMS = {
-            "peplum", "portefeuille", "trapeze", "palazzo", "empire",
-            "cache coeur", "cache-coeur", "croise", "wrap", "evase",
-            "cargo", "fourreau", "bustier", "col v", "col u",
-            "col bateau", "col carre", "manches bouffantes", "raglan",
-        }
+
+        # Termes structurels présents dans le titre de la pièce
         _title_norm = self._strip_accents((piece_title or "").lower())
-        _required = [t for t in _STRUCTURAL_TERMS if t in _title_norm]
+        _required = [t for t in self._STRUCTURAL_TERMS if t in _title_norm]
+ 
  
         out: List[Dict[str, Any]] = []
         seen_urls        = set()
@@ -534,11 +666,22 @@ class ProductMatcherService:
             if img_base:
                 seen_images.add(img_base)
 
-            # Filtre terme structurel obligatoire
+            # Filtre terme structurel avec aliases
+            # Ex: pièce "trapèze" → accepte "trapeze" ET "evase" ET "patineuse"
             if _required:
                 _name_norm = self._strip_accents((raw_name or "").lower())
-                if not any(t in _name_norm for t in _required):
+                _passed = False
+                for req_term in _required:
+                    # Récupérer tous les alias acceptables pour ce terme
+                    acceptable = self._STRUCTURAL_TERM_ALIASES.get(
+                        req_term, [req_term]
+                    )
+                    if any(alias in _name_norm for alias in acceptable):
+                        _passed = True
+                        break
+                if not _passed:
                     continue
+ 
  
             # Blacklist
             product_name_lower  = raw_name.lower()
@@ -1014,6 +1157,17 @@ class ProductMatcherService:
                 seen.add(k)
                 final.append(k)
 
+        # ── Normalisation aliases GPT → Rakuten ──────────────────────────────
+        # Traduit les termes générés par GPT vers la nomenclature réelle Rakuten.
+        # Ex: "col u" → "col rond", "a-line" → "evase", "wrap" → "portefeuille"
+        normalized_kws = []
+        for kw in kws:
+            alias = self._GPT_TO_RAKUTEN_KW.get(kw.lower())
+            normalized_kws.append(alias if alias else kw)
+        kws = normalized_kws
+ 
+        return kws
+ 
         return final[:8]
 
 
