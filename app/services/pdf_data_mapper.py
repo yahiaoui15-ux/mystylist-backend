@@ -224,8 +224,20 @@ def pick_3_looks_styles(style_mix):
     if not style_mix:
         return {"quotidien": "classique", "travail": "classique", "sortie": "classique"}
 
+    from app.services.style_pieces_selector import STYLE_LABEL_TO_TAG
+
+    def _map_to_tag(label: str) -> str:
+        tag = STYLE_LABEL_TO_TAG.get((label or "").strip())
+        if tag:
+            return tag
+        norm = _normalize_str(label)
+        if norm.startswith("style "):
+            norm = norm[6:]
+        norm = norm.split("/")[0].strip()   # coupe tout après le "/" en fallback
+        return norm or "classique"
+
     styles_sorted = sorted(
-        [{"style": _normalize_str(s["style"]), "pct": s["pct"]} for s in style_mix],
+        [{"style": _map_to_tag(s["style"]), "pct": s["pct"]} for s in style_mix],
         key=lambda x: x["pct"], reverse=True,
     )
 
