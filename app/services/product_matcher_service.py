@@ -70,8 +70,7 @@ class ProductMatcherService:
         "palazzo",       # 55 produits  ✅
         "wide leg",      # 108 produits ✅ terme anglais utilisé par Rakuten
         "cargo",         # 94 produits  ✅
-        "ceinturee",   # ← ajout : veste/manteau ceinturé(e) — pas de fallback sans ceinture
-
+        "ceintur",   # racine générique : couvre ceinture / ceinturé / ceinturée
     }
     # Supprimés vs version précédente :
     # "empire" (6 produits), "fourreau" (8), "col v", "col u", "col bateau",
@@ -144,7 +143,12 @@ class ProductMatcherService:
         "decollete v":      "col v",
         "encolure v":       "col v",
     }
- 
+
+    # ── Synonymes de noms de pièce — la base nomme parfois différemment ──────
+    _NOUN_SYNONYMS: Dict[str, List[str]] = {
+        "blazer": ["blazer", "veste"],
+    }
+
     # ── Mapping styles styling → tags enrichment ──────────────────────────
     STYLE_LABEL_TO_ENRICHMENT_TAG: Dict[str, str] = {
         "Classique": "classique",
@@ -968,6 +972,24 @@ class ProductMatcherService:
             )
             _add_rows(phase0)
 
+        # ── Tentative avec synonyme du nom si applicable (ex: blazer → veste) ──
+        if kws and kws[0] in self._NOUN_SYNONYMS and len(collected) < limit:
+            for alt_noun in self._NOUN_SYNONYMS[kws[0]][1:]:
+                alt_compound = " ".join([alt_noun] + kws[1:2]) if len(kws) >= 2 else alt_noun
+                alt_safe = self._normalize_kw_for_ilike(alt_compound)
+                if len(alt_safe) >= 5:
+                    try:
+                        pattern = self._ilike_pattern(alt_safe)
+                        q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                        resp = self._execute(q)
+                        data = getattr(resp, "data", None) or []
+                        filtered = [r for r in data if self._category_match(r, category)]
+                        _add_rows(filtered)
+                        if filtered:
+                            print(f"✅ SYNONYM+CAT [{category}] '{alt_safe}': {len(filtered)}")
+                    except Exception as e:
+                        print(f"⚠️ SYNONYM query failed: {e}")
+                        
         # ────────────────────────────────────────────────────────
         # PHASE 1 — Mot-clé COMPOSÉ (nom + coupe) + filtre catégorie  ← NEW
         # Ex: "pantalon palazzo", "robe portefeuille", "jupe trapeze"
