@@ -70,6 +70,8 @@ class ProductMatcherService:
         "palazzo",       # 55 produits  ✅
         "wide leg",      # 108 produits ✅ terme anglais utilisé par Rakuten
         "cargo",         # 94 produits  ✅
+        "ceinturee",   # ← ajout : veste/manteau ceinturé(e) — pas de fallback sans ceinture
+
     }
     # Supprimés vs version précédente :
     # "empire" (6 produits), "fourreau" (8), "col v", "col u", "col bateau",
@@ -116,6 +118,7 @@ class ProductMatcherService:
         "manches ballon":     ["manches ballon", "manches bouffantes"],
         "manches volantees":  ["manches bouffantes", "manches ballon"],  # 0 → 38
         "sans manches":       ["sans manches"],                  # 1749 ✅
+        "ceinturee":        ["ceinturee", "ceinture"],
         # Anglicismes présents dans la base Rakuten
         "wide":             ["wide leg", "large"],
         "flare":            ["evase", "trapeze"],
