@@ -1116,6 +1116,7 @@ class ProductMatcherService:
             "long", "longue", "midi", "mini", "court", "courte", "col", "encolure",
             "croisé", "croisée", "large", "flare", "wide", "slim", "skinny",
             "taille haute", "tailleur", "wrap",
+            "peplum", "cargo", "cache-coeur", "cache-cœur", "cache coeur",  # ← ajout
         }
 
         text = f"{piece_title} {spec}".lower()
@@ -1186,7 +1187,8 @@ class ProductMatcherService:
         # Ex: "col u" → "col rond", "a-line" → "evase", "wrap" → "portefeuille"
         normalized_final = []
         for kw in final:
-            alias = self._GPT_TO_RAKUTEN_KW.get(kw.lower())
+            lookup_kw = kw.lower().replace("-", " ")
+            alias = self._GPT_TO_RAKUTEN_KW.get(lookup_kw) or self._GPT_TO_RAKUTEN_KW.get(kw.lower())
             normalized_final.append(alias if alias else kw)
         final = normalized_final
 
