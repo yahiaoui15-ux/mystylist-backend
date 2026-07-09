@@ -731,12 +731,12 @@ class ProductMatcherService:
         if not kw:
             return ""
         kw = self._strip_accents(kw)
-        # Convertit les tirets en espaces (ex: "col-v" → "col v" pour l'ILIKE)
-        kw = kw.replace("-", " ")
-        kw = re.sub(r"[^a-z0-9\s]", " ", kw)
+        kw = re.sub(r"[^a-z0-9\s-]", " ", kw)   # garde les tirets pour l'instant
         kw = re.sub(r"\s{2,}", " ", kw).strip()
-        parts = kw.split()[:2]
+        parts = kw.split()[:2]                  # troncature AVANT de casser les tirets
         kw = " ".join(parts)
+        kw = kw.replace("-", " ")               # on ne casse les tirets QU'ICI
+        kw = re.sub(r"\s{2,}", " ", kw).strip()
         if len(kw) > self.MAX_TOKEN_LEN:
             kw = kw[: self.MAX_TOKEN_LEN]
         return kw
@@ -978,7 +978,7 @@ class ProductMatcherService:
         # PHASE 1b — Mot-clé NOM SEUL + filtre catégorie (fallback)
         # ────────────────────────────────────────────────────────
         if len(collected) < 6:
-            for kw in kws[:1]:
+            for kw in kws[:2]:
                 if len(collected) >= limit:
                     break
                 kw_safe = self._normalize_kw_for_ilike(kw)
