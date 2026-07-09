@@ -5,13 +5,13 @@ import hashlib
 import os
 import httpx
 import unicodedata
+import time  # ajoute en haut du fichier si pas déjà présent
+
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.utils.supabase_client import supabase
 from urllib.parse import quote, urlparse
-
-
 
 
 class ProductMatcherService:
@@ -49,6 +49,12 @@ class ProductMatcherService:
         "portefeuille en cuir", "portefeuille effet cuir", "portefeuille graffiti",
         "porte-cartes", "porte-monnaie", "porte carte", "porte monnaie",
     ]
+
+    # ── Circuit breaker CDN images ──────────────────────────────────────
+    _cdn_consecutive_failures = 0
+    _cdn_circuit_open_until = 0.0   # timestamp epoch ; tant que time.time() < ceci, on skip le CDN
+    _CDN_FAILURE_THRESHOLD = 8      # nb d'échecs consécutifs avant ouverture du circuit
+    _CDN_CIRCUIT_COOLDOWN = 120     # secondes avant de retenter le CDN
 
     # ── Termes structurels obligatoires ──────────────────────────────────────
     # Si la pièce GPT contient l'un de ces termes, le produit affilié DOIT
@@ -257,7 +263,7 @@ class ProductMatcherService:
             safe_img = ""
             remaining = []
 
-            for idx, candidate in enumerate(valid_pool):
+            for idx, candidate in enumerate(valid_pool[:2]):
                 raw_img = (candidate.get("image_url") or "").strip()
                 img = self._ensure_cached_public_image(raw_img, candidate) if raw_img else ""
                 print("🖼️ IMG raw:", raw_img)
@@ -775,6 +781,9 @@ class ProductMatcherService:
     # -------------------------
     def _ensure_cached_public_image(self, image_url: str, affiliate_row: Dict[str, Any]) -> str:
         image_url = (image_url or "").strip()
+        # ── Circuit breaker : si le CDN a échoué en rafale récemment, on ne perd plus de temps ──
+        if time.time() < self.__class__._cdn_circuit_open_until:
+            return ""
         if image_url.endswith("?"):
             image_url = image_url[:-1]
 
@@ -833,13 +842,21 @@ class ProductMatcherService:
             r = httpx.get(try_url, headers=headers, timeout=6.0, follow_redirects=True)
 
             # 403 = IP bloquée par PDT → inutile de retenter
+
             if r.status_code == 403:
                 print(f"⛔ 403 Forbidden — skip immédiat: {try_url[:80]}")
+                self.__class__._cdn_consecutive_failures += 1
+                if self.__class__._cdn_consecutive_failures >= self.__class__._CDN_FAILURE_THRESHOLD:
+                    self.__class__._cdn_circuit_open_until = time.time() + self.__class__._CDN_CIRCUIT_COOLDOWN
+                    print(f"🔌 Circuit CDN ouvert pour {self.__class__._CDN_CIRCUIT_COOLDOWN}s (trop d'échecs consécutifs)")
                 return ""
 
             # Autre erreur → skip sans retry
             if r.status_code >= 400:
                 print(f"⚠️ HTTP {r.status_code} — skip: {try_url[:80]}")
+                self.__class__._cdn_consecutive_failures += 1
+                if self.__class__._cdn_consecutive_failures >= self.__class__._CDN_FAILURE_THRESHOLD:
+                    self.__class__._cdn_circuit_open_until = time.time() + self.__class__._CDN_CIRCUIT_COOLDOWN
                 return ""
 
             r.raise_for_status()
@@ -864,6 +881,7 @@ class ProductMatcherService:
             if public_url.endswith("?"):
                 public_url = public_url[:-1]
 
+            self.__class__._cdn_consecutive_failures = 0
             return public_url or ""
 
         except Exception as e:
