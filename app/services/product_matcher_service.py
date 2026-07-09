@@ -723,6 +723,7 @@ class ProductMatcherService:
     # -------------------------
     def _strip_accents(self, s: str) -> str:
         s = s or ""
+        s = s.replace("œ", "oe").replace("Œ", "OE").replace("æ", "ae").replace("Æ", "AE")
         return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
     def _normalize_kw_for_ilike(self, kw: str) -> str:
@@ -1124,6 +1125,8 @@ class ProductMatcherService:
         ]
 
         def _preprocess_compounds(src: str) -> str:
+            # Gère "col en V", "col en U", "encolure en V" etc. (avec "en" intercalé)
+            src = re.sub(r"\b(col|encolure)\s+en\s+([a-z])\b", r"\1-\2", src)
             for phrase, replacement in COMPOUND_CUTS:
                 src = src.replace(phrase, replacement)
             return src

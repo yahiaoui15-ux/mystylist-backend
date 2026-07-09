@@ -1371,10 +1371,10 @@ class PDFDataMapper:
 
     @staticmethod
     def _normalize_for_matching(s: str) -> str:
-        """Supprime accents + met en minuscule pour matching robuste."""
         s = s.lower()
+        s = s.replace('œ', 'oe').replace('æ', 'ae')
         for fr, en in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),
-                       ('î','i'),('ï','i'),('ô','o'),('û','u'),('ù','u'),('ü','u'),('ç','c')]:
+                    ('î','i'),('ï','i'),('ô','o'),('û','u'),('ù','u'),('ü','u'),('ç','c')]:
             s = s.replace(fr, en)
         return s
 
@@ -1572,27 +1572,24 @@ class PDFDataMapper:
 
     @staticmethod
     def _guess_product_category_for_priority(name: str) -> str:
-        """
-        Devine la catégorie product_matcher_service pour une priorité shopping.
-        Catégories valides: tops, bottoms, dresses_playsuits, outerwear, shoes, accessories
-        """
         n = PDFDataMapper._normalize_for_matching(name)
         shoe_keywords = ["escarpin", "botte", "bottine", "sandale", "chaussure",
-                         "sneaker", "ballerine", "mocassin", "mule", "derby", "espadrille"]
-        # "talon" vérifié séparément avec word boundary pour éviter "pantalons"
+                        "sneaker", "ballerine", "mocassin", "mule", "derby", "espadrille"]
         words = n.split()
         if any(k in n for k in shoe_keywords) or "talon" in words or "talons" in words:
             return "shoes"
- 
-        if any(k in n for k in ["sac", "ceinture", "collier", "bracelet", "foulard",
-                                  "bijou", "accessoire", "boucle", "sautoir", "pendentif"]):
-            return "accessories"
-        if any(k in n for k in ["robe", "combinaison", "jumpsuit"]):
-            return "dresses_playsuits"
+
+        # Vêtements vérifiés AVANT les accessoires (ex: "ceinturée" contient "ceinture")
         if any(k in n for k in ["veste", "blazer", "manteau", "trench", "trenchcoat"]):
             return "outerwear"
+        if any(k in n for k in ["robe", "combinaison", "jumpsuit"]):
+            return "dresses_playsuits"
         if any(k in n for k in ["pantalon", "jupe", "jean", "short", "palazzo"]):
             return "bottoms"
+
+        if any(k in n for k in ["sac", "ceinture", "collier", "bracelet", "foulard",
+                                "bijou", "accessoire", "boucle", "sautoir", "pendentif"]):
+            return "accessories"
         return "tops"
 
     @staticmethod
