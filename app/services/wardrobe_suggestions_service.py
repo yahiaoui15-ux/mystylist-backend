@@ -1655,19 +1655,38 @@ class WardrobeSuggestionsService:
 
     def _pick_best_reason(self, reasons: List[str]) -> str:
         priority_markers = [
-            "laisse respirer",
-            "sobriete",
+            # Signaux les plus personnalisés/spécifiques en premier
+            "rappel elegant",
+            "rappel harmonieux",
+            "reprise d une couleur",
+            "ton sur ton",
+            "neutre chic",
+            "chaussure bureau",
+            "haut bureau",
+            "bas bureau",
+            "pantalon bureau",
+            "jupe bureau",
+            "jupe midi",
+            "chemise",
+            "blazer",
+            "veste structuree",
+            "veste bureau",
+            "marque appreciee",
+            "bonne coherence saisonniere",
+            "belle coherence",
+            "coupe bien adaptee",
+            "chaussure legere coherente",
+            "chaussure chic portable",
+            "structure bien la silhouette",
+            "equilibre bien le vetement",
             "catégorie complémentaire",
             "categorie complementaire",
-            "chaussure habillee",
-            "chaussure bureau",
-            "veste structuree",
-            "blazer",
-            "pantalon bureau",
-            "rappel elegant",
-            "neutre chic",
             "style",
             "coupe",
+            # Génériques en dernier recours seulement
+            "sobriete",
+            "laisse respirer",
+            "laisse la vedette",
         ]
 
         normalized_reasons = [(r, self._normalize_text(r)) for r in reasons if r]
