@@ -1,6 +1,7 @@
 import re
 import uuid
 import unicodedata
+import random
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -326,7 +327,22 @@ class SearchRecommendationService:
                     )
                 )
 
-                top_rows = scored[:20]
+                CANDIDATE_POOL_SIZE = 60  # élargit le vivier pour permettre le renouvellement au "Voir d'autres suggestions"
+                pool_size = min(len(scored), CANDIDATE_POOL_SIZE)
+                candidate_pool = scored[:pool_size]
+
+                if len(candidate_pool) > 20:
+                    top_rows = random.sample(candidate_pool, 20)
+                    top_rows.sort(
+                        key=lambda x: (
+                            -(x["score_total"] or 0),
+                            x.get("price") if x.get("price") is not None else 10**9,
+                            x.get("title") or "",
+                        )
+                    )
+                else:
+                    top_rows = candidate_pool
+
                 inserted = self._insert_recommendations(
                     run_id=run_id,
                     category_key=category_key,
