@@ -452,9 +452,29 @@ class WardrobeSuggestionsService:
                 )
             )
 
-            CANDIDATE_POOL_SIZE = 30  # élargit le vivier pour permettre le renouvellement au "Voir d'autres suggestions"
-            pool_size = min(len(scored), CANDIDATE_POOL_SIZE)
-            candidate_pool = scored[:pool_size]
+            # Dédoublonnage par modèle (marque + coupe, sans taille ni couleur) AVANT
+            # de constituer le pool : évite que les variantes taille/couleur d'un même
+            # modèle (score identique) ne monopolisent le top 30 au détriment de
+            # modèles réellement différents
+            seen_model_keys_for_pool: Set[str] = set()
+            seen_url_keys_for_pool: Set[str] = set()
+            deduped_by_model: List[Dict[str, Any]] = []
+            for row in scored:
+                model_key = self._build_model_key(row)
+                url_key = self._canonicalize_product_url(row.get("product_url") or row.get("buy_url") or "")
+                if model_key in seen_model_keys_for_pool:
+                    continue
+                if url_key and url_key in seen_url_keys_for_pool:
+                    continue
+                seen_model_keys_for_pool.add(model_key)
+                if url_key:
+                    seen_url_keys_for_pool.add(url_key)
+                deduped_by_model.append(row)
+
+            CANDIDATE_POOL_SIZE = 30
+            pool_size = min(len(deduped_by_model), CANDIDATE_POOL_SIZE)
+            candidate_pool = deduped_by_model[:pool_size]
+
 
             if len(candidate_pool) > 8:
                 randomized_pool = candidate_pool.copy()
@@ -1889,6 +1909,19 @@ class WardrobeSuggestionsService:
         brand = self._normalize_text(str(row.get("brand") or ""))
         title = self._normalize_product_family_text(str(row.get("title") or row.get("product_name") or ""))
         return f"{brand}::{title}"
+    
+    def _build_model_key(self, row: Dict[str, Any]) -> str:
+            """
+            Clé de regroupement par MODÈLE, indépendamment de la taille ET de la couleur.
+            Plus stricte que _build_product_family_key (qui ne retire que la taille).
+            """
+            brand = self._normalize_text(str(row.get("brand") or ""))
+            title = self._normalize_product_family_text(str(row.get("title") or row.get("product_name") or ""))
+            for color in self.COLOR_WORDS:
+                color_norm = self._normalize_text(color)
+                title = re.sub(rf"\b{re.escape(color_norm)}\b", " ", title)
+            title = re.sub(r"\s{2,}", " ", title).strip()
+            return f"{brand}::{title}"
 
     def _canonicalize_product_url(self, url: str) -> str:
         if not url:
