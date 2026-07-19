@@ -1,5 +1,6 @@
 import re
 import unicodedata
+import random
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 from datetime import datetime, timezone
@@ -448,13 +449,31 @@ class WardrobeSuggestionsService:
                 )
             )
 
+            CANDIDATE_POOL_SIZE = 30  # élargit le vivier pour permettre le renouvellement au "Voir d'autres suggestions"
+            pool_size = min(len(scored), CANDIDATE_POOL_SIZE)
+            candidate_pool = scored[:pool_size]
+
+            if len(candidate_pool) > 8:
+                randomized_pool = candidate_pool.copy()
+                random.shuffle(randomized_pool)
+            else:
+                randomized_pool = candidate_pool
+
             selected_rows = self._dedupe_scored_rows(
-                scored_rows=scored,
+                scored_rows=randomized_pool,
                 inserted_product_keys=inserted_product_keys,
                 inserted_family_keys=inserted_family_keys,
                 inserted_url_keys=inserted_url_keys,
                 brand_counter=brand_counter,
                 limit=8,
+            )
+
+            selected_rows.sort(
+                key=lambda x: (
+                    -(x["score_total"] or 0),
+                    x.get("price") if x.get("price") is not None else 10**9,
+                    x.get("title") or "",
+                )
             )
 
             suggestions_by_category.append({
