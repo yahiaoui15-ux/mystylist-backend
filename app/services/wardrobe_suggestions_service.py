@@ -1633,23 +1633,33 @@ class WardrobeSuggestionsService:
         limit: int = 8,
     ) -> List[Dict[str, Any]]:
         out = []
+        rejected_image = 0
+        rejected_product_dup = 0
+        rejected_family_dup = 0
+        rejected_url_dup = 0
+        rejected_brand_cap = 0
 
         for row in scored_rows:
             if not self._has_usable_image(row):
+                rejected_image += 1
                 continue
             product_key = f"{row['merchant_id']}::{row['product_id']}"
             family_key = self._build_product_family_key(row)
             url_key = self._canonicalize_product_url(row.get("product_url") or row.get("buy_url") or "")
 
             if product_key in inserted_product_keys:
+                rejected_product_dup += 1
                 continue
             if family_key in inserted_family_keys:
+                rejected_family_dup += 1
                 continue
             if url_key and url_key in inserted_url_keys:
+                rejected_url_dup += 1
                 continue
 
             brand_key = self._normalize_text(str(row.get("brand") or ""))
             if brand_counter.get(brand_key, 0) >= 2:
+                rejected_brand_cap += 1
                 continue
 
             inserted_product_keys.add(product_key)
@@ -1662,6 +1672,13 @@ class WardrobeSuggestionsService:
 
             if len(out) >= limit:
                 break
+
+        print(
+            f"🔍 dedupe: entrée={len(scored_rows)} sortie={len(out)} | "
+            f"rejets: image={rejected_image} product_dup={rejected_product_dup} "
+            f"family_dup={rejected_family_dup} url_dup={rejected_url_dup} "
+            f"brand_cap={rejected_brand_cap}"
+        )
 
         return out
 
