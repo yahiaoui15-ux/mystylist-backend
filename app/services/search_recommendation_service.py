@@ -59,6 +59,10 @@ class SearchRecommendationService:
             "Chaussures~~Derbies",
             "Chaussures~~Ballerines",
         },
+        "sacs": {
+            "Accessoires~~Sacs",
+            "Maroquinerie~~Sacs",
+        },
     }
 
     CATEGORY_KEY_NORMALIZATION = {
@@ -69,7 +73,7 @@ class SearchRecommendationService:
         "chaussures": "chaussures", "chaussure": "chaussures",
         "vestes": "vestes", "vestes_manteaux": "vestes", "vestes_et_manteaux": "vestes",
         "vestes_&_manteaux": "vestes", "veste": "vestes", "manteaux": "vestes", "manteau": "vestes",
-        "accessoires": None, "sacs": None, "bijoux": None,
+        "accessoires": None, "sacs": "sacs", "bijoux": None,
         "sous-vetements": None, "sous_vetements": None, "lingerie": None,
         "maillots_bain": None, "maillots_de_bain": None,
         "tenue_sport": None, "vetements_sport": None, "vetements_de_sport": None,
@@ -78,12 +82,13 @@ class SearchRecommendationService:
     CATEGORY_LABELS = {
         "hauts": "Hauts", "bas": "Bas", "robes": "Robes",
         "vestes": "Vestes", "chaussures": "Chaussures",
+        "sacs": "Sacs",
     }
 
     # Mapping category_key → product_family pour les règles de coupe
     CATEGORY_TO_PRODUCT_FAMILY = {
         "hauts": "top", "bas": "bottom", "robes": "dress",
-        "vestes": "outerwear", "chaussures": "shoe",
+        "vestes": "outerwear", "chaussures": "shoe","sacs": "bag",
     }
 
     COLOR_WORDS = [
@@ -122,6 +127,15 @@ class SearchRecommendationService:
             "escarpins": ["escarpin", "heel", "heels"],
             "mocassins": ["mocassin", "loafer"], "derbies": ["derby"],
             "ballerines": ["ballerine"],
+        },
+        "sacs": {
+            "sac_a_dos": ["sac a dos", "backpack"],
+            "sac_banane": ["banane"],
+            "sac_seau": ["seau", "hobo"],
+            "cabas": ["cabas", "tote", "shopping"],
+            "pochette": ["pochette", "trotteur", "mini pochette"],
+            "sac_bandouliere": ["bandouliere", "porte epaule", "epaule"],
+            "sac_a_main": ["sac a main"],
         },
     }
 
@@ -820,6 +834,12 @@ class SearchRecommendationService:
                 elif subtype == "baskets": score -= 22; reasons.append("basket peu bureau")
             elif category_key == "robes":
                 if subtype in {"robe", "combinaison"}: score += 12; reasons.append("robe/combi bureau")
+            elif category_key == "sacs":
+                if subtype in {"sac_a_main", "cabas"}: score += 14; reasons.append("sac bureau structuré")
+                elif subtype == "sac_bandouliere": score += 8; reasons.append("sac bandoulière sobre")
+                elif subtype == "sac_a_dos": score += 2; reasons.append("sac à dos neutre si sobre")
+                elif subtype == "sac_banane": score -= 20; reasons.append("banane peu bureau")
+                elif subtype == "pochette": score -= 6; reasons.append("pochette plutôt soirée")
 
         if requested_styles:
             main = requested_styles[0]
@@ -834,7 +854,8 @@ class SearchRecommendationService:
                 if category_key == "bas" and subtype == "jean": score -= 12; reasons.append("jean peu classique")
                 if category_key == "bas" and subtype == "short": score -= 16; reasons.append("short peu classique")
                 if category_key == "chaussures" and subtype == "baskets": score -= 10; reasons.append("basket peu classique")
-
+            if main in {"chic", "classique"}:
+                if category_key == "sacs" and subtype == "sac_banane": score -= 12; reasons.append("banane peu chic")
         return (round(score, 2), " / ".join(reasons)) if reasons else (0, "Catégorie neutre")
 
     def _compute_office_visual_penalty(
@@ -881,7 +902,11 @@ class SearchRecommendationService:
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_outerwear"]): score += 8; reasons.append("veste structurée")
         elif category_key == "chaussures":
             if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS["smart_shoes"]): score += 8; reasons.append("chaussure habillée")
-
+        elif category_key == "sacs":
+            if self._contains_any_text(hay, self.OFFICE_POSITIVE_HINTS.get("smart_bags", ["cuir de vachette", "cuir grainé", "structure"])):
+                score += 8; reasons.append("sac en cuir structuré")
+            if self._contains_any_text(hay, ["toile", "coton", "raphia", "paille", "crochet"]):
+                score -= 8; reasons.append("matière trop décontractée pour bureau")
         return (round(score, 2), " / ".join(reasons)) if reasons else (0, "Ajustement visuel neutre")
 
     # =========================

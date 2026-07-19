@@ -24,6 +24,7 @@ class WardrobeSuggestionsService:
         "robes": "Robes",
         "vestes": "Vestes",
         "chaussures": "Chaussures",
+        "sacs": "Sacs",
     }
 
     # Mapping category_key vers product_family pour les règles de coupe
@@ -33,6 +34,7 @@ class WardrobeSuggestionsService:
         "robes": "dress",
         "vestes": "outerwear",
         "chaussures": "shoe",
+        "sacs": "bag",
     }
  
     COMPLEMENTARY_CATEGORY_MAP = {
@@ -41,6 +43,7 @@ class WardrobeSuggestionsService:
         "robes": ["vestes", "chaussures"],
         "vestes": ["hauts", "bas", "chaussures"],
         "chaussures": ["hauts", "bas", "robes", "vestes"],
+        "sacs": ["hauts", "bas", "robes", "vestes", "chaussures"],
     }
 
     MVP_CATEGORY_TO_SOURCE_SECONDARY = {
@@ -80,6 +83,10 @@ class WardrobeSuggestionsService:
             "Chaussures~~Derbies",
             "Chaussures~~Ballerines",
         },
+        "sacs": {
+            "Accessoires~~Sacs",
+            "Maroquinerie~~Sacs",
+        },
     }
 
     CATEGORY_SUBTYPE_HINTS = {
@@ -117,6 +124,15 @@ class WardrobeSuggestionsService:
             "mocassins": ["mocassin", "loafer"],
             "derbies": ["derby"],
             "ballerines": ["ballerine"],
+        },
+        "sacs": {
+            "sac_a_dos": ["sac a dos", "backpack"],
+            "sac_banane": ["banane"],
+            "sac_seau": ["seau", "hobo"],
+            "cabas": ["cabas", "tote", "shopping"],
+            "pochette": ["pochette", "trotteur", "mini pochette"],
+            "sac_bandouliere": ["bandouliere", "porte epaule", "epaule"],
+            "sac_a_main": ["sac a main"],
         },
     }
 
@@ -259,6 +275,7 @@ class WardrobeSuggestionsService:
         "robes": {"vestes": 22, "chaussures": 22},
         "vestes": {"hauts": 16, "bas": 18, "chaussures": 12},
         "chaussures": {"hauts": 10, "bas": 10, "robes": 12, "vestes": 8},
+        "sacs": {"hauts": 12, "bas": 12, "robes": 16, "vestes": 10, "chaussures": 10},
     }
 
     FORBIDDEN_CATEGORY_TARGETS = {
@@ -267,6 +284,7 @@ class WardrobeSuggestionsService:
         "robes": {"robes", "hauts", "bas"},
         "vestes": {"vestes", "robes"},
         "chaussures": {"chaussures"},
+        "sacs": {"sacs"},
     }
 
     WINTER_HINTS = {
@@ -347,6 +365,7 @@ class WardrobeSuggestionsService:
         "bas": {"should_be_quiet_if_central_is_strong": 12},
         "vestes": {"should_be_quiet_if_central_is_strong": 14},
         "chaussures": {"should_be_quiet_if_central_is_strong": 10},
+        "sacs": {"should_be_quiet_if_central_is_strong": 10},
     }
 
     SUMMER_CENTRAL_CATEGORIES = {"robes"}
@@ -1374,6 +1393,30 @@ class WardrobeSuggestionsService:
             elif subtype == "baskets":
                 score -= 22
                 reasons.append("basket peu bureau")
+
+        elif category_key == "sacs":
+            if subtype in {"sac_a_main", "cabas"}:
+                score += 14
+                reasons.append("sac bureau structuré")
+            elif subtype == "sac_bandouliere":
+                score += 8
+                reasons.append("sac bandoulière sobre")
+            elif subtype == "sac_a_dos":
+                score += 2
+                reasons.append("sac à dos neutre si sobre")
+            elif subtype == "sac_banane":
+                score -= 20
+                reasons.append("banane peu bureau")
+            elif subtype == "pochette":
+                score -= 6
+                reasons.append("pochette plutôt soirée")
+
+            if self._contains_any_text(hay, ["cuir de vachette", "cuir grainé", "structure"]):
+                score += 6
+                reasons.append("cuir structuré cohérent bureau")
+            if self._contains_any_text(hay, ["toile", "coton", "raphia", "paille", "crochet"]):
+                score -= 8
+                reasons.append("matière trop décontractée pour bureau")
 
         if reasons:
             return round(score, 2), " / ".join(reasons)
