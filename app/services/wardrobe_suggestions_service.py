@@ -441,6 +441,8 @@ class WardrobeSuggestionsService:
                 if scored_row is not None:
                     scored.append(scored_row)
 
+            print(f"🔍 [{category_key}] candidats bruts={len(candidates)} -> scorés (non-None)={len(scored)}")
+
             scored.sort(
                 key=lambda x: (
                     -(x["score_total"] or 0),
@@ -467,6 +469,9 @@ class WardrobeSuggestionsService:
                 brand_counter=brand_counter,
                 limit=8,
             )
+
+            print(f"🔍 [{category_key}] pool candidat={len(candidate_pool)} -> après dédoublonnage/diversité={len(selected_rows)}")
+
 
             selected_rows.sort(
                 key=lambda x: (

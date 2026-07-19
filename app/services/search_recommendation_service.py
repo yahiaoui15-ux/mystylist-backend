@@ -423,6 +423,8 @@ class SearchRecommendationService:
         response = self.supabase.query("user_ai_profiles", select_fields="*", filters={"user_id": user_id})
         return response.data[0] if response.data else None
 
+    MIN_CANDIDATES_THRESHOLD = 10  # en dessous, on élargit aux styles compatibles
+
     def _fetch_candidates_for_category(
         self,
         category_key: str,
@@ -431,23 +433,65 @@ class SearchRecommendationService:
         price_max: Optional[float],
         limit: int = 400,
     ) -> List[Dict[str, Any]]:
-        """
-        v4 — Appelle search_products_v2 (fonction PostgreSQL).
-        Filtres stricts en SQL : style, prix, couleurs, coupes hard_exclude.
-        ORDER BY random() côté SQL → diversité garantie.
-        """
         allowed_secondaries = list(self.MVP_CATEGORY_TO_SOURCE_SECONDARY.get(category_key, set()))
         if not allowed_secondaries:
             return []
 
         style_tags = [self._normalize_text(s) for s in (selected_styles or []) if s]
 
+        rows = self._run_search_products_v2(
+            user_id=user_id,
+            style_tags=style_tags if style_tags else None,
+            allowed_secondaries=allowed_secondaries,
+            price_max=price_max,
+            limit=limit,
+            category_key=category_key,
+        )
+
+        # Élargissement si le style exact donne trop peu de résultats
+        if style_tags and len(rows) < self.MIN_CANDIDATES_THRESHOLD:
+            broadened_styles = self._get_broadened_styles(style_tags)
+            extra_styles = [s for s in broadened_styles if s not in style_tags]
+
+            if extra_styles:
+                print(
+                    f"⚠️ [{category_key}] seulement {len(rows)} candidats pour {style_tags} "
+                    f"-> élargissement à {extra_styles}"
+                )
+                extra_rows = self._run_search_products_v2(
+                    user_id=user_id,
+                    style_tags=extra_styles,
+                    allowed_secondaries=allowed_secondaries,
+                    price_max=price_max,
+                    limit=limit,
+                    category_key=category_key,
+                )
+
+                seen_keys = {f"{r.get('merchant_id')}::{r.get('product_id')}" for r in rows}
+                for row in extra_rows:
+                    key = f"{row.get('merchant_id')}::{row.get('product_id')}"
+                    if key not in seen_keys:
+                        row["_style_broadened"] = True
+                        rows.append(row)
+                        seen_keys.add(key)
+
+        return rows
+
+    def _run_search_products_v2(
+        self,
+        user_id: str,
+        style_tags: Optional[List[str]],
+        allowed_secondaries: List[str],
+        price_max: Optional[float],
+        limit: int,
+        category_key: str,
+    ) -> List[Dict[str, Any]]:
         try:
             resp = self.client.rpc(
                 "search_products_v2",
                 {
                     "p_user_id":              user_id,
-                    "p_style_tags":           style_tags if style_tags else None,
+                    "p_style_tags":           style_tags,
                     "p_secondary_categories": allowed_secondaries,
                     "p_price_max":            price_max,
                     "p_sample_size":          limit,
@@ -464,6 +508,18 @@ class SearchRecommendationService:
         except Exception as e:
             print(f"⚠️ search_products_v2 failed pour {category_key}: {e}")
             return self._fetch_candidates_legacy(category_key=category_key, limit=min(limit, 120))
+
+    def _get_broadened_styles(self, style_tags: List[str]) -> List[str]:
+        """Retourne les 3 styles les plus compatibles avec le(s) style(s) demandé(s)."""
+        combined_scores: Dict[str, float] = {}
+        for style in style_tags:
+            compat = self.STYLE_COMPATIBILITY_MATRIX.get(style, {})
+            for s, score in compat.items():
+                if score > 0:
+                    combined_scores[s] = combined_scores.get(s, 0) + score
+
+        ranked = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+        return [s for s, _ in ranked[:3]]
 
     def _fetch_candidates_legacy(self, category_key: str, limit: int = 120) -> List[Dict[str, Any]]:
         """Fallback sans filtres SQL avancés."""
