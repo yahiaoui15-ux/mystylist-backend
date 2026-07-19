@@ -607,10 +607,11 @@ class WardrobeSuggestionsService:
             return []
  
         central_norm = self._normalize_text(central_style or "")
-        compat_matrix = self.STYLE_COMPATIBILITY_MATRIX.get(central_norm, {})
-        compatible_styles = [s for s, sc in compat_matrix.items() if sc > 0]
-        if not compatible_styles:
-            compatible_styles = list(self.STYLE_COMPATIBILITY_MATRIX.keys())
+
+        if central_norm in self.STYLE_COMPATIBILITY_MATRIX:
+            compatible_styles = [central_norm]
+        else:
+            compatible_styles = None  # style non reconnu -> pas de filtre style
  
         try:
             resp = self.client.rpc(
