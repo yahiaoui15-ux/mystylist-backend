@@ -411,7 +411,6 @@ class WardrobeSuggestionsService:
         inserted_product_keys: Set[str] = set()
         inserted_family_keys: Set[str] = set()
         inserted_url_keys: Set[str] = set()
-        brand_counter: Dict[str, int] = {}
 
         suggestions_by_category = []
 
@@ -420,6 +419,8 @@ class WardrobeSuggestionsService:
         central_style = item.get("detected_style") or ""
  
         for category_key in target_categories:
+            category_brand_counter: Dict[str, int] = {}
+
             candidates = self._fetch_candidates_for_category(
                 category_key=category_key,
                 user_id=user_id,
@@ -434,7 +435,7 @@ class WardrobeSuggestionsService:
                     category_key=category_key,
                     wardrobe_item=item,
                     ai_profile=ai_profile,
-                    brand_counter=brand_counter,
+                    brand_counter=category_brand_counter,
                     cut_rules=cut_rules,
                 )
  
@@ -466,7 +467,7 @@ class WardrobeSuggestionsService:
                 inserted_product_keys=inserted_product_keys,
                 inserted_family_keys=inserted_family_keys,
                 inserted_url_keys=inserted_url_keys,
-                brand_counter=brand_counter,
+                brand_counter=category_brand_counter,
                 limit=8,
             )
 
