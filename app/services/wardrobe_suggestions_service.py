@@ -635,25 +635,28 @@ class WardrobeSuggestionsService:
         central_norm = self._normalize_text(central_style or "")
 
         if central_norm in self.STYLE_COMPATIBILITY_MATRIX:
-            compatible_styles = [central_norm]
+            style_filter = central_norm
         else:
-            compatible_styles = None  # style non reconnu -> pas de filtre style
- 
+            style_filter = None  # style non reconnu -> pas de filtre style
+
+        sort_key_start = random.random()
+
         try:
             resp = self.client.rpc(
-                "search_wardrobe_v2",
+                "search_wardrobe_v3",
                 {
-                    "p_user_id":              user_id,
-                    "p_compatible_styles":    compatible_styles,
-                    "p_secondary_categories": allowed_secondaries,
-                    "p_sample_size":          limit,
+                    "p_user_id":            user_id,
+                    "p_style":              style_filter,
+                    "p_mvp_category_key":   category_key,
+                    "p_sort_key_start":     sort_key_start,
+                    "p_sample_size":        limit,
                 },
             ).execute()
             rows = resp.data or []
-            print(f"search_wardrobe_v2 [{category_key}] style={central_style} -> {len(rows)}")
+            print(f"search_wardrobe_v3 [{category_key}] style={central_style} sort_key_start={sort_key_start:.3f} -> {len(rows)}")
             return rows
         except Exception as e:
-            print(f"search_wardrobe_v2 failed {category_key}: {e}")
+            print(f"search_wardrobe_v3 failed {category_key}: {e}")
             return self._fetch_candidates_legacy(category_key=category_key, limit=min(limit, 120))
  
     def _fetch_candidates_legacy(self, category_key: str, limit: int = 120) -> List[Dict[str, Any]]:
