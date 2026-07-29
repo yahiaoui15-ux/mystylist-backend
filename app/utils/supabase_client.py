@@ -78,6 +78,23 @@ class SupabaseClient:
             print(f"❌ Erreur upsert {table}: {e}")
             raise
 
+    def update_table(self, table: str, data: dict, filters: dict):
+        """
+        Met à jour des lignes existantes selon des filtres (WHERE col = value AND ...).
+        """
+        try:
+            client = self._get_client()
+            if client is None:
+                raise Exception("Client Supabase non initialisé")
+            query_obj = client.table(table).update(data)
+            for key, value in filters.items():
+                query_obj = query_obj.eq(key, value)
+            response = query_obj.execute()
+            return response.data if response.data else None
+        except Exception as e:
+            print(f"❌ Erreur update {table}: {e}")
+            raise
+
     def get_client(self):
         """Expose le client Supabase natif (supabase-py)"""
         return self._get_client()

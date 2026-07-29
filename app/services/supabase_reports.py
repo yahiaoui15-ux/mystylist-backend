@@ -6,8 +6,7 @@ from app.utils.supabase_client import supabase
 class SupabaseReportsService:
     def __init__(self):
         self.supabase = supabase
-
-    async def save_report_metadata(self, user_id: str, payment_id: str, report_data: dict, pdf_url: str = None) -> dict:
+    async def save_report_metadata(self, user_id: str, payment_id: str, report_data: dict, pdf_url: str = None, report_type: str = None) -> dict:
         try:
             print("💾 Sauvegarde rapport à Supabase...")
 
@@ -18,6 +17,7 @@ class SupabaseReportsService:
             report_record = {
                 "user_id": user_id,
                 "payment_id": payment_id,  # ✅ IMPORTANT (idempotence et lookup)
+                "report_type": report_type,
                 "user_email": report_data.get("user_email"),
                 "user_name": report_data.get("user_name"),
 

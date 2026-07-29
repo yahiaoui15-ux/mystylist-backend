@@ -7,8 +7,10 @@ from datetime import datetime
 from app.services.wardrobe_analysis_service import wardrobe_analysis_service
 
 import stripe
-from fastapi import FastAPI, Request, BackgroundTasks, Header
+from fastapi import FastAPI, Request, BackgroundTasks, Header, Depends
 from fastapi.responses import JSONResponse
+from app.utils.auth import get_current_user_id
+from app.services import entitlements
 
 from app.config_prod import settings
 from app.services import (
@@ -102,7 +104,10 @@ async def debug_supabase_write():
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
         
 @app.get("/api/searches/{search_id}/recommendations")
-async def get_search_recommendations(search_id: str):
+async def get_search_recommendations(search_id: str, user_id: str = Depends(get_current_user_id)):
+    owner_check = supabase.query("user_searches", select_fields="user_id", filters={"id": search_id})
+    if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
     """
     Retourne les recommandations déjà générées pour une recherche,
     sans relancer une nouvelle génération.
@@ -139,17 +144,25 @@ async def get_search_recommendations(search_id: str):
         )
 
 @app.post("/api/searches/{search_id}/generate-recommendations")
-async def generate_search_recommendations(search_id: str):
+async def generate_search_recommendations(search_id: str, user_id: str = Depends(get_current_user_id)):
     """
     Génère les recommandations affiliées pour une recherche sauvegardée.
     Remplace le pipeline Make.com.
     """
+    owner_check = supabase.query("user_searches", select_fields="user_id", filters={"id": search_id})
+    if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
+
+    if not entitlements.can_use_search(user_id):
+        return JSONResponse(status_code=402, content={"ok": False, "error": "quota_exceeded", "upgrade_url": "/auth"})
+
     try:
         log(f"[SEARCH_RECO] Start generation for search_id={search_id}")
         result = await search_recommendation_service.generate_for_search(search_id)
         log(f"[SEARCH_RECO] Result for search_id={search_id}: {result}")
 
         if result.get("status") == "success":
+            entitlements.consume_search(user_id)
             return {
                 "ok": True,
                 "search_id": search_id,
@@ -178,16 +191,24 @@ async def generate_search_recommendations(search_id: str):
         )
 
 @app.post("/api/wardrobe/{item_id}/analyze")
-async def analyze_wardrobe_item(item_id: str):
+async def analyze_wardrobe_item(item_id: str, user_id: str = Depends(get_current_user_id)):
     """
     Analyse un vêtement uploadé dans wardrobe_items et remplit les colonnes IA.
     """
+    owner_check = supabase.query("wardrobe_items", select_fields="user_id", filters={"id": item_id})
+    if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
+
+    if not entitlements.can_use_upload(user_id):
+        return JSONResponse(status_code=402, content={"ok": False, "error": "quota_exceeded", "upgrade_url": "/auth"})
+
     try:
         log(f"[WARDROBE] Start analysis for item_id={item_id}")
         result = await wardrobe_analysis_service.analyze_item(item_id)
         log(f"[WARDROBE] Result for item_id={item_id}: {result}")
 
         if result.get("status") == "success":
+            entitlements.consume_upload(user_id)
             return {
                 "ok": True,
                 "item_id": item_id,
@@ -215,7 +236,10 @@ async def analyze_wardrobe_item(item_id: str):
         )
 
 @app.get("/api/wardrobe/{item_id}/suggestions")
-async def get_wardrobe_suggestions(item_id: str):
+async def get_wardrobe_suggestions(item_id: str, user_id: str = Depends(get_current_user_id)):
+    owner_check = supabase.query("wardrobe_items", select_fields="user_id", filters={"id": item_id})
+    if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
     """
     Retourne les suggestions déjà générées pour un vêtement central,
     sans relancer une nouvelle génération.
@@ -252,7 +276,10 @@ async def get_wardrobe_suggestions(item_id: str):
         )  
 
 @app.post("/api/wardrobe/{item_id}/suggestions")
-async def generate_wardrobe_suggestions(item_id: str):
+async def generate_wardrobe_suggestions(item_id: str, user_id: str = Depends(get_current_user_id)):
+    owner_check = supabase.query("wardrobe_items", select_fields="user_id", filters={"id": item_id})
+    if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
     """
     Régénère les suggestions de produits affiliés complémentaires
     autour d'un vêtement central de la garde-robe
@@ -548,7 +575,8 @@ async def process_checkout_session_job(
             user_id=user_id,
             payment_id=payment_id,
             report_data=report,
-            pdf_url=pdf_url
+            pdf_url=pdf_url,
+            report_type=report_type
         )
         log(">>> Rapport sauvegarde dans Supabase.")
         log(f"========== FIN TACHE ASYNC (SUCCES) ==========")
