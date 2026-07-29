@@ -749,7 +749,7 @@ class SearchRecommendationService:
 
         latest_run_response = (
             self.client.table("v_user_search_latest_run").select("*")
-            .eq("search_id", search_id).limit(1).execute()
+            .eq("user_search_id", search_id).limit(1).execute()
         )
 
         latest_runs = latest_run_response.data or []

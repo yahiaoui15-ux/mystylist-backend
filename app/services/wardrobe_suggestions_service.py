@@ -1627,7 +1627,7 @@ class WardrobeSuggestionsService:
                 "ok": True,
                 "found": False,
                 "item_id": item_id,
-                "central_item": row.get("central_item") or self._build_central_item_payload(item),
+                "central_item": self._build_central_item_payload(item),
                 "suggestions_by_category": [],
             }
 
