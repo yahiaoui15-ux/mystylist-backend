@@ -10,6 +10,13 @@ def has_full_access(user_id: str) -> bool:
     )
     return bool(response.data)
 
+def has_any_report(user_id: str) -> bool:
+    response = supabase.query(
+        "reports", select_fields="id",
+        filters={"user_id": user_id, "status": "completed"},
+    )
+    return bool(response.data)
+
 def _get_or_create_quota(user_id: str) -> dict:
     response = supabase.query("user_quota", filters={"user_id": user_id})
     if response.data:
@@ -17,8 +24,15 @@ def _get_or_create_quota(user_id: str) -> dict:
     supabase.insert_table("user_quota", {"user_id": user_id})
     return {"user_id": user_id, "free_searches_used": 0, "free_uploads_used": 0}
 
-def can_use_search(user_id: str) -> bool:
-    return has_full_access(user_id) or _get_or_create_quota(user_id)["free_searches_used"] < FREE_SEARCH_LIMIT
+def check_search_access(user_id: str):
+    """Retourne (allowed: bool, reason: str | None)."""
+    if has_full_access(user_id):
+        return True, None
+    if not has_any_report(user_id):
+        return False, "report_required"
+    if _get_or_create_quota(user_id)["free_searches_used"] < FREE_SEARCH_LIMIT:
+        return True, None
+    return False, "quota_exceeded"
 
 def consume_search(user_id: str):
     if has_full_access(user_id):
@@ -26,8 +40,15 @@ def consume_search(user_id: str):
     quota = _get_or_create_quota(user_id)
     supabase.update_table("user_quota", {"free_searches_used": quota["free_searches_used"] + 1}, {"user_id": user_id})
 
-def can_use_upload(user_id: str) -> bool:
-    return has_full_access(user_id) or _get_or_create_quota(user_id)["free_uploads_used"] < FREE_UPLOAD_LIMIT
+def check_upload_access(user_id: str):
+    """Retourne (allowed: bool, reason: str | None)."""
+    if has_full_access(user_id):
+        return True, None
+    if not has_any_report(user_id):
+        return False, "report_required"
+    if _get_or_create_quota(user_id)["free_uploads_used"] < FREE_UPLOAD_LIMIT:
+        return True, None
+    return False, "quota_exceeded"
 
 def consume_upload(user_id: str):
     if has_full_access(user_id):

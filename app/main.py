@@ -153,8 +153,10 @@ async def generate_search_recommendations(search_id: str, user_id: str = Depends
     if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
         return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
 
-    if not entitlements.can_use_search(user_id):
-        return JSONResponse(status_code=402, content={"ok": False, "error": "quota_exceeded", "upgrade_url": "/auth"})
+    allowed, reason = entitlements.check_search_access(user_id)
+    if not allowed:
+        return JSONResponse(status_code=402, content={"ok": False, "error": reason, "upgrade_url": "/auth"})
+
 
     try:
         log(f"[SEARCH_RECO] Start generation for search_id={search_id}")
@@ -199,8 +201,10 @@ async def analyze_wardrobe_item(item_id: str, user_id: str = Depends(get_current
     if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
         return JSONResponse(status_code=403, content={"ok": False, "error": "forbidden"})
 
-    if not entitlements.can_use_upload(user_id):
-        return JSONResponse(status_code=402, content={"ok": False, "error": "quota_exceeded", "upgrade_url": "/auth"})
+    allowed, reason = entitlements.check_upload_access(user_id)
+    if not allowed:
+        return JSONResponse(status_code=402, content={"ok": False, "error": reason, "upgrade_url": "/auth"})
+
 
     try:
         log(f"[WARDROBE] Start analysis for item_id={item_id}")
