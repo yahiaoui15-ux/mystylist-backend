@@ -175,6 +175,8 @@ class MorphologyService:
 
         part1_result = {}
         part2_result = {}
+        silhouette = None  # ✅ FIX: garantit que la variable existe même si analyze_image échoue
+
 
         try:
             # ====================================================================
