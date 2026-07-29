@@ -1127,6 +1127,10 @@ class PDFDataMapper:
             (["doudoune"], "doudoune_courte_pressionnee"),
             (["veste matelassee", "veste matelassée"], "veste_matelassee_courte_imprimee"),  # NOUVEAU
             (["cardigan long", "gilet long"], "gilet_long"),
+            (["cape elegante", "cape sophistiquee", "cape structuree"], "cape_elegante"),
+            (["cape mousseline", "cape en mousseline"], "cape_mousseline_noire"),
+            (["cape en laine", "cape laine"], "cape_en_laine"),
+            (["cape"], "cape_elegante"),  # fallback générique pour toute "cape" non matchée précisément
             (["blazer"], "blazer_cintre"),
             (["trench"], "veste_mi_longue"),
         ],
@@ -1491,7 +1495,7 @@ class PDFDataMapper:
  
         # Vestes — AVANT robes pour attraper blazer/veste cintré/fluide
         if any(k in n for k in ["blazer", "veste", "blouson", "perfecto",
-                                  "doudoune", "gilet", "cardigan long"]):
+                          "doudoune", "gilet", "cardigan long", "cape"]):
             return ["veste"]
  
         # Manteaux
