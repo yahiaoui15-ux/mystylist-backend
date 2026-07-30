@@ -432,6 +432,7 @@ async def process_checkout_session_job(
 
         photos_response = supabase.query("user_photos", select_fields="*", filters={"user_id": user_id})
         photos = photos_response.data if photos_response.data else []
+        photos.sort(key=lambda p: p.get("created_at") or "", reverse=True)
         log(f">>> Photos trouvees: {len(photos)}")
 
         auth_response = supabase.query("profiles", select_fields="*", filters={"id": user_id})
