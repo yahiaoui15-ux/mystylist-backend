@@ -117,7 +117,6 @@ COLOR_NAME_TO_HEX = {
     "lavande": "#E6E6FA",
 }
 
-@staticmethod
 def _resolve_hex_from_name(name: str, palette: list = None) -> str:
     """Retourne le hex d'une couleur depuis son nom normalisé, puis la palette."""
     if not name:
@@ -127,7 +126,7 @@ def _resolve_hex_from_name(name: str, palette: list = None) -> str:
         .replace("'", "").replace("é", "e").replace("è", "e")
         .replace("ê", "e").replace("â", "a").replace("î", "i")
         .replace("û", "u").replace("ô", "o").replace("ç", "c"))
-    hex_val = PDFDataMapper.COLOR_NAME_TO_HEX.get(normalized, "")
+    hex_val = COLOR_NAME_TO_HEX.get(normalized, "")
     if not hex_val and palette:
         for p in palette:
             if p.get("name", "").lower() == name.lower():
@@ -842,8 +841,8 @@ class PDFDataMapper:
                 for detail in existing_details:
                     hex_val = detail.get("hex", "")
                     if not hex_val or hex_val.upper() == "#DDDDDD":
-                        hex_val = PDFDataMapper._resolve_hex_from_name(
-                            detail.get("name", ""), palette
+                        hex_val = _resolve_hex_from_name(
+                        detail.get("name", ""), palette
                         )
                     fixed_details.append({**detail, "hex": hex_val or "#CCCCCC"})
                 transformed = {
