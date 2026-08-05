@@ -2373,12 +2373,21 @@ class PDFDataMapper:
             print(f"   minimize     : {_minimize}")
             print(f"   situations   : {_situations_p17}")
  
+            _avoid_raw = PDFDataMapper._safe_list(morphology_mvp.get("avoid", []))
+            _cuts_avoid_names = [
+                (a.get("name") or "").strip()
+                for a in _avoid_raw
+                if isinstance(a, dict) and a.get("name")
+            ]
+            print(f"   🚫 cuts_avoid transmis à style_pieces_selector: {_cuts_avoid_names}")
+
             _style_pieces = style_pieces_selector.select_10_pieces(
                 style_mix=_style_mix_p17,
                 silhouette_type=_silhouette_type,
                 body_parts_to_highlight=_highlight,
                 body_parts_to_minimize=_minimize,
                 selected_situations=_situations_p17,
+                cuts_avoid=_cuts_avoid_names,
             )
  
             liquid_data["style_pieces_page17"] = _style_pieces

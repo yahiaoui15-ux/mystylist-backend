@@ -278,6 +278,17 @@ class StylePiecesSelector:
     # Scoring
     # ─────────────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _piece_matches_avoid(piece: Dict[str, Any], cuts_avoid: List[str]) -> bool:
+        title = StylePiecesSelector._normalize(piece.get("title") or "")
+        piece_type = StylePiecesSelector._normalize(piece.get("piece_type") or "")
+        hay = f"{title} {piece_type}"
+        for term in cuts_avoid or []:
+            t = StylePiecesSelector._normalize(term)
+            if t and t in hay:
+                return True
+        return False
+
     def _score_piece(
         self,
         piece: Dict[str, Any],
@@ -459,6 +470,7 @@ class StylePiecesSelector:
         body_parts_to_highlight: List[str],
         body_parts_to_minimize: List[str],
         selected_situations: List[str],
+        cuts_avoid: List[str] = None,
     ) -> List[Dict[str, Any]]:
         print("\n" + "=" * 64)
         print("🎨 STYLE PIECES SELECTOR v1.1")
@@ -480,6 +492,11 @@ class StylePiecesSelector:
         if not candidates:
             print("⚠️ Aucun candidat")
             return []
+
+        if cuts_avoid:
+            before = len(candidates)
+            candidates = [c for c in candidates if not self._piece_matches_avoid(c, cuts_avoid)]
+            print(f"   🚫 cuts_avoid filter: {before} → {len(candidates)} (évités: {cuts_avoid})")
 
         scored = [
             (self._score_piece(p, style_tags, silhouette_type, h_zones, m_zones, context_tags), p)
