@@ -1085,11 +1085,13 @@ class PDFDataMapper:
             (["robe longue ceinturee motif", "longue ceinturee motif"], "robe_longue_ceinturee_motif_leopoard"),
             (["robe longue fluide fleurs", "longue fluide fleurs"], "robe_longue_fluide_fleurs"),
             (["robe midi ceinturee velours"], "robe_midi_ceinturee_velours"),
+            (["robe ceinture", "robe a ceinture", "ceinturee"], "robe_courte_cintree_ceinturee"),
             (["robe midi oversize"], "robe_midi_oversize"),
             (["robe midi plissee", "midi plissee"], "robe_midi_plissee"),
             (["robe moulante col v"], "robe_moulante_col_v"),
             (["robe moulante", "moulante"], "robe_moulante_col_rond"),
             (["robe a line", "a-line", "a line", "robe evase"], "robe_a_line"),
+            (["robe structuree", "structuree a la taille"], "robe_fourreau"),
             (["robe droite", "droite"], "robe_droite"),
             (["tunique sombre", "tunique longue sombre"], "tunique_sombre"),  # NOUVEAU
             # ── Combinaisons ──  ← NOUVEAU
@@ -1109,6 +1111,7 @@ class PDFDataMapper:
             (["veste structuree", "veste structurée"], "veste_structuree"),  # NOUVEAU
             (["veste ceinturee rayures cachemire"], "veste_ceinturee_rayures_cachemire"),
             (["veste ceinturee", "ceinturee"], "veste_ceinturee"),
+            (["veste ceinture", "ceinture"], "veste_ceinturee"),
             (["veste blazer droite noire"], "veste_blazer_droite_noire"),
             (["veste blazer droite", "blazer droit"], "veste_blazer_droite"),
             (["veste perfecto", "perfecto"], "veste_perfecto_cuir"),
@@ -1139,6 +1142,7 @@ class PDFDataMapper:
             (["duffle coat capuche"], "duffle_coat_capuche"),
             (["duffle coat", "duffle"], "duffle_coat"),
             (["manteau ceinture"], "manteau_ceinture"),
+            (["manteau cintre", "cintre"], "manteau_cintree"),
             (["manteau droit"], "manteau_droit"),
             (["manteau trapeze"], "manteau_trapeze"),
             (["trench court ceinture", "trench court"], "trench_court_ceinture"),
@@ -1977,8 +1981,14 @@ class PDFDataMapper:
         essentials_enriched = PDFDataMapper._enrich_mvp_essentials_with_visuals(essentials_raw)
 
         # Séparer dresses et jackets depuis essentials pour la page 9 v10
-        essentials_dresses  = essentials_enriched.get("dresses", [])
+        _NON_DRESS_KEYWORDS = ["jupe", "pantalon", "short", "jean", "legging"]
+        def _is_actually_a_dress(item):
+            name = (item.get("name") or "").lower()
+            return not any(kw in name for kw in _NON_DRESS_KEYWORDS)
+
+        essentials_dresses  = [i for i in essentials_enriched.get("dresses", []) if _is_actually_a_dress(i)]
         essentials_jackets  = essentials_enriched.get("jackets", [])
+
         # Rétrocompat : si GPT retourne encore dresses_jackets (vieux rapport)
         if not essentials_dresses and not essentials_jackets:
             dj = essentials_enriched.get("dresses_jackets", [])
