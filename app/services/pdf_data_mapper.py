@@ -1812,10 +1812,7 @@ class PDFDataMapper:
         # Couleurs à éviter pour filtre produits affiliés
         # Couleurs à exclure = "à éviter" + "à manier avec prudence"
         # (prudence = mieux vaut ne pas les proposer sans contexte stylistique)
-        _colors_to_avoid_raw = (
-            PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
-            + PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_prudence", []))
-        )
+        _colors_to_avoid_raw = PDFDataMapper._safe_list(colorimetry_raw.get("couleurs_eviter", []))
         _colors_to_avoid = [
             c.get("displayName", c.get("name", "")).lower()
             for c in _colors_to_avoid_raw
