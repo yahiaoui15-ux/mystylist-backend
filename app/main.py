@@ -83,6 +83,8 @@ log(f"[BOOT] Webhook route ready: /api/webhook/stripe")
 # =====================================================
 @app.get("/debug/supabase/env")
 async def debug_supabase_env():
+    if not settings.DEBUG:
+        return JSONResponse(status_code=404, content={"error": "not_found"})
     url = settings.SUPABASE_URL
     return {
         "supabase_url_tail": url[-32:],
@@ -91,6 +93,8 @@ async def debug_supabase_env():
 
 @app.post("/debug/supabase/write")
 async def debug_supabase_write():
+    if not settings.DEBUG:
+        return JSONResponse(status_code=404, content={"error": "not_found"})
     try:
         supabase.insert_table("stripe_events", {
             "id": f"evt_debug_{uuid.uuid4().hex[:8]}",
