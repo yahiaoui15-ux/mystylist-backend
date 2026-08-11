@@ -48,6 +48,13 @@ STRIPE_PRODUCT_REPORT_TYPE = {
     "prod_TDbm2sXLsIH6fa":  "complet",
 }
 
+# AJOUT — correspondance FR (interne) -> EN (schéma payments.report_type)
+REPORT_TYPE_FR_TO_EN = {
+    "colorimetrie": "colorimetry",
+    "morphologie": "morphology",
+    "complet": "complete",
+}
+
 PDFMONKEY_TEMPLATES = {
     "colorimetrie": "0122AF49-B0B9-4D10-9F1A-A2528FFE0CDD",
     "morphologie":  "59236C09-5823-43A0-99F2-5C7DF689DD16",
@@ -386,6 +393,22 @@ async def handle_stripe_webhook(
                 log(f">>> Type rapport: {report_type} | Template PDFMonkey: {template_id}")
         except Exception as e:
             log(f"[WEBHOOK] Impossible de lire les line_items (fallback complet): {e}")
+
+        # 5bis) Enregistrer le paiement dans payments (source de vérité des achats)
+        try:
+            report_type_en = REPORT_TYPE_FR_TO_EN.get(report_type, "complete")
+            supabase.insert_table("payments", {
+                "user_id": user_id,
+                "stripe_session_id": payment_id,
+                "stripe_payment_id": session.get("payment_intent"),
+                "report_type": report_type_en,
+                "amount": session.get("amount_total"),
+                "currency": (session.get("currency") or "eur").upper(),
+                "status": "completed",
+            })
+            log(f">>> payments: ligne inserée ({report_type_en}, session={payment_id})")
+        except Exception as e:
+            log(f"[WEBHOOK] Echec insertion payments (on continue): {e}")
 
         # 6) Lancer le job asynchrone et ACK 200 tout de suite
         log(f">>> LANCEMENT TACHE ASYNC user={user_id} payment={payment_id} type={report_type}")
