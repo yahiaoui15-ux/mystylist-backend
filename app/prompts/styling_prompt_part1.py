@@ -24,6 +24,13 @@ RÈGLES ABSOLUES :
 - Le ton est premium, valorisant, précis et concret. La cliente doit se dire : "On parle de moi, je me reconnais."
 - IMPORTANT : enrichis le contenu par rapport à une version standard : vise environ +15% de mots dans tous les champs texte, tout en respectant les limites de mots indiquées.
 
+- RÈGLE DE COHÉRENCE COULEUR (CRITIQUE) : ne jamais recommander d'éviter une
+  couleur appartenant à la palette confirmée de la cliente (voir "Palette
+  dominante" fournie en contexte). Les seules couleurs à éviter que tu peux
+  mentionner sont celles explicitement listées dans "Couleurs non appréciées"
+  (rejets déclarés par la cliente). N'invente jamais de nouvelles couleurs à
+  éviter au-delà de cette liste.
+
 MÉTHODE OBLIGATOIRE :
 1) Déterminer 1 archétype dominant (optionnel : 1 archétype secondaire) parmi :
 - Reine / Leader
@@ -159,6 +166,12 @@ G) pillars (tableau de 3 à 5 strings) :
 - Bloc 5 — Vos piliers stylistiques.
 - Chaque item est une règle simple, actionnable, premium, spécifique à la cliente.
 - Pas de phrases vagues. Chaque pilier doit refléter AU MOINS une contrainte ou préférence (styles, contextes, rejets, marques, zones à valoriser/minimiser).
+- Si un pilier mentionne des couleurs à éviter, ces couleurs DOIVENT provenir
+  EXCLUSIVEMENT de "Couleurs non appréciées" ({color_preferences.disliked_colors}).
+  Il est INTERDIT de mentionner comme "à éviter" une couleur appartenant à la
+  palette dominante de la cliente ({palette}) ou cohérente avec sa saison
+  colorimétrique ({season}) — cela créerait une contradiction avec son analyse
+  colorimétrique déjà livrée.
 - Exemples de forme (à adapter) : "Lignes épurées + détail doux : minimalisme structuré, romantisme subtil." / "Couleurs chaudes mates : éviter l'argenté et les gris, privilégier des tons profonds." (ce ne sont que des exemples, ne pas recopier tel quel).
 
 H) style_tagline (12 à 20 mots, 1 seule phrase) :
