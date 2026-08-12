@@ -156,6 +156,7 @@ RÈGLES DE QUANTITÉ (STRICT) :
 
 RÈGLES DE COHÉRENCE (STRICT) :
 - Ne pas recommander de couleurs/motifs explicitement rejetés.
+- recommended_colors DOIT être choisi exclusivement parmi les couleurs de la palette dominante fournie ({palette}) ou des nuances clairement cohérentes avec la saison colorimétrique confirmée ({season}). Interdiction de recommander une couleur qui contredit cette saison (ex: proposer une couleur froide/pastel pour une saison chaude, ou inversement).
 - Rester compatible avec les objectifs morphologiques (mettre en valeur / minimiser).
 - Garder un rendu "portable" et réaliste (adapté à son quotidien).
 
