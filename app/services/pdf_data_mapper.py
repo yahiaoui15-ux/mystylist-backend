@@ -1132,6 +1132,7 @@ class PDFDataMapper:
             (["cape mousseline", "cape en mousseline"], "cape_mousseline_noire"),
             (["cape en laine", "cape laine"], "cape_en_laine"),
             (["cape"], "cape_elegante"),  # fallback générique pour toute "cape" non matchée précisément
+            (["tissu fluide", "veste fluide", "veste en tissu fluide", "veste souple fluide"], "veste_droite_fluide"),  # NOUVEAU
             (["blazer"], "blazer_cintre"),
             (["trench"], "veste_mi_longue"),
         ],
