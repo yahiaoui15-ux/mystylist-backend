@@ -934,6 +934,7 @@ class PDFDataMapper:
             "blouse en u", "top encolure u", "col u",
             "pull en u", "pull u", "pull col u"], "top_encolure_u"),
             # ── Cache-cœur ──
+            (["blouse croisee cache coeur"], "blouse_croisee_cache_coeur"),  # NOUVEAU AUDIT — doit précéder les règles "cache coeur" génériques
             (["top col cache coeur", "top cache coeur col"], "top_col_cache_coeur"),
             (["cache-coeur", "cache coeur", "cachecoeur", "top cache coeur",
               "blouse cache coeur"], "top_cache_coeur"),
@@ -947,12 +948,18 @@ class PDFDataMapper:
             (["tshirt col bardot", "t-shirt bardot", "bardot"], "tshirt_col_bardot"),
             # ── Col carré ──
             (["top col carre", "col carre top"], "top_col_carre"),
+            (["body encolure carree"], "body_encolure_carree"),  # NOUVEAU AUDIT — doit précéder "encolure carree"
             (["encolure carree", "col carre"], "encolure_carree"),
             # ── Épaules froncées / épaulettes ──
             (["chemise epaules froncees", "epaules froncees"], "chemise_epaules_froncees"),
             (["tshirt fronce epaules", "t-shirt fronce epaules", "fronce aux epaules"], "tshirt_fronce_epaules"),  # NOUVEAU
             (["top manches courtes epaulettes", "epaulettes manches courtes"], "top_manches_courtes_a_epaulettes"),
             (["top epaulettes", "top a epaulettes"], "top_a_epaulettes"),
+            (["body epaules denudees", "epaules denudees"], "body_epaules_denudees"),  # NOUVEAU AUDIT
+            (["body noir bretelles", "body bretelles noir"], "body_noir_bretelles"),  # NOUVEAU AUDIT
+            (["top court droit asymetrique"], "top_court_droit_asymetrique"),  # NOUVEAU AUDIT — doit précéder "top court" générique ci-dessous
+            (["top court", "haut court"], "top_court"),  # NOUVEAU AUDIT
+            (["haut volumineux", "top volumineux"], "haut_volumineux"),  # NOUVEAU AUDIT
             (["epaulettes", "epaulette", "epaule structur"], "haut_epaulettes"),
             # ── Manches bouffantes ──
             (["blouse imprimee manches bouffantes"], "blouse_imprimee_manches_bouffantes"),
@@ -990,6 +997,8 @@ class PDFDataMapper:
             (["chemise droite fluide", "chemisier fluide", "chemise fluide","chemisier"], "chemise_droite_fluide"),
             (["chemise oversize rayee"], "chemise_oversize_rayee"),
             (["chemise oversize souple", "chemise oversize"], "chemise_oversize_souple"),
+            (["blouse ample imprimee", "blouse imprimee ample"], "blouse_ample_imprimee"),  # NOUVEAU AUDIT
+            (["blouse col tunisien", "col tunisien"], "blouse_col_tunisien"),  # NOUVEAU AUDIT
             (["blouse droite satinee", "blouse droite", "blouse satinee"], "blouse_droite_satinee"),
             (["blouse"], "blouse_droite_satinee"),
             # ── Rayures horizontales ──
@@ -1002,6 +1011,9 @@ class PDFDataMapper:
             (["col benitier", "benitier"], "top_sans_manches_col_benitier"),
             (["col benitier", "benitier", "sans manches col benitier"], "top_sans_manches_col_benitier"),
             (["pull col benitier", "pull benitier"], "top_sans_manches_col_benitier"),
+            (["pull col rond", "col rond pull"], "pull_col_rond"),  # NOUVEAU AUDIT — doit précéder le catch-all "pull"
+            (["pull over maille fine manches courtes", "pull over maille fina manches courtes", "pull over manches courtes"], "pull_over_maille_fina_manches_courtes"),  # NOUVEAU AUDIT
+            (["pull sans manches", "pull sans manche"], "pull_sans_manches"),  # NOUVEAU AUDIT
             (["pull col"], "pull_col_roul"),
             (["pull en maille", "pull maille", "pull"], "pull_col_roul"),
             # ── Pull / col roulé ──
@@ -1019,6 +1031,9 @@ class PDFDataMapper:
             # ── Col tailleur ──
             (["col tailleur"], "top_col_tailleur"),
             # ── Sweat ──
+            (["sweat bardot oversize", "sweat bardot"], "sweat_bardot_oversize"),  # NOUVEAU AUDIT — doit précéder le catch-all "sweat"
+            (["sweat capuche zippee court", "sweat capuche zippee", "sweat zippee court"], "sweat_capuche_zippee_court"),  # NOUVEAU AUDIT
+            (["sweatshirt demi zip", "sweat demi zip"], "sweatshirt_demi_zip"),  # NOUVEAU AUDIT
             (["sweat"], "pull_col_roul"),
         ],
  
@@ -1033,9 +1048,8 @@ class PDFDataMapper:
             (["jupe froncee", "jupe froncée", "jupe volantee"], "jupe_froncee"),  # NOUVEAU
             (["jupe trapeze", "trapeze", "jupe A-line"], "jupe_trapeze"),
             (["jupe patineuse", "patineuse"], "jupe_patineuse"),
-            (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe portefeuille midi"),
             (["jupe plissee", "jupe plissée"], "jupe_patineuse"),
-            (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe portefeuille midi"),
+            (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe_midi_portefeuille"),
             (["jupe midi evasee", "jupe midi évasée", "jupe evasee", "jupe évasée",
               "jupe evase", "jupe trapeze midi"], "jupe_trapeze"),
             # ── Pantalons larges ──
@@ -1141,12 +1155,23 @@ class PDFDataMapper:
         "manteau": [
             (["duffle coat capuche"], "duffle_coat_capuche"),
             (["duffle coat", "duffle"], "duffle_coat"),
+            (["manteau laine droit avec ceinture", "manteau laine ceinture"], "manteau_laine_droit_avec_ceinture"),  # NOUVEAU AUDIT — précède "manteau ceinture"
+            (["manteau ceinture laine", "manteau en laine ceinture"], "manteau_ceinture_laine"),  # NOUVEAU AUDIT — précède "manteau ceinture"
             (["manteau ceinture"], "manteau_ceinture"),
             (["manteau cintre", "cintre"], "manteau_cintree"),
             (["manteau droit"], "manteau_droit"),
+            (["manteau trapeze evase", "manteau trapeze ample"], "manteau_trapeze_evase"),  # NOUVEAU AUDIT — précède "manteau trapeze"
             (["manteau trapeze"], "manteau_trapeze"),
+            (["trench court fluide bleu"], "trench_court_fluide_bleu"),  # NOUVEAU AUDIT — précède impérativement les 2 lignes suivantes
+            (["trench court fluide"], "trench_court_fluide"),  # NOUVEAU AUDIT — précède "trench court ceinture"/"trench court"
             (["trench court ceinture", "trench court"], "trench_court_ceinture"),
+            (["trench long fluide"], "trench_long_fluide"),  # NOUVEAU AUDIT — précède "trench long"/"trench"
             (["trench long ceinture", "trench long", "trench"], "trench_long_ceinture_uni"),
+            (["manteau cocoon", "manteau cocon"], "manteau_cocoon"),  # NOUVEAU AUDIT
+            (["manteau col chale croise", "col chale croise", "manteau chale"], "manteau_col_chale_croise"),  # NOUVEAU AUDIT
+            (["manteau militaire boutonne", "manteau militaire"], "manteau_militaire_boutonne"),  # NOUVEAU AUDIT
+            (["manteau oversize droit laine melangee", "manteau oversize laine", "manteau oversize"], "manteau_oversize_droit_laine_melangee"),  # NOUVEAU AUDIT
+            (["manteau pied de poule structure", "pied de poule", "pied-de-poule"], "manteau_pied_de_poule_structure"),  # NOUVEAU AUDIT
             (["manteau"], "manteau_droit"),
         ],
  
