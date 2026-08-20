@@ -1004,6 +1004,7 @@ class PDFDataMapper:
             # ── Rayures horizontales ──
             (["rayures horizontales", "haut rayures horizontales", "top rayures"], "haut_rayures_horizontales"),
             # ── Top fluide générique ──
+            (["col rond large", "large col rond", "col rond ouvert"], "top_col_rond_fluide"),  # NOUVEAU AUDIT V2
             (["top col rond fluide"], "top_col_rond_fluide"),
             (["top fluide", "haut fluide"], "top_fluide"),
             (["fluide"], "chemise_droite_fluide"),
@@ -1046,7 +1047,7 @@ class PDFDataMapper:
             (["jupe droite"], "jupe_droite_taille_haute"),
             (["jupe midi portefeuille", "jupe portefeuille midi"], "jupe_midi_portefeuille"),
             (["jupe froncee", "jupe froncée", "jupe volantee"], "jupe_froncee"),  # NOUVEAU
-            (["jupe trapeze", "trapeze", "jupe A-line"], "jupe_trapeze"),
+            (["jupe trapeze", "trapeze", "jupe a-line", "jupe a line", "jupe a ligne", "jupe a-ligne", "jupe aligne", "jupe trapèze", "trapèze", "jupe A-line"], "jupe_trapeze"),  # CORRIGÉ AUDIT V2 — "jupe A-line" était en majuscule, jamais matché
             (["jupe patineuse", "patineuse"], "jupe_patineuse"),
             (["jupe plissee", "jupe plissée"], "jupe_patineuse"),
             (["jupe longue fluide", "jupe maxi", "jupe longue"], "jupe_midi_portefeuille"),
@@ -1147,6 +1148,8 @@ class PDFDataMapper:
             (["cape en laine", "cape laine"], "cape_en_laine"),
             (["cape"], "cape_elegante"),  # fallback générique pour toute "cape" non matchée précisément
             (["tissu fluide", "veste fluide", "veste en tissu fluide", "veste souple fluide"], "veste_droite_fluide"),  # NOUVEAU
+            (["blazer epaulettes", "veste epaulettes", "blazer a epaulettes", "epaulettes structurees"], "blazer_epaulettes"),  # CORRIGÉ AUDIT V2 — visuel dédié ajouté
+            (["veste bardot", "bardot veste", "col bardot veste", "epaules denudees veste","veste col bardot", "veste manches bardot"], "veste_bardot"),  # CORRIGÉ AUDIT V2 — visuel dédié ajouté
             (["blazer"], "blazer_cintre"),
             (["trench"], "veste_mi_longue"),
         ],
