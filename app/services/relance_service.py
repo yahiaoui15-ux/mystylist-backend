@@ -307,54 +307,110 @@ class RelanceService:
         """
 
     def _email_2_body(self, apercu_rapport_url) -> str:
+        recherche_img = "https://my-stylist.io/__l5e/assets-v1/b1ab15c7-802b-421e-abf4-ab6fd4fc5f6f/shot-recherche-articles.webp"
+        garde_robe_img = "https://my-stylist.io/__l5e/assets-v1/7596a74b-a8c8-47ec-9a50-00b3c83d4b62/shot-suggestions.webp"
+
         return f"""
-            <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
-                      font-size: 15px; line-height: 1.75; color: #555555;">
+            <p style="margin: 0 0 24px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
                 On a tendance à présenter le rapport MyStylist comme un document à lire.
-                C'est réducteur.<br><br>
-                Une fois ton rapport généré, il devient le moteur de deux outils qui te
-                font gagner du temps à chaque fois que tu as besoin de shopper :
-                <strong>Recherche</strong> (fini de scroller au hasard, tout est filtré
-                selon ton profil) et <strong>Garde-robe</strong> (des suggestions de tenues
-                à partir de tes propres vêtements).<br><br>
+                C'est réducteur : une fois généré, il devient le moteur de deux outils
+                que tu retrouves ensuite dans ton espace, à chaque fois que tu as besoin
+                de shopper.
+            </p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                style="margin-bottom: 24px; border: 1px solid #d8d2cc;">
+                <tr>
+                    <td style="padding: 0;">
+                        <img src="{recherche_img}" alt="Recherche MyStylist" width="504"
+                            style="display: block; width: 100%; max-width: 504px; height: auto;" />
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 18px 20px;">
+                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 17px;
+                                color: #1B3022;">Recherche</p>
+                        <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px;
+                                line-height: 1.6; color: #555;">
+                            Fini de scroller au hasard parmi des centaines d'articles. Tu tapes
+                            ce que tu cherches, on filtre automatiquement selon ta colorimétrie,
+                            ta morphologie et ton style — tu ne vois que ce qui te va vraiment.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                style="margin-bottom: 28px; border: 1px solid #d8d2cc;">
+                <tr>
+                    <td style="padding: 0;">
+                        <img src="{garde_robe_img}" alt="Garde-robe MyStylist" width="504"
+                            style="display: block; width: 100%; max-width: 504px; height: auto;" />
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 18px 20px;">
+                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 17px;
+                                color: #1B3022;">Garde-robe</p>
+                        <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px;
+                                line-height: 1.6; color: #555;">
+                            Prends en photo ce que tu as déjà dans ton dressing. MyStylist te
+                            propose des tenues complètes à partir de tes propres vêtements,
+                            selon ton profil — plus besoin de racheter pour te sentir bien habillée.
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
                 <a href="{apercu_rapport_url}" style="color: #1B3022; font-weight: 600;">
                 Voir un vrai extrait de rapport →</a>
             </p>
         """
 
+
     def _email_3_body(self, promo_code) -> str:
         code_block = f"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="margin: 24px 0; border: 1px dashed #8D8177; background-color: #f7f4f1;">
+                style="margin: 24px 0; border: 1px solid #8D8177; background-color: #f7f4f1;">
                 <tr>
                     <td style="padding: 20px; text-align: center;">
                         <p style="margin: 0 0 6px 0; font-family: Arial, Helvetica, sans-serif;
-                                  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
-                                  color: #8D8177;">Ton code, valable 48h</p>
+                                font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+                                color: #8D8177;">Ton code, valable 48h</p>
                         <p style="margin: 0; font-family: Georgia, serif; font-size: 22px;
-                                  color: #1B3022; font-weight: 700; letter-spacing: 1px;">
+                                color: #1B3022; font-weight: 700; letter-spacing: 1px;">
                             {promo_code or "CODE_INDISPONIBLE"}</p>
                     </td>
                 </tr>
             </table>
         """
         return f"""
-            <p style="margin: 0 0 12px 0; font-family: Arial, Helvetica, sans-serif;
-                      font-size: 15px; line-height: 1.75; color: #555555;">
-                Dernière relance avant qu'on arrête de te solliciter à ce sujet.<br><br>
-                Voici un code à usage unique, -20% sur le rapport de ton choix :
+            <p style="margin: 0 0 20px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
+                Se faire accompagner par un styliste personnel coûte généralement
+                plusieurs centaines d'euros pour une seule consultation.<br><br>
+                Ton analyse MyStylist t'offre l'équivalent — ta colorimétrie, ta
+                morphologie, ton style, construits à partir de tes propres réponses —
+                pour une fraction de ce prix. Et aujourd'hui, on te propose de l'obtenir
+                encore moins cher.
+            </p>
+            <p style="margin: 0 0 4px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
+                Voici un code à usage unique, valable 48h :
             </p>
             {code_block}
             <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
-                      font-size: 14px; line-height: 1.7; color: #8D8177;">
+                    font-size: 14px; line-height: 1.7; color: #8D8177;">
                 Passé ce délai, ce code ne sera plus utilisable et on ne te
-                recontactera plus.<br><br>
+                recontactera plus à ce sujet.<br><br>
                 Une dernière chose, si tu as deux secondes : qu'est-ce qui te retient
                 encore ? Tu peux répondre directement à cet email — on lit chaque
                 réponse.
             </p>
         """
-
 
 # Instance globale à exporter
 relance_service = RelanceService()
