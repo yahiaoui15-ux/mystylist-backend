@@ -217,13 +217,15 @@ class RelanceService:
                        style="max-width: 600px; width: 100%; background-color: #ffffff; border: 1px solid #d8d2cc;">
 
                     <tr>
-                        <td style="background-color: #1B3022; padding: 44px 48px 40px; text-align: center;">
-                            <p style="margin: 0 0 10px 0; font-family: Arial, Helvetica, sans-serif;
-                                      font-size: 10px; letter-spacing: 4px; text-transform: uppercase;
-                                      color: #8D8177;">L'ATELIER · ÉDITION 2026</p>
-                            <h1 style="margin: 0; font-family: Georgia, 'Times New Roman', serif;
-                                       font-size: 30px; font-weight: 400; color: #ffffff; letter-spacing: 2px;">
-                                my-stylist.io</h1>
+                        <td style="background-color: #1B3022; padding: 36px 48px 32px; text-align: center;">
+                            <p style="margin: 0 0 16px 0; font-family: Arial, Helvetica, sans-serif;
+                                    font-size: 10px; letter-spacing: 4px; text-transform: uppercase;
+                                    color: #8D8177;">L'ATELIER · ÉDITION 2026</p>
+                            <a href="https://my-stylist.io" style="text-decoration: none; display: inline-block;
+                                    background-color: #F5F5F5; padding: 14px 28px; border-radius: 4px;">
+                                <img src="https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/documents/Professional%20logo%20with%20elegant%20design%20elements%20(1).png"
+                                    alt="my-stylist.io" width="160" style="display: block; max-width: 160px; height: auto; border: 0;" />
+                            </a>
                         </td>
                     </tr>
 
