@@ -2,6 +2,11 @@ import json
 import uuid
 import sys
 import logging
+import os
+from pydantic import BaseModel
+from typing import Optional
+from app.services.relance_service import relance_service
+
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.services.wardrobe_analysis_service import wardrobe_analysis_service
@@ -72,11 +77,25 @@ app.add_middleware(
 )
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
+RELANCE_CRON_SECRET = os.getenv("RELANCE_CRON_SECRET", "")
+RELANCE_COUPON_ID = os.getenv("RELANCE_COUPON_ID", "")
 
 # --- Logs au boot pour verifier l'env deploye ---
 log(f"[BOOT] Using SUPABASE_URL (masked): ...{settings.SUPABASE_URL[-16:]}")
 log(f"[BOOT] Webhook route ready: /api/webhook/stripe")
 
+
+class RelanceRequest(BaseModel):
+    user_id: str
+    email: str
+    email_number: int
+    first_name: Optional[str] = None
+    eye_color: Optional[str] = None
+    hair_color: Optional[str] = None
+    primary_style: Optional[str] = None
+    personality_trait: Optional[str] = None
+    reports_tab_url: str = "https://my-stylist.io/auth?redirect=/app%3Ftab%3Drapports"
+    apercu_rapport_url: str = "https://my-stylist.io/apercu-rapport"
 
 # =====================================================
 # ENDPOINTS DEBUG
@@ -113,8 +132,61 @@ async def debug_supabase_write():
         return {"ok": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
-        
+
+# =====================================================
+# RELANCE EMAIL - Appelé par le cron Supabase
+# =====================================================
+@app.post("/api/relance/send")
+async def send_relance(
+    payload: RelanceRequest,
+    x_cron_secret: str = Header(None, alias="x-cron-secret"),
+):
+    if not RELANCE_CRON_SECRET or x_cron_secret != RELANCE_CRON_SECRET:
+        log(f"[RELANCE] Secret invalide ou manquant.")
+        return JSONResponse(status_code=401, content={"ok": False, "error": "invalid_cron_secret"})
+
+    if payload.email_number not in (1, 2, 3):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_email_number"})
+
+    promo_code = None
+    if payload.email_number == 3:
+        if not RELANCE_COUPON_ID:
+            log("[RELANCE] RELANCE_COUPON_ID non configure.")
+            return JSONResponse(status_code=500, content={"ok": False, "error": "missing_coupon_id"})
+        try:
+            promo_code = relance_service.generate_promo_code(RELANCE_COUPON_ID)
+        except Exception as e:
+            log(f"[RELANCE] Erreur generation code promo: {e}")
+            return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+    try:
+        result = await relance_service.send_relance_email(
+            user_email=payload.email,
+            email_number=payload.email_number,
+            first_name=payload.first_name,
+            eye_color=payload.eye_color,
+            hair_color=payload.hair_color,
+            primary_style=payload.primary_style,
+            personality_trait=payload.personality_trait,
+            reports_tab_url=payload.reports_tab_url,
+            apercu_rapport_url=payload.apercu_rapport_url,
+            promo_code=promo_code,
+        )
+    except Exception as e:
+        log(f"[RELANCE] Erreur envoi email {payload.email_number}: {e}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+    log(f"[RELANCE] Email {payload.email_number} envoye a {payload.email}")
+    return {
+        "ok": True,
+        "email_id": result.get("email_id"),
+        "user_id": payload.user_id,
+        "email_number": payload.email_number,
+        "promo_code": promo_code,
+    }
 @app.get("/api/searches/{search_id}/recommendations")
+
+
 async def get_search_recommendations(search_id: str, user_id: str = Depends(get_current_user_id)):
     owner_check = supabase.query("user_searches", select_fields="user_id", filters={"id": search_id})
     if not owner_check.data or owner_check.data[0].get("user_id") != user_id:
