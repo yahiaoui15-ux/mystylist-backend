@@ -66,6 +66,7 @@ class RelanceService:
 
     async def send_relance_email(
         self,
+        user_id: str,
         user_email: str,
         email_number: int,
         first_name: Optional[str] = None,
@@ -97,6 +98,7 @@ class RelanceService:
             print(f"📧 Relance email {email_number} → {user_email}...")
 
             html_content = self._build_relance_html(
+                user_id=user_id,
                 email_number=email_number,
                 first_name=first_name,
                 eye_color=eye_color,
@@ -117,12 +119,18 @@ class RelanceService:
             if first_name:
                 subject = f"{first_name}, {subject[0].lower()}{subject[1:]}"
 
+            unsubscribe_url = f"https://mystylist-backend-production.up.railway.app/api/relance/unsubscribe?u={user_id}"
+
             payload = {
                 "from": self.sender_email,
                 "to": user_email,
                 "subject": subject,
                 "html": html_content,
                 "reply_to": "contact@my-stylist.io",
+                "headers": {
+                    "List-Unsubscribe": f"<{unsubscribe_url}>",
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                },
             }
 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -162,6 +170,7 @@ class RelanceService:
 
     def _build_relance_html(
         self,
+        user_id: str,
         email_number: int,
         first_name: Optional[str],
         eye_color: Optional[str],
@@ -193,13 +202,7 @@ class RelanceService:
             cta_label = "Utiliser mon code maintenant"
             cta_url = reports_tab_url
 
-        unsubscribe_line = """
-            <p style="margin: 24px 0 0 0; font-family: Arial, Helvetica, sans-serif;
-                      font-size: 11px; line-height: 1.6; color: #a8a29a; text-align: center;">
-                Tu ne souhaites plus recevoir ces emails ?
-                <a href="{{RESEND_UNSUBSCRIBE_URL}}" style="color: #8D8177;">Te désabonner ici.</a>
-            </p>
-        """
+
 
         html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -251,7 +254,7 @@ class RelanceService:
                                 </tr>
                             </table>
 
-                            {unsubscribe_line}
+                            {self._unsubscribe_line(user_id)}
                         </td>
                     </tr>
 
@@ -270,7 +273,17 @@ class RelanceService:
 </body>
 </html>"""
         return html
-
+    
+    def _unsubscribe_line(self, user_id: str) -> str:
+        unsubscribe_url = f"https://mystylist-backend-production.up.railway.app/api/relance/unsubscribe?u={user_id}"
+        return f"""
+            <p style="margin: 24px 0 0 0; font-family: Arial, Helvetica, sans-serif;
+                      font-size: 11px; line-height: 1.6; color: #a8a29a; text-align: center;">
+                Tu ne souhaites plus recevoir ces emails ?
+                <a href="{unsubscribe_url}" style="color: #8D8177;">Te désabonner ici.</a>
+            </p>
+        """
+    
     def _email_1_body(self, eye_color, hair_color, primary_style, personality_trait) -> str:
         eye = eye_color or "vos yeux"
         hair = hair_color or "vos cheveux"

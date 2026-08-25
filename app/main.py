@@ -14,6 +14,7 @@ from app.services.wardrobe_analysis_service import wardrobe_analysis_service
 import stripe
 from fastapi import FastAPI, Request, BackgroundTasks, Header, Depends
 from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse
 from app.utils.auth import get_current_user_id
 from app.services import entitlements
 
@@ -161,6 +162,7 @@ async def send_relance(
 
     try:
         result = await relance_service.send_relance_email(
+            user_id=payload.user_id,
             user_email=payload.email,
             email_number=payload.email_number,
             first_name=payload.first_name,
@@ -184,6 +186,34 @@ async def send_relance(
         "email_number": payload.email_number,
         "promo_code": promo_code,
     }
+
+
+@app.get("/api/relance/unsubscribe")
+async def unsubscribe_get(u: str):
+    """Lien cliquable dans le corps de l'email + clic manuel."""
+    try:
+        supabase.update_table("relance_tracking", {"unsubscribed": True}, filters={"user_id": u})
+        log(f"[RELANCE] Desabonnement (GET) user_id={u}")
+    except Exception as e:
+        log(f"[RELANCE] Erreur desabonnement GET user_id={u}: {e}")
+    return HTMLResponse("""
+        <html><body style="font-family: Arial; text-align: center; padding: 60px 20px;">
+        <h2 style="color: #1B3022;">Vous êtes désabonné(e)</h2>
+        <p style="color: #555;">Vous ne recevrez plus d'emails de relance de MyStylist.io.</p>
+        </body></html>
+    """)
+
+
+@app.post("/api/relance/unsubscribe")
+async def unsubscribe_post(u: str):
+    """Appelé automatiquement par le client mail (bouton natif Gmail/Outlook)."""
+    try:
+        supabase.update_table("relance_tracking", {"unsubscribed": True}, filters={"user_id": u})
+        log(f"[RELANCE] Desabonnement (POST one-click) user_id={u}")
+    except Exception as e:
+        log(f"[RELANCE] Erreur desabonnement POST user_id={u}: {e}")
+    return JSONResponse(status_code=200, content={"ok": True})
+
 @app.get("/api/searches/{search_id}/recommendations")
 
 
