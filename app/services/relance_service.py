@@ -28,7 +28,7 @@ class RelanceService:
     def __init__(self):
         self.api_key = os.getenv("RESEND_API_KEY", "").strip()
         self.base_url = "https://api.resend.com"
-        self.sender_email = "noreply@my-stylist.io"
+        self.sender_email = "contact@my-stylist.io"
 
         if not self.api_key:
             print("⚠️ AVERTISSEMENT: RESEND_API_KEY non configurée (relance)")
