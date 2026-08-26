@@ -6,7 +6,7 @@ import os
 from pydantic import BaseModel
 from typing import Optional
 from app.services.relance_service import relance_service
-
+from svix.webhooks import Webhook, WebhookVerificationError
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from app.services.wardrobe_analysis_service import wardrobe_analysis_service
@@ -80,7 +80,7 @@ app.add_middleware(
 stripe.api_key = settings.STRIPE_SECRET_KEY
 RELANCE_CRON_SECRET = os.getenv("RELANCE_CRON_SECRET", "")
 RELANCE_COUPON_ID = os.getenv("RELANCE_COUPON_ID", "")
-
+RESEND_WEBHOOK_SECRET = os.getenv("RESEND_WEBHOOK_SECRET", "")
 # --- Logs au boot pour verifier l'env deploye ---
 log(f"[BOOT] Using SUPABASE_URL (masked): ...{settings.SUPABASE_URL[-16:]}")
 log(f"[BOOT] Webhook route ready: /api/webhook/stripe")
@@ -214,6 +214,58 @@ async def unsubscribe_post(u: str):
         log(f"[RELANCE] Erreur desabonnement POST user_id={u}: {e}")
     return JSONResponse(status_code=200, content={"ok": True})
 
+# =====================================================
+# WEBHOOK RESEND - Tracking clics/livraison relance
+# =====================================================
+@app.post("/api/relance/webhook")
+async def resend_webhook(request: Request):
+    payload_bytes = await request.body()
+
+    try:
+        wh = Webhook(RESEND_WEBHOOK_SECRET)
+        event = wh.verify(payload_bytes, {
+            "svix-id": request.headers.get("svix-id"),
+            "svix-timestamp": request.headers.get("svix-timestamp"),
+            "svix-signature": request.headers.get("svix-signature"),
+        })
+    except WebhookVerificationError as e:
+        log(f"[RESEND_WEBHOOK] Signature invalide: {e}")
+        return JSONResponse(status_code=400, content={"ok": False})
+
+    event_type = event.get("type")
+    data = event.get("data", {})
+    email_id = data.get("email_id")
+
+    if not email_id:
+        return JSONResponse(status_code=200, content={"ok": True, "ignored": "no_email_id"})
+
+    if event_type == "email.clicked":
+        clicked_link = data.get("click", {}).get("link", "")
+        log(f"[RESEND_WEBHOOK] Clic sur {email_id}: {clicked_link}")
+        _mark_relance_event(email_id, "clicked")
+    elif event_type == "email.delivered":
+        log(f"[RESEND_WEBHOOK] Delivre: {email_id}")
+        _mark_relance_event(email_id, "delivered")
+
+    return JSONResponse(status_code=200, content={"ok": True})
+
+
+def _mark_relance_event(email_id: str, event_kind: str):
+    """event_kind: 'clicked' ou 'delivered'"""
+    for n in (1, 2, 3):
+        try:
+            match = supabase.query("relance_tracking", select_fields="user_id", filters={f"email_{n}_id": email_id})
+            if match.data:
+                field = f"email_{n}_clicked_at" if event_kind == "clicked" else f"email_{n}_delivered_at"
+                supabase.update_table(
+                    "relance_tracking",
+                    {field: datetime.utcnow().isoformat()},
+                    filters={f"email_{n}_id": email_id},
+                )
+                return
+        except Exception as e:
+            log(f"[RESEND_WEBHOOK] Erreur update email_{n}: {e}")
+            
 @app.get("/api/searches/{search_id}/recommendations")
 
 
