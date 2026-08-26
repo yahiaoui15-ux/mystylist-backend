@@ -97,9 +97,24 @@ class RelanceService:
         try:
             print(f"📧 Relance email {email_number} → {user_email}...")
 
+            subject_map = {
+                1: "ton profil MyStylist est prêt",
+                2: "voici ce que ton rapport va changer concrètement",
+                3: "-20% sur ton rapport pendant 48h",
+            }
+            subject = subject_map.get(email_number, "Ton profil MyStylist")
+
+            preheader_map = {
+                1: "Il ne reste qu'à choisir l'analyse que tu souhaites recevoir.",
+                2: "Ton rapport n'est que le début de ton expérience MyStylist.",
+                3: "Une dernière offre avant qu'on n'en reparle plus.",
+            }
+            preheader = preheader_map.get(email_number, "")
+
             html_content = self._build_relance_html(
                 user_id=user_id,
                 email_number=email_number,
+                preheader=preheader,
                 first_name=first_name,
                 eye_color=eye_color,
                 hair_color=hair_color,
@@ -110,12 +125,6 @@ class RelanceService:
                 promo_code=promo_code,
             )
 
-            subject_map = {
-                1: "Ton profil MyStylist est prêt",
-                2: "Ton rapport ne s'arrête pas à la lecture",
-                3: "-20% sur ton rapport, valable 48h",
-            }
-            subject = subject_map.get(email_number, "Ton profil MyStylist")
             if first_name:
                 subject = f"{first_name}, {subject[0].lower()}{subject[1:]}"
 
@@ -172,6 +181,7 @@ class RelanceService:
         self,
         user_id: str,
         email_number: int,
+        preheader: str,
         first_name: Optional[str],
         eye_color: Optional[str],
         hair_color: Optional[str],
@@ -191,16 +201,27 @@ class RelanceService:
         # ---- Contenu spécifique à chaque email ----
         if email_number == 1:
             body_html = self._email_1_body(eye_color, hair_color, primary_style, personality_trait)
-            cta_label = "Voir mes rapports"
+            cta_label = "Choisir mon analyse"
             cta_url = reports_tab_url
+            post_cta_html = """
+                <p style="margin: 0 0 8px 0; font-family: Arial, Helvetica, sans-serif;
+                          font-size: 13px; line-height: 1.7; color: #8D8177; text-align: center;">
+                    Et avec le Rapport Complet, ton profil alimente aussi Recherche et
+                    Garde-robe en illimité : deux outils pour trouver des vêtements
+                    adaptés à toi et composer des tenues avec ce que tu possèdes déjà.
+                    Les autres rapports donnent droit à un premier essai gratuit.
+                </p>
+            """
         elif email_number == 2:
             body_html = self._email_2_body(apercu_rapport_url)
-            cta_label = "Découvrir mes rapports personnalisés"
+            cta_label = "Voir ce que mon analyse peut révéler"
             cta_url = reports_tab_url
+            post_cta_html = ""
         else:  # email 3
             body_html = self._email_3_body(promo_code)
-            cta_label = "Utiliser mon code maintenant"
+            cta_label = "Profiter de -20% sur mon rapport"
             cta_url = reports_tab_url
+            post_cta_html = ""
 
 
 
@@ -212,6 +233,7 @@ class RelanceService:
     <title>MyStylist.io</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #F5F5F5;">
+    <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F5F5F5;">{preheader}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
            style="background-color: #F5F5F5; padding: 40px 16px;">
         <tr>
@@ -220,14 +242,11 @@ class RelanceService:
                        style="max-width: 600px; width: 100%; background-color: #ffffff; border: 1px solid #d8d2cc;">
 
                     <tr>
-                        <td style="background-color: #1B3022; padding: 36px 48px 32px; text-align: center;">
-                            <p style="margin: 0 0 16px 0; font-family: Arial, Helvetica, sans-serif;
-                                    font-size: 10px; letter-spacing: 4px; text-transform: uppercase;
-                                    color: #8D8177;">L'ATELIER · ÉDITION 2026</p>
+                        <td style="background-color: #1B3022; padding: 18px 48px 16px; text-align: center;">
                             <a href="https://my-stylist.io" style="text-decoration: none; display: inline-block;
-                                    background-color: #F5F5F5; padding: 14px 28px; border-radius: 4px;">
+                                    background-color: #F5F5F5; padding: 8px 16px; border-radius: 4px;">
                                 <img src="https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/documents/Professional%20logo%20with%20elegant%20design%20elements%20(1).png"
-                                    alt="my-stylist.io" width="160" style="display: block; max-width: 160px; height: auto; border: 0;" />
+                                    alt="my-stylist.io" width="90" style="display: block; max-width: 90px; height: auto; border: 0;" />
                             </a>
                         </td>
                     </tr>
@@ -241,7 +260,7 @@ class RelanceService:
                             {body_html}
 
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                                   border="0" style="margin: 32px 0;">
+                                   border="0" style="margin: 28px 0;">
                                 <tr>
                                     <td align="center">
                                         <a href="{cta_url}"
@@ -253,6 +272,8 @@ class RelanceService:
                                     </td>
                                 </tr>
                             </table>
+
+                            {post_cta_html}
 
                             {self._unsubscribe_line(user_id)}
                         </td>
@@ -285,42 +306,64 @@ class RelanceService:
         """
     
     def _email_1_body(self, eye_color, hair_color, primary_style, personality_trait) -> str:
-        eye = eye_color or "vos yeux"
-        hair = hair_color or "vos cheveux"
-        style = primary_style or "votre style"
-        trait = personality_trait or "votre personnalité"
-
-        return f"""
-            <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
+        return """
+            <p style="margin: 0 0 20px 0; font-family: Arial, Helvetica, sans-serif;
                       font-size: 15px; line-height: 1.75; color: #555555;">
                 Ton profil MyStylist est complet et toutes tes réponses sont bien
                 enregistrées.<br><br>
-                D'après ce que tu nous as confié — une personnalité plutôt {trait},
-                un style {style}, ta colorimétrie de base (yeux {eye}, cheveux {hair})
-                — on a déjà tout ce qu'il faut pour personnaliser ton analyse.<br><br>
-                Il ne te reste plus qu'à choisir le rapport que tu souhaites recevoir.<br><br>
-                Et ce n'est que le début : une fois ton rapport en main, tu débloques
-                aussi <strong>Recherche</strong> (des suggestions shopping filtrées selon
-                TON profil) et <strong>Garde-robe</strong> (des tenues composées à partir
-                de tes propres vêtements).
+                Tu as pris le temps de nous parler de tes goûts, de ton style et
+                de ce que tu souhaites mettre en valeur. On a maintenant tout ce
+                qu'il faut pour personnaliser ton analyse.
             </p>
         """
 
     def _email_2_body(self, apercu_rapport_url) -> str:
+        palette_img = "https://my-stylist.io/__l5e/assets-v1/c82b019f-ade7-4c59-b0b3-496bf1609ee7/er-page-palette.webp"
+        coupes_img = "https://my-stylist.io/__l5e/assets-v1/3d6f22ae-795f-4af7-bf01-24028ea425f0/er-page-coupes.webp"
+        looks_img = "https://my-stylist.io/__l5e/assets-v1/cb9aae89-a7d3-475d-85b3-4f230f75c20c/er-page-looks.webp"
         recherche_img = "https://my-stylist.io/__l5e/assets-v1/b1ab15c7-802b-421e-abf4-ab6fd4fc5f6f/shot-recherche-articles.webp"
         garde_robe_img = "https://my-stylist.io/__l5e/assets-v1/7596a74b-a8c8-47ec-9a50-00b3c83d4b62/shot-suggestions.webp"
 
+        def report_page(img_url, alt):
+            return f"""
+                <td style="padding: 4px;">
+                    <img src="{img_url}" alt="{alt}" width="164"
+                        style="display: block; width: 100%; max-width: 164px; height: auto;
+                                border: 1px solid #d8d2cc;" />
+                </td>
+            """
+
         return f"""
-            <p style="margin: 0 0 24px 0; font-family: Arial, Helvetica, sans-serif;
+            <p style="margin: 0 0 20px 0; font-family: Arial, Helvetica, sans-serif;
                     font-size: 15px; line-height: 1.75; color: #555555;">
-                On a tendance à présenter le rapport MyStylist comme un document à lire.
-                C'est réducteur : une fois généré, il devient le moteur de deux outils
-                que tu retrouves ensuite dans ton espace, à chaque fois que tu as besoin
-                de shopper.
+                Ton rapport ne s'arrête pas à une saison ou à un type de silhouette.<br><br>
+                Il transforme les informations de ton profil en recommandations
+                concrètes que tu peux réellement utiliser pour t'habiller et
+                acheter plus facilement.
             </p>
 
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                style="margin-bottom: 24px; border: 1px solid #d8d2cc;">
+                style="margin-bottom: 24px;">
+                <tr>
+                    {report_page(palette_img, "Palette personnalisée")}
+                    {report_page(coupes_img, "Recommandations morphologie")}
+                    {report_page(looks_img, "Style et looks")}
+                </tr>
+            </table>
+
+            <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
+                <a href="{apercu_rapport_url}" style="color: #1B3022; font-weight: 600;">
+                Voir un vrai extrait de rapport →</a>
+            </p>
+
+            <p style="margin: 0 0 20px 0; font-family: Arial, Helvetica, sans-serif;
+                    font-size: 15px; line-height: 1.75; color: #555555;">
+                Et l'analyse continue après le rapport :
+            </p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                style="margin-bottom: 18px; border: 1px solid #d8d2cc;">
                 <tr>
                     <td style="padding: 0;">
                         <img src="{recherche_img}" alt="Recherche MyStylist" width="504"
@@ -328,14 +371,13 @@ class RelanceService:
                     </td>
                 </tr>
                 <tr>
-                    <td style="padding: 18px 20px;">
-                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 17px;
+                    <td style="padding: 16px 20px;">
+                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 16px;
                                 color: #1B3022;">Recherche</p>
                         <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px;
                                 line-height: 1.6; color: #555;">
-                            Fini de scroller au hasard parmi des centaines d'articles. Tu tapes
-                            ce que tu cherches, on filtre automatiquement selon ta colorimétrie,
-                            ta morphologie et ton style — tu ne vois que ce qui te va vraiment.
+                            Les résultats sont filtrés selon ton profil, plutôt que des
+                            centaines de résultats génériques.
                         </p>
                     </td>
                 </tr>
@@ -350,31 +392,28 @@ class RelanceService:
                     </td>
                 </tr>
                 <tr>
-                    <td style="padding: 18px 20px;">
-                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 17px;
+                    <td style="padding: 16px 20px;">
+                        <p style="margin: 0 0 6px 0; font-family: Georgia, serif; font-size: 16px;
                                 color: #1B3022;">Garde-robe</p>
                         <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px;
                                 line-height: 1.6; color: #555;">
-                            Prends en photo ce que tu as déjà dans ton dressing. MyStylist te
-                            propose des tenues complètes à partir de tes propres vêtements,
-                            selon ton profil — plus besoin de racheter pour te sentir bien habillée.
+                            Des idées de tenues pour mieux exploiter les vêtements que
+                            tu possèdes déjà.
                         </p>
                     </td>
                 </tr>
             </table>
-
-            <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
-                    font-size: 15px; line-height: 1.75; color: #555555;">
-                <a href="{apercu_rapport_url}" style="color: #1B3022; font-weight: 600;">
-                Voir un vrai extrait de rapport →</a>
-            </p>
         """
 
 
+    REPORT_PRICES = {"colorimetrie": 39, "morphologie": 59, "complet": 79}
+
     def _email_3_body(self, promo_code) -> str:
+        discounted = {k: round(v * 0.8, 2) for k, v in self.REPORT_PRICES.items()}
+
         code_block = f"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                style="margin: 24px 0; border: 1px solid #8D8177; background-color: #f7f4f1;">
+                style="margin: 20px 0; border: 1px solid #8D8177; background-color: #f7f4f1;">
                 <tr>
                     <td style="padding: 20px; text-align: center;">
                         <p style="margin: 0 0 6px 0; font-family: Arial, Helvetica, sans-serif;
@@ -387,25 +426,34 @@ class RelanceService:
                 </tr>
             </table>
         """
+
+        prices_block = f"""
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 20px;">
+                <tr>
+                    <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #555; padding: 4px 0;">
+                        Rapport Complet : <strong>{discounted['complet']}€</strong> au lieu de 79€
+                    </td>
+                </tr>
+                <tr>
+                    <td style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #8D8177; padding: 2px 0;">
+                        Colorimétrie : {discounted['colorimetrie']}€ au lieu de 39€ · Morphologie : {discounted['morphologie']}€ au lieu de 59€
+                    </td>
+                </tr>
+            </table>
+        """
+
         return f"""
-            <p style="margin: 0 0 20px 0; font-family: Arial, Helvetica, sans-serif;
+            <p style="margin: 0 0 16px 0; font-family: Arial, Helvetica, sans-serif;
                     font-size: 15px; line-height: 1.75; color: #555555;">
-                Se faire accompagner par un styliste personnel coûte généralement
-                plusieurs centaines d'euros pour une seule consultation.<br><br>
-                Ton analyse MyStylist t'offre l'équivalent — ta colorimétrie, ta
-                morphologie, ton style, construits à partir de tes propres réponses —
-                pour une fraction de ce prix. Et aujourd'hui, on te propose de l'obtenir
-                encore moins cher.
-            </p>
-            <p style="margin: 0 0 4px 0; font-family: Arial, Helvetica, sans-serif;
-                    font-size: 15px; line-height: 1.75; color: #555555;">
-                Voici un code à usage unique, valable 48h :
+                Un dernier message au sujet de ton analyse MyStylist.<br><br>
+                Si tu hésites encore, on t'a réservé une dernière offre : -20% sur
+                le rapport de ton choix, pendant 48h.
             </p>
             {code_block}
+            {prices_block}
             <p style="margin: 0 0 28px 0; font-family: Arial, Helvetica, sans-serif;
                     font-size: 14px; line-height: 1.7; color: #8D8177;">
-                Passé ce délai, ce code ne sera plus utilisable et on ne te
-                recontactera plus à ce sujet.<br><br>
+                Passé ce délai, ce code ne sera plus utilisable.<br><br>
                 Une dernière chose, si tu as deux secondes : qu'est-ce qui te retient
                 encore ? Tu peux répondre directement à cet email — on lit chaque
                 réponse.
