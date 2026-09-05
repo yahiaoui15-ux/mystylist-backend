@@ -10,7 +10,11 @@ import json
 import re
 from app.utils.openai_client import openai_client
 from app.utils.openai_call_tracker import call_tracker
-from app.prompts.morphology_part1_prompt import MORPHOLOGY_PART1_SYSTEM_PROMPT, MORPHOLOGY_PART1_USER_PROMPT
+from app.prompts.morphology_part1_prompt import (
+    MORPHOLOGY_PART1_SYSTEM_PROMPT,
+    MORPHOLOGY_PART1_USER_PROMPT,
+    MORPHOLOGY_PART1_NOPHOTO_USER_PROMPT,
+)
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
 
 
@@ -158,9 +162,9 @@ class MorphologyService:
         print("=" * 80)
 
         body_photo_url = user_data.get("body_photo_url")
-        if not body_photo_url:
-            print("❌ Pas de photo du corps fournie")
-            return {}
+        has_photo = bool(body_photo_url)
+        if not has_photo:
+            print("ℹ️ Pas de photo de corps — mode mensurations")
 
         print("\n📋 RÉCUPÉRATION MORPHOLOGY GOALS DU ONBOARDING")
         profile = user_data.get("profile", {})
@@ -186,23 +190,50 @@ class MorphologyService:
             print("█ APPEL 1/2: MORPHOLOGY PART 1 - SILHOUETTE + BODY ANALYSIS (VISION)")
             print("█" * 80)
 
-            self.openai.set_context("Morphology Part 1", "PART 1: Silhouette")
             self.openai.set_system_prompt(MORPHOLOGY_PART1_SYSTEM_PROMPT)
 
-            user_prompt_part1 = self.safe_format(
-                MORPHOLOGY_PART1_USER_PROMPT,
-                body_photo_url=body_photo_url,
-                shoulder_circumference=user_data.get("shoulder_circumference", 0),
-                waist_circumference=user_data.get("waist_circumference", 0),
-                hip_circumference=user_data.get("hip_circumference", 0),
-                bust_circumference=user_data.get("bust_circumference", 0)
-            )
+            if has_photo:
+                self.openai.set_context("Morphology Part 1", "PART 1: Silhouette (vision)")
 
-            response_part1 = await self.openai.analyze_image(
-                image_urls=[body_photo_url],
-                prompt=user_prompt_part1,
-                max_tokens=800
-            )
+                user_prompt_part1 = self.safe_format(
+                    MORPHOLOGY_PART1_USER_PROMPT,
+                    body_photo_url=body_photo_url,
+                    shoulder_circumference=user_data.get("shoulder_circumference", 0),
+                    waist_circumference=user_data.get("waist_circumference", 0),
+                    hip_circumference=user_data.get("hip_circumference", 0),
+                    bust_circumference=user_data.get("bust_circumference", 0)
+                )
+
+                response_part1 = await self.openai.analyze_image(
+                    image_urls=[body_photo_url],
+                    prompt=user_prompt_part1,
+                    max_tokens=800
+                )
+            else:
+                self.openai.set_context("Morphology Part 1", "PART 1: Silhouette (mensurations)")
+
+                computed_silhouette = self._compute_silhouette_from_measurements(
+                    shoulder=user_data.get("shoulder_circumference", 0),
+                    bust=user_data.get("bust_circumference", 0),
+                    waist=user_data.get("waist_circumference", 0),
+                    hip=user_data.get("hip_circumference", 0),
+                )
+                print(f"   • Silhouette calculée: {computed_silhouette or 'indéterminée'}")
+
+                user_prompt_part1 = self.safe_format(
+                    MORPHOLOGY_PART1_NOPHOTO_USER_PROMPT,
+                    silhouette_computed=computed_silhouette or "H",
+                    shoulder_circumference=user_data.get("shoulder_circumference", 0),
+                    waist_circumference=user_data.get("waist_circumference", 0),
+                    hip_circumference=user_data.get("hip_circumference", 0),
+                    bust_circumference=user_data.get("bust_circumference", 0)
+                )
+
+                response_part1 = await self.openai.call_chat(
+                    prompt=user_prompt_part1,
+                    model="gpt-4-turbo",
+                    max_tokens=800
+                )
 
             content_part1 = response_part1.get("content", "")
             content_part1_clean = self.clean_json_string(content_part1)
@@ -346,14 +377,14 @@ class MorphologyService:
                 minimizes_data.setdefault("tips", [])
 
             final_result = {
-                "silhouette_type": silhouette,  # utilise la variable déjà définie avec fallback
+                "silhouette_type": silhouette,
                 "bodyType": silhouette,
+                "morphology_source": "photo" if has_photo else "measurements",
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),
                 "body_analysis": part1_result.get("body_analysis"),
                 "styling_objectives": part1_result.get("styling_objectives", []),
-                "bodyType": part1_result.get("silhouette_type"),
                 "highlights": highlights_data,
                 "minimizes": minimizes_data,
                 "morphology_mvp": deep_normalize_strings(part2_result),
@@ -372,6 +403,7 @@ class MorphologyService:
 
             return {
                 "silhouette_type": part1_result.get("silhouette_type") or silhouette,
+                "morphology_source": "photo" if has_photo else "measurements",
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),

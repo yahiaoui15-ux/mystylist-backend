@@ -686,7 +686,7 @@ async def process_checkout_session_job(
             "shoulder_circumference": measurements.get("shoulder_circumference", 0),
             "waist_circumference": measurements.get("waist_circumference", 0),
             "hip_circumference": measurements.get("hip_circumference", 0),
-            "bust_circumference": measurements.get("shoulder_circumference", 0),
+            "bust_circumference": measurements.get("bust_circumference", 0),
             "clothing_size": clothing_size,  # ✅ NOUVEAU
             "morphology_goals": morphology_goals,  # ✅ NOUVEAU
             "unwanted_colors": color_prefs.get("disliked_colors", [])

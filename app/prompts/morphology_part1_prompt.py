@@ -104,3 +104,113 @@ RAPPEL FINAL:
 - Respecter STRICTEMENT les règles par silhouette ci-dessus.
 - Aucun saut de ligne dans les strings.
 """
+
+MORPHOLOGY_PART1_NOPHOTO_USER_PROMPT = """
+Analyse les mensurations d'une cliente. Aucune photo n'est disponible.
+
+La silhouette a déjà été calculée arithmétiquement à partir des mensurations :
+SILHOUETTE = {silhouette_computed}
+
+Tu dois CONSERVER cette silhouette telle quelle. Ne la recalcule pas, ne la
+remets pas en question. Ton rôle est de produire les conseils correspondants.
+
+Mensurations (cm):
+- épaules: {shoulder_circumference}
+- poitrine: {bust_circumference}
+- taille: {waist_circumference}
+- hanches: {hip_circumference}
+
+══════════════════════════════════════════════════════
+CONTRAINTE ABSOLUE — ABSENCE DE PHOTO
+══════════════════════════════════════════════════════
+Tu ne vois PAS la cliente. Il t'est formellement INTERDIT de décrire :
+le ventre, les jambes, les bras, le décolleté, la peau, le teint, la posture,
+le port de tête, ou tout élément non déductible des quatre mensurations.
+
+Toute description doit s'appuyer UNIQUEMENT sur les rapports entre épaules,
+poitrine, taille et hanches.
+
+INTERDIT : "ton ventre légèrement arrondi", "tes jambes élancées",
+"ta belle posture", "ton teint lumineux".
+AUTORISÉ : "tes hanches plus larges que tes épaules", "ta taille bien marquée
+par rapport à tes hanches", "l'équilibre entre ton buste et ton bassin".
+
+══════════════════════════════════════════════════════
+RÈGLES ABSOLUES PAR SILHOUETTE — À RESPECTER STRICTEMENT
+══════════════════════════════════════════════════════
+
+SILHOUETTE A (poire — hanches > épaules):
+- CE QU'ON VALORISE: le haut du corps (épaules, poitrine, buste, décolleté, bras)
+- CE QU'ON MINIMISE: les hanches et les cuisses
+- highlights.tips OBLIGATOIRES: épaulettes structurées, encolures bateau ou carrées, 
+  manches bouffantes, tops avec détails au niveau des épaules, couleurs claires sur le haut
+- minimizes.tips OBLIGATOIRES: couleurs sombres sur le bas, pantalons droits ou palazzo,
+  éviter les poches latérales, éviter les imprimés larges sur le bas
+- INTERDIT dans highlights: "minimiser les épaules", "col en V", "raglan"
+- INTERDIT dans minimizes: "minimiser les épaules" (les épaules sont un ATOUT pour la A)
+
+SILHOUETTE V (épaules > hanches):
+- CE QU'ON VALORISE: les hanches et les jambes
+- CE QU'ON MINIMISE: les épaules et le haut du corps
+- highlights.tips: jupes évasées, pantalons colorés ou avec motifs sur le bas, poches latérales
+- minimizes.tips: éviter les épaulettes, éviter les encolures carrées et bateau, col en V recommandé
+
+SILHOUETTE O (ronde — peu de définition à la taille):
+- CE QU'ON VALORISE: le décolleté, les jambes, les bras si élancés
+- CE QU'ON MINIMISE: le ventre et la taille
+- highlights.tips: col en V profond, jupes ou pantalons qui allongent, couleurs sombres unies
+- minimizes.tips: éviter les ceintures trop larges, éviter les matières rigides, éviter les top courts
+
+SILHOUETTE H (rectangle — épaules ≈ hanches, taille peu marquée):
+- CE QU'ON VALORISE: créer l'illusion d'une taille et de courbes
+- CE QU'ON MINIMISE: le manque de définition à la taille
+- highlights.tips: ceintures larges, robes cintrées, tops avec détails à la taille, peplum
+- minimizes.tips: éviter les coupes droites, éviter les robes sac, éviter les tenues monochromes sans structure
+
+SILHOUETTE X (sablier — épaules ≈ hanches, taille très marquée):
+- CE QU'ON VALORISE: la taille naturelle et les courbes
+- CE QU'ON MINIMISE: rien à minimiser — valoriser l'équilibre naturel
+- highlights.tips: robes portefeuille, ceintures à la taille, coupes cintrées, wrap tops
+- minimizes.tips: éviter de cacher la taille, éviter les coupes trop amples
+
+══════════════════════════════════════════════════════
+EXIGENCES QUALITÉ DES CONSEILS
+══════════════════════════════════════════════════════
+- Chaque tip doit être UNE ACTION CONCRÈTE et précise (pas "optez pour des vêtements adaptés")
+- highlights.explanation: 3-4 phrases pédagogiques qui EXPLIQUENT POURQUOI ces conseils fonctionnent
+- minimizes.explanation: 3-4 phrases pédagogiques qui EXPLIQUENT POURQUOI ces conseils fonctionnent
+- Le ton est celui d'une styliste experte qui donne des conseils clairs et sans détour
+- Les conseils doivent être cohérents entre eux et avec la silhouette
+
+Retourne UNIQUEMENT ce JSON (même structure, mêmes clés):
+
+{{
+  "silhouette_type": "DOIT être exactement {silhouette_computed}",
+  "silhouette_explanation": "3-4 phrases décrivant la silhouette à partir des RAPPORTS entre mensurations uniquement. Interdiction absolue de mentionner ventre, jambes, bras, décolleté, peau ou posture.",
+  "body_analysis": {{
+    "points_forts": ["Zone 1 à valoriser", "Zone 2 à valoriser", "Zone 3 à valoriser"],
+    "points_attention": ["Zone 1 à harmoniser", "Zone 2 à harmoniser"]
+  }},
+  "styling_objectives": ["Objectif 1 concret", "Objectif 2 concret", "Objectif 3 concret"],
+  "body_parts_to_highlight": ["zone anatomique 1", "zone anatomique 2"],
+  "body_parts_to_minimize": ["zone anatomique 1", "zone anatomique 2"],
+
+  "highlights": {{
+    "announcement": "Titre court centré sur CE QU'ON VALORISE",
+    "explanation": "3-4 phrases pédagogiques expliquant POURQUOI valoriser cette zone rééquilibre la silhouette.",
+    "tips": ["Tip 1 très concret et actionnable", "Tip 2 très concret", "Tip 3 très concret", "Tip 4 très concret"]
+  }},
+  "minimizes": {{
+    "announcement": "Titre court centré sur CE QU'ON HARMONISE",
+    "explanation": "3-4 phrases pédagogiques expliquant POURQUOI harmoniser cette zone crée l'équilibre.",
+    "tips": ["Tip 1 très concret et actionnable", "Tip 2 très concret", "Tip 3 très concret", "Tip 4 très concret"]
+  }}
+}}
+
+RAPPEL FINAL:
+- Zéro texte hors JSON.
+- Les accents et apostrophes sont autorisés.
+- Respecter STRICTEMENT les règles par silhouette ci-dessus.
+- Aucun saut de ligne dans les strings.
+- Silhouette imposée : {silhouette_computed}. Ne pas en changer.
+"""
