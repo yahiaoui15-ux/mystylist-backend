@@ -185,7 +185,7 @@ EXIGENCES QUALITÉ DES CONSEILS
 Retourne UNIQUEMENT ce JSON (même structure, mêmes clés):
 
 {{
-  "silhouette_type": "DOIT être exactement {silhouette_computed}",
+  "silhouette_type": "{silhouette_computed}",
   "silhouette_explanation": "3-4 phrases décrivant la silhouette à partir des RAPPORTS entre mensurations uniquement. Interdiction absolue de mentionner ventre, jambes, bras, décolleté, peau ou posture.",
   "body_analysis": {{
     "points_forts": ["Zone 1 à valoriser", "Zone 2 à valoriser", "Zone 3 à valoriser"],

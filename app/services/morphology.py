@@ -180,6 +180,7 @@ class MorphologyService:
         part1_result = {}
         part2_result = {}
         silhouette = None  # ✅ FIX: garantit que la variable existe même si analyze_image échoue
+        computed_silhouette = None
 
 
         try:
@@ -263,6 +264,13 @@ class MorphologyService:
                     print(f"   ⚠️ Silhouette calculée depuis mensurations (fallback photo): {silhouette}")
                 else:
                     print("   ⚠️ Mensurations insuffisantes — silhouette non déterminée")
+
+            if not has_photo and computed_silhouette:
+                if silhouette != computed_silhouette:
+                    print(f"   ⚠️ GPT a renvoyé '{silhouette}' — forçage sur '{computed_silhouette}'")
+                silhouette = computed_silhouette
+                part1_result["silhouette_type"] = computed_silhouette
+
             styling_objectives = part1_result.get("styling_objectives", []) or ["Harmoniser la silhouette"]
             body_parts_highlight = part1_result.get("body_parts_to_highlight", []) or []
             body_parts_minimize = part1_result.get("body_parts_to_minimize", []) or []
