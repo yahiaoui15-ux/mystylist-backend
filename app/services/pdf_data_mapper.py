@@ -18,6 +18,14 @@ from app.services.product_matcher_service import product_matcher_service
 from app.services.visuals_service import visuals_service
 from app.services.style_pieces_selector import style_pieces_selector
 
+SILHOUETTE_SCHEMAS = {
+    "A": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_a.png",
+    "V": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_v.png",
+    "X": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_x.png",
+    "H": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_h.png",
+    "O": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_o.png",
+}
+
 # ══════════════════════════════════════════════════════════════════════════
 # MYSTYLIST — LOOKS SIGNATURE : FONCTIONS DE SÉLECTION D'IMAGES
 # ══════════════════════════════════════════════════════════════════════════
@@ -2643,6 +2651,14 @@ class PDFDataMapper:
             parts_str = ", ".join(highlight_parts)
             styling_objectives = [f"Valoriser : {parts_str}"] + styling_objectives[1:]
 
+        body_photo_url = user_data.get("body_photo_url") or ""
+        body_is_schema = not bool(body_photo_url)
+        if body_is_schema:
+            _key = str(silhouette_type or "").strip().upper()[:1]
+            body_image_url = SILHOUETTE_SCHEMAS.get(_key, "")
+        else:
+            body_image_url = body_photo_url
+
         return {
             "bodyType": silhouette_type,
             "coherence": silhouette_explanation or None,
@@ -2660,7 +2676,8 @@ class PDFDataMapper:
             "comment": " ".join(styling_objectives[:1]) if styling_objectives else "",
             "goals": styling_objectives if styling_objectives else ["Créer une silhouette harmonieuse"],
             "photos": {
-                "body": user_data.get("body_photo_url", "")
+                "body": body_image_url,
+                "isSchema": body_is_schema,
             },
         }
 
