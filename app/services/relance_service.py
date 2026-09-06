@@ -74,7 +74,7 @@ class RelanceService:
         hair_color: Optional[str] = None,
         primary_style: Optional[str] = None,
         personality_trait: Optional[str] = None,
-        reports_tab_url: str = "https://my-stylist.io/auth?redirect=/app%3Ftab%3Drapports",
+        reports_tab_url: str = "https://my-stylist.io/auth?redirect=/app",
         apercu_rapport_url: str = "https://my-stylist.io/apercu-rapport",
         promo_code: Optional[str] = None,
     ) -> Dict[str, Any]:
