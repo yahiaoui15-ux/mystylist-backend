@@ -226,6 +226,12 @@ def get_look_image_url(
     filename = candidates[0]
     return _build_url(filename)
 
+# Styles disposant de visuels complets dans le bucket style-looks.
+# Toute valeur hors de cette liste produirait une image manquante.
+STYLES_AVEC_VISUELS = {
+    "boheme", "casual", "chic", "classique", "minimaliste",
+    "moderne", "rock", "romantique", "sportswear", "vintage",
+}
 
 def pick_3_looks_styles(style_mix):
     if not style_mix:
@@ -235,13 +241,19 @@ def pick_3_looks_styles(style_mix):
 
     def _map_to_tag(label: str) -> str:
         tag = STYLE_LABEL_TO_TAG.get((label or "").strip())
-        if tag:
+        if tag and tag in STYLES_AVEC_VISUELS:
             return tag
         norm = _normalize_str(label)
         if norm.startswith("style "):
             norm = norm[6:]
-        norm = norm.split("/")[0].strip()   # coupe tout après le "/" en fallback
-        return norm or "classique"
+        norm = norm.split("/")[0].strip()
+        # Le tag doit exister dans le referentiel des visuels, sinon on
+        # retombe sur classique : un style inconnu produirait une image
+        # manquante et "Pieces a definir".
+        if norm in STYLES_AVEC_VISUELS:
+            return norm
+        print(f"   ⚠️ Style inconnu '{label}' → normalisé '{norm}' → repli sur 'classique'")
+        return "classique"
 
     styles_sorted = sorted(
         [{"style": _map_to_tag(s["style"]), "pct": s["pct"]} for s in style_mix],

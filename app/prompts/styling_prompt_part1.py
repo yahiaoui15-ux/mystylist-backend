@@ -234,6 +234,16 @@ RÈGLES SUR style_mix :
 - 2 à 4 items
 - chaque item: style + pct (entier)
 - total EXACTEMENT 100
+- Le champ "style" doit être choisi EXCLUSIVEMENT dans cette liste fermée,
+  écrit exactement comme indiqué, en minuscules, sans accent, sans variante :
+  boheme, casual, chic, classique, minimaliste, moderne, rock, romantique,
+  sportswear, vintage
+- INTERDIT d'inventer un style hors de cette liste (par exemple "naturel",
+  "bohème chic", "élégant", "moderne chic"). Si le profil de la cliente
+  évoque un registre absent de la liste, choisir le style le plus proche
+  parmi ceux autorisés.
+- Le style_name (point A) reste libre et créatif : c'est un nom commercial,
+  il n'a pas à figurer dans cette liste.
 
 RÈGLES SUR pillars :
 - 3 à 5 items
