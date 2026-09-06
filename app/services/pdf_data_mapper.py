@@ -1997,6 +1997,7 @@ class PDFDataMapper:
             "intensite": analyse_raw.get("intensite", ""),
             "contraste_naturel": analyse_raw.get("contraste_naturel", analyse_raw.get("contrasteNaturel", "")),
             "justification_saison": colorimetry_raw.get("justification_saison", analyse_raw.get("justification_saison", "")),
+            "justification_sous_type": analyse_raw.get("justification_sous_type", ""),
             "description_teint": analyse_raw.get("description_teint", analyse_raw.get("descriptionTeint", "")),
             "description_yeux": analyse_raw.get("description_yeux", analyse_raw.get("descriptionYeux", "")),
             "description_cheveux": analyse_raw.get("description_cheveux", analyse_raw.get("descriptionCheveux", "")),
@@ -2115,6 +2116,9 @@ class PDFDataMapper:
             "colorimetry": {
                 "saison_confirmee": colorimetry_raw.get("saison_confirmee", ""),
                 "sous_ton_detecte": colorimetry_raw.get("sous_ton_detecte", ""),
+                "sous_type": colorimetry_raw.get("sous_type", ""),
+                "libelle_complet": colorimetry_raw.get("libelle_complet", colorimetry_raw.get("saison_confirmee", "")),
+                "analysis_source": colorimetry_raw.get("analysis_source", ""),
                 "eye_color": colorimetry_raw.get("eye_color", user_data.get("eye_color", "")),
                 "hair_color": colorimetry_raw.get("hair_color", user_data.get("hair_color", "")),
                 
