@@ -32,6 +32,14 @@ from app.services.colorimetry_parsing_utilities import ColorimetryJSONParser
 from app.services.color_image_matcher import ColorImageMatcher
 from app.services.image_thumbnailer import ImageThumbnailer
 
+from app.prompts.colorimetry_part1_nophoto_prompt import (
+    COLORIMETRY_PART1_NOPHOTO_SYSTEM_PROMPT,
+    COLORIMETRY_PART1_NOPHOTO_USER_PROMPT,
+)
+from app.services.colorimetry_declarative import (
+    analyze_declarative,
+    subtype_from_labels,
+)
 
 class ColorimetryService:
     def __init__(self):
@@ -341,9 +349,9 @@ class ColorimetryService:
             if not face_photo_url:
                 face_photo_url = user_data.get("facePhotoUrl")  # camelCase fallback
 
-            if not face_photo_url:
-                print("❌ Pas de photo de visage fournie")
-                return {}
+            has_photo = bool(face_photo_url)
+            if not has_photo:
+                print("ℹ️ Pas de photo de visage — mode déclaratif")
 
             # ✅ FIX: Chercher eye_color et hair_color aussi en camelCase
             eye_color = user_data.get("eye_color") or user_data.get("eyeColor")
@@ -352,7 +360,10 @@ class ColorimetryService:
             # ═══════════════════════════════════════════════════════════
             # PART 1: SAISON + ANALYSES
             # ═══════════════════════════════════════════════════════════
-            result_part1 = await self._call_part1(user_data, face_photo_url, eye_color, hair_color)
+            if has_photo:
+                result_part1 = await self._call_part1(user_data, face_photo_url, eye_color, hair_color)
+            else:
+                result_part1 = await self._call_part1_declarative(user_data, eye_color, hair_color)
             if not isinstance(result_part1, dict) or result_part1.get("_parse_error"):
                 print("⚠️ Colorimétrie Part 1 invalide → mode dégradé")
 
@@ -362,6 +373,19 @@ class ColorimetryService:
                     "justification_saison": "",
                     "analyse_colorimetrique_detaillee": {},
                 }
+
+            # Sous-type : applique aux DEUX chemins pour un affichage identique
+            if has_photo and result_part1.get("saison_confirmee"):
+                st = subtype_from_labels(
+                    season=result_part1.get("saison_confirmee", ""),
+                    valeur_peau=result_part1.get("valeur_peau", ""),
+                    contraste_naturel=result_part1.get("contraste_naturel", ""),
+                    intensite=result_part1.get("intensite", ""),
+                    hair_color=hair_color or "",
+                    sous_ton=result_part1.get("sous_ton_detecte", ""),
+                )
+                result_part1["sous_type"] = st["sous_type"]
+                result_part1["libelle_complet"] = st["libelle_complet"]
 
             saison = result_part1.get("saison_confirmee", "Indéterminée")
             sous_ton = result_part1.get("sous_ton_detecte", "neutre")
@@ -436,6 +460,9 @@ class ColorimetryService:
                 "valeur_peau": result_part1.get("valeur_peau", ""),
                 "intensite": result_part1.get("intensite", ""),
                 "contraste_naturel": result_part1.get("contraste_naturel", ""),
+                "sous_type": result_part1.get("sous_type", ""),
+                "libelle_complet": result_part1.get("libelle_complet", result_part1.get("saison_confirmee", "")),
+                "analysis_source": "photo" if has_photo else "declarative",
                 "eye_color": result_part1.get("eye_color", eye_color),
                 "hair_color": result_part1.get("hair_color", hair_color),
                 "analyse_colorimetrique_detaillee": result_part1.get("analyse_colorimetrique_detaillee", {}),
@@ -700,6 +727,82 @@ class ColorimetryService:
 
         except Exception as e:
             print(f"\n❌ ERREUR PART 1: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    async def _call_part1_declarative(self, user_data: dict, eye_color: str = None,
+                                      hair_color: str = None) -> dict:
+        """PART 1 - Chemin déclaratif : calcul Python + rédaction GPT texte."""
+        print("\n" + "=" * 80)
+        print("📋 APPEL 1/3: COLORIMETRY PART 1 - MODE DÉCLARATIF")
+        print("=" * 80)
+
+        try:
+            decl = (user_data.get("colorimetry_declarative") or {})
+            computed = analyze_declarative(
+                skin_depth=decl.get("skin_depth", "unknown"),
+                sun_reaction=decl.get("sun_reaction", "unknown"),
+                metal=decl.get("metal", "unknown"),
+                veins=decl.get("veins", "unknown"),
+                hair_color=hair_color or user_data.get("hair_color", ""),
+                eye_color=eye_color or user_data.get("eye_color", ""),
+            )
+
+            print(f"   • Saison calculée: {computed['libelle_complet']}")
+            print(f"   • Sous-ton: {computed['sous_ton_detecte']} | "
+                  f"Contraste: {computed['contraste_naturel']} | "
+                  f"Confiance: {computed['_confidence']}")
+
+            self.openai.set_context("Colorimetry", "Part 1 déclaratif")
+            self.openai.set_system_prompt(COLORIMETRY_PART1_NOPHOTO_SYSTEM_PROMPT)
+
+            user_prompt = COLORIMETRY_PART1_NOPHOTO_USER_PROMPT.format(
+                SAISON=computed["saison_confirmee"],
+                SOUS_TYPE=computed["sous_type"],
+                LIBELLE_COMPLET=computed["libelle_complet"],
+                SOUS_TON=computed["sous_ton_detecte"],
+                VALEUR_PEAU=computed["valeur_peau"],
+                CONTRASTE=computed["contraste_naturel"],
+                INTENSITE=computed["intensite"],
+                EYE_COLOR=eye_color or "indéterminé",
+                HAIR_COLOR=hair_color or "indéterminé",
+                AGE=user_data.get("age", "indéterminé"),
+            )
+
+            response = await self.openai.call_chat(
+                prompt=user_prompt,
+                model="gpt-4-turbo",
+                max_tokens=1100,
+                temperature=0.3,
+            )
+
+            content = response.get("content", "")
+            content_cleaned = self._fix_json_for_parsing(content)
+            result = RobustJSONParser.parse_json_with_fallback(content_cleaned)
+
+            if not result:
+                print("   ⚠️ Parsing échoué — on garde les valeurs calculées")
+                result = {}
+
+            # Le calcul Python fait AUTORITÉ. GPT ne peut pas le contredire.
+            result["saison_confirmee"] = computed["saison_confirmee"]
+            result["sous_ton_detecte"] = computed["sous_ton_detecte"]
+            result["valeur_peau"] = computed["valeur_peau"]
+            result["intensite"] = computed["intensite"]
+            result["contraste_naturel"] = computed["contraste_naturel"]
+            result["sous_type"] = computed["sous_type"]
+            result["libelle_complet"] = computed["libelle_complet"]
+            result["eye_color"] = eye_color
+            result["hair_color"] = hair_color
+            result["_confidence"] = computed["_confidence"]
+
+            print(f"   ✅ {computed['libelle_complet']}")
+            print("\n" + "=" * 80 + "\n")
+            return result
+
+        except Exception as e:
+            print(f"\n❌ ERREUR PART 1 DÉCLARATIF: {e}")
             import traceback
             traceback.print_exc()
             return {}
