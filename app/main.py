@@ -689,7 +689,8 @@ async def process_checkout_session_job(
             "bust_circumference": measurements.get("bust_circumference", 0),
             "clothing_size": clothing_size,  # ✅ NOUVEAU
             "morphology_goals": morphology_goals,  # ✅ NOUVEAU
-            "unwanted_colors": color_prefs.get("disliked_colors", [])
+            "unwanted_colors": color_prefs.get("disliked_colors", []),
+            "colorimetry_declarative": onboarding_data.get("colorimetry_declarative", {}),
         }
 
         log(f">>> User data extrait:")
@@ -699,6 +700,7 @@ async def process_checkout_session_job(
         log(f">>>    eye_color: {user_data['eye_color']}")
         log(f">>>    hair_color: {user_data['hair_color']}")
         log(f">>>    morphology_goals: {user_data['morphology_goals']}")  # ✅ NOUVEAU
+        log(f">>>    colorimetry_declarative: {user_data['colorimetry_declarative']}")
 
         # Garde-fou email
         existing = supabase.query("reports", select_fields="email_sent", filters={"payment_id": payment_id})
