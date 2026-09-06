@@ -178,6 +178,22 @@ def compute_undertone(
     normalized = score / weight_used if weight_used else 0.0
     confidence = min(1.0, weight_used / 10.0)
 
+    # Regle de convergence : si les trois signaux principaux (soleil, metal,
+    # veines) pointent dans le meme sens sans aucune contradiction, le
+    # resultat est tranche, quel que soit le score pondere.
+    signals = []
+    if sun_reaction in SUN_TEMP_SCORE and SUN_TEMP_SCORE[sun_reaction] != 0:
+        signals.append(1 if SUN_TEMP_SCORE[sun_reaction] > 0 else -1)
+    if metal in ("gold", "silver"):
+        signals.append(1 if metal == "gold" else -1)
+    if veins in ("green", "blue"):
+        signals.append(1 if veins == "green" else -1)
+
+    if len(signals) >= 3 and all(s > 0 for s in signals):
+        return "chaud", round(normalized, 3), round(confidence, 2)
+    if len(signals) >= 3 and all(s < 0 for s in signals):
+        return "froid", round(normalized, 3), round(confidence, 2)
+
     if normalized > 0.15:
         undertone = "chaud"
     elif normalized < -0.15:
