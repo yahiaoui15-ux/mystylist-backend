@@ -19,11 +19,11 @@ from app.services.visuals_service import visuals_service
 from app.services.style_pieces_selector import style_pieces_selector
 
 SILHOUETTE_SCHEMAS = {
-    "A": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_a.png",
-    "V": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_v.png",
-    "X": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_x.png",
-    "H": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_h.png",
-    "O": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_o.png",
+    "A": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_a.webp",
+    "V": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_v.webp",
+    "X": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_x.webp",
+    "H": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_h.webp",
+    "O": "https://eqtovvjueqsralaprsvm.supabase.co/storage/v1/object/public/silhouettes/silhouette_o.webp",
 }
 
 # ══════════════════════════════════════════════════════════════════════════
