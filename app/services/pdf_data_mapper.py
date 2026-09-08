@@ -2567,6 +2567,8 @@ class PDFDataMapper:
         waist_hip_ratio = round(waist_float / hips_float, 2) if hips_float > 0 else ""
         waist_shoulder_ratio = round(waist_float / shoulders_float, 2) if shoulders_float > 0 else ""
 
+        has_measurements = bool(waist_float and shoulders_float and hips_float)
+
         # ── FALLBACK coherence ──────────────────────────────────────────────────
         # Descriptions statiques par type de silhouette, utilisées quand la vision
         # OpenAI échoue et que silhouette_explanation est vide.
@@ -2678,6 +2680,7 @@ class PDFDataMapper:
         return {
             "bodyType": silhouette_type,
             "coherence": silhouette_explanation or None,
+            "hasMeasurements": has_measurements,
             "ratios": {
                 "waistToHips": str(waist_hip_ratio),
                 "waistToShoulders": str(waist_shoulder_ratio),
