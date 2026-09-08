@@ -182,6 +182,10 @@ class MorphologyService:
         silhouette = None  # ✅ FIX: garantit que la variable existe même si analyze_image échoue
         computed_silhouette = None
 
+        silhouette_declaree = (user_data.get("silhouette_declaree") or "").strip().upper()[:1]
+        if silhouette_declaree not in ("A", "V", "X", "H", "O"):
+            silhouette_declaree = ""
+        used_declared = False
 
         try:
             # ====================================================================
@@ -219,7 +223,15 @@ class MorphologyService:
                     waist=user_data.get("waist_circumference", 0),
                     hip=user_data.get("hip_circumference", 0),
                 )
+
                 print(f"   • Silhouette calculée: {computed_silhouette or 'indéterminée'}")
+
+                if not computed_silhouette and silhouette_declaree:
+                    computed_silhouette = silhouette_declaree
+                    used_declared = True
+                    print(f"   • Silhouette déclarée par la cliente : {silhouette_declaree}")
+                elif not computed_silhouette:
+                    print("   ⚠️ Ni mensurations ni silhouette déclarée — repli 'H' dans le prompt")
 
                 user_prompt_part1 = self.safe_format(
                     MORPHOLOGY_PART1_NOPHOTO_USER_PROMPT,
@@ -387,7 +399,7 @@ class MorphologyService:
             final_result = {
                 "silhouette_type": silhouette,
                 "bodyType": silhouette,
-                "morphology_source": "photo" if has_photo else "measurements",
+                "morphology_source": "photo" if has_photo else ("declaree" if used_declared else "measurements"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),
@@ -411,7 +423,7 @@ class MorphologyService:
 
             return {
                 "silhouette_type": part1_result.get("silhouette_type") or silhouette,
-                "morphology_source": "photo" if has_photo else "measurements",
+                "morphology_source": "photo" if has_photo else ("declaree" if used_declared else "measurements"),
                 "silhouette_explanation": part1_result.get("silhouette_explanation"),
                 "body_parts_to_highlight": part1_result.get("body_parts_to_highlight", []),
                 "body_parts_to_minimize": part1_result.get("body_parts_to_minimize", []),
