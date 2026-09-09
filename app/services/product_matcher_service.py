@@ -1010,10 +1010,7 @@ class ProductMatcherService:
                     _add_rows(filtered)
                     if filtered:
                         print(f"✅ COMPOUND+CAT [{category}] '{compound_safe}': {len(filtered)}")
-                    elif data:
-                        # Produits trouvés mais pas dans la bonne catégorie → on les ajoute quand même
-                        _add_rows(data)
-                        print(f"✅ COMPOUND (no-cat) [{category}] '{compound_safe}': {len(data)}")
+ 
                 except Exception as e:
                     print(f"⚠️ COMPOUND+CAT query failed: {e}")
 
@@ -1051,9 +1048,10 @@ class ProductMatcherService:
                     q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
                     resp = self._execute(q)
                     data = getattr(resp, "data", None) or []
-                    _add_rows(data)
-                    if data:
-                        print(f"✅ COMPOUND [{category}] '{compound_safe}': {len(data)}")
+                    filtered = [r for r in data if self._category_match(r, category)]
+                    _add_rows(filtered)
+                    if filtered:
+                        print(f"✅ COMPOUND2+CAT [{category}] '{compound_safe}': {len(filtered)}")
                 except Exception as e:
                     print(f"⚠️ COMPOUND query failed: {e}")
 
@@ -1072,9 +1070,10 @@ class ProductMatcherService:
                     q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
                     resp = self._execute(q)
                     data = getattr(resp, "data", None) or []
-                    _add_rows(data)
-                    if data:
-                        print(f"✅ KW [{category}] '{kw_safe}': {len(data)}")
+                    filtered = [r for r in data if self._category_match(r, category)]
+                    _add_rows(filtered)
+                    if filtered:
+                        print(f"✅ KW+CAT2 [{category}] '{kw_safe}': {len(filtered)}")
                 except Exception as e:
                     print(f"⚠️ KW query failed: {e}")
 
@@ -1105,8 +1104,21 @@ class ProductMatcherService:
                 except Exception as e:
                     print(f"⚠️ CAT secondary query failed: {e}")
 
-        print(f"📊 Total [{category}]: {len(collected)} produits collectés avant re-scoring")
+        # Dernier recours : si le filtre catégorie a tout écarté, on rouvre
+        # sans filtre plutôt que de ne rien proposer.
+        if not collected and kws:
+            kw_safe = self._normalize_kw_for_ilike(kws[0])
+            if len(kw_safe) >= 3:
+                try:
+                    q = self._base_query(select_fields).ilike("product_name", self._ilike_pattern(kw_safe)).limit(40)
+                    resp = self._execute(q)
+                    data = getattr(resp, "data", None) or []
+                    _add_rows(data)
+                    print(f"⚠️ DERNIER RECOURS (hors catégorie) [{category}] '{kw_safe}': {len(data)}")
+                except Exception as e:
+                    print(f"⚠️ Dernier recours failed: {e}")
 
+        print(f"📊 Total [{category}]: {len(collected)} produits collectés avant re-scoring")
         # ────────────────────────────────────────────────────────
         # RE-SCORING FINAL — remonte les meilleurs matches  ← NEW
         # Ex: "pantalon palazzo" score 3 > "pantalon slim" score 1
