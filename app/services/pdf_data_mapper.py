@@ -2141,6 +2141,8 @@ class PDFDataMapper:
         avoid_by_category = {
             "tops":              PDFDataMapper._safe_list(avoid_by_category_raw.get("tops", [])),
             "bottoms":           PDFDataMapper._safe_list(avoid_by_category_raw.get("bottoms", [])),
+            "dresses":           PDFDataMapper._safe_list(avoid_by_category_raw.get("dresses", [])),
+            "jackets":           PDFDataMapper._safe_list(avoid_by_category_raw.get("jackets", [])),
             "dresses_jackets":   PDFDataMapper._safe_list(avoid_by_category_raw.get("dresses_jackets", [])),
             "shoes":             PDFDataMapper._safe_list(avoid_by_category_raw.get("shoes", [])),
             "accessories":       PDFDataMapper._safe_list(avoid_by_category_raw.get("accessories", [])),
