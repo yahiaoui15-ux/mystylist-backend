@@ -35,37 +35,74 @@ EXCEPTION UNIQUE : si la couleur sombre ou claire a une pertinence directe
 pour l'objectif morphologique (ex: "couleurs sombres sur le bas pour affiner"),
 tu peux mentionner "sombre" ou "clair" UNIQUEMENT dans le champ "why", jamais dans "name".
 
+VOCABULAIRE OBLIGATOIRE — termes français uniquement
+Les noms de pièces doivent utiliser le vocabulaire français de la mode.
+✗ INTERDIT : "wrap top", "wide leg", "a-line", "crop top", "oversized"
+✓ UTILISER : "cache-cœur", "pantalon palazzo", "jupe trapèze", "top court", "oversize"
+Un nom en anglais ne correspond à aucun produit dans le catalogue et casse la recherche.
+
 ══════════════════════════════════════════
 RÈGLES OBLIGATOIRES PAR SILHOUETTE
 ══════════════════════════════════════════
 
-SILHOUETTE A (poire — hanches > épaules):
-- TOPS: encolure bateau, épaulettes, manches bouffantes, col rond large, bardot, froncé aux épaules
-- TOPS INTERDITS: col en V, peplum, tops courts
-- BAS À ÉVITER: slim, skinny, leggings, imprimés larges
-- VESTES: structurées aux épaules, blazer à épaulettes
-- ROBES: empire, portefeuille
+SILHOUETTE A (poire — hanches > épaules)
+Objectif : élargir visuellement la ligne d'épaules, marquer la taille,
+laisser le bas tomber sans mouler la hanche.
+- TOPS : encolure bateau, encolure carrée, col en V large, épaulettes,
+  manches bouffantes, froncé aux épaules, cache-cœur, bardot
+- TOPS INTERDITS : hauts qui s'arrêtent sur la partie la plus large des hanches,
+  cardigans longs et fluides, hauts moulants sur les hanches
+- BAS : droits, évasés, trapèze, palazzo, taille haute
+- BAS INTERDITS : slim, skinny, leggings, imprimés larges sur les hanches
+- VESTES : structurées aux épaules, blazers à épaulettes, vestes courtes cintrées
+- ROBES : empire, portefeuille, trapèze, robe-chemise ceinturée
 
-SILHOUETTE V (épaules > hanches):
-- TOPS: col en V, raglan, encolures larges, sans volume aux épaules
-- BAS: évasés, palazzo
-- VESTES: longues, cintrées à la taille
+SILHOUETTE V (triangle inversé — épaules > hanches)
+Objectif : adoucir la ligne d'épaules et donner du volume au bas du corps.
+- TOPS : col en V, décolleté profond, col bénitier, raglan, drapés,
+  matières fluides sans structure aux épaules
+- TOPS INTERDITS : encolure bateau, col carmen, épaulettes, manches bouffantes,
+  cols roulés, rayures horizontales en haut
+- BAS : évasés, palazzo, jupes trapèze, jupes froncées, flare
+- VESTES : longues, cintrées à la taille, sans structure d'épaule
+- ROBES : trapèze, patineuse, portefeuille avec jupe ample
+- ACCESSOIRES : colliers longs et sautoirs. Éviter les ras-du-cou.
 
-SILHOUETTE O (ronde, peu de taille):
-- TOPS: col en V, encolure en U, matières fluides
-- BAS: droits, palazzo
-- VESTES: ceinturées, mi-longues structurées
-- ROBES: empire, portefeuille, cache-cœur
+SILHOUETTE X (sablier — épaules ≈ hanches, taille marquée)
+Objectif : souligner la taille, ne jamais la masquer.
+- TOPS : cache-cœur, cintrés, col en V, drapés, taille marquée
+- TOPS INTERDITS : oversize, coupes informes, tuniques droites longues
+- BAS : jupes trapèze, jupes crayon, pantalons droits taille haute, taille haute
+- VESTES : cintrées, blazers cintrés, vestes ceinturées
+- ROBES : portefeuille, cintrée ceinturée, drapée, fourreau ajustée à la taille
+- ROBES INTERDITES : empire, robes droites sans ceinture — elles masquent la taille
 
-SILHOUETTE H (rectangle):
-- TOPS: peplum, volumineux, bouffants
-- BAS: évasés, jupes froncées
-- VESTES: avec ceinture, structurées à la taille
+SILHOUETTE H (rectangle — épaules ≈ hanches, taille peu marquée)
+Objectif : créer une taille visuelle et du relief aux hanches ou aux épaules.
+- TOPS : peplum, cache-cœur, tuniques ceinturées, découpes, fronces, volants
+- TOPS INTERDITS : coupes très moulantes sans détail, tops informes
+- BAS : évasés, jupes froncées, jupes trapèze, taille haute
+- VESTES : ceinturées, blazers cintrés, manteaux à ceinture
+- ROBES : portefeuille, cache-cœur ceinturée, empire, robe-chemise ceinturée
+- ACCESSOIRES : ceintures fines ou moyennes à la taille naturelle.
+  Éviter les ceintures-corsets, trop massives.
 
-SILHOUETTE X (sablier):
-- TOPS: wrap tops, cintrés, col en V
-- BAS: évasés, jupes mi-longues
-- VESTES: cintrées qui marquent la taille
+SILHOUETTE O (ronde — volumes au centre, taille peu dessinée)
+Objectif : créer de la verticalité et allonger la ligne, sans marquer la taille.
+- TOPS : col en V, encolure en U, matières fluides, tuniques, coupes non ajustées
+  à la taille
+- TOPS INTERDITS : matières rigides, coupes serrées à la taille, détails au niveau
+  du ventre, rayures horizontales
+- BAS : droits, palazzo, larges fluides, taille haute confortable
+- VESTES : longues ouvertes, mi-longues fluides, gilets longs — jamais ceinturées
+- ROBES : empire, portefeuille, cache-cœur, droite fluide
+- ACCESSOIRES : sautoirs et colliers longs pour la verticalité.
+  Les ceintures avec parcimonie.
+
+RÈGLE COMMUNE
+Chaque nom de pièce doit désigner une coupe qui existe réellement dans le
+commerce français. En cas de doute, choisis le terme le plus courant et le plus
+simple. Ne combine jamais plus de deux qualificatifs dans un nom.
 
 ══════════════════════════════════════════
 RÈGLES FORMULES

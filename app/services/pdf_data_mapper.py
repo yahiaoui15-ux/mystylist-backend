@@ -1434,6 +1434,47 @@ class PDFDataMapper:
         "lingerie":      "soutien_gorge_emboitant",
         "Maillot de bain": "une_piece_classique",
     }
+
+    # Repli par NOM de pièce — prioritaire sur le repli par catégorie.
+    # Évite qu'une "Jupe mi-longue" non matchée tombe sur un pantalon.
+    # L'ordre compte : les clés les plus spécifiques d'abord.
+    MORPHO_MVP_NOUN_FALLBACK = [
+        ("jupe",         "jupe_trapeze"),
+        ("jean",         "jean_droit_taille_haute"),
+        ("pantalon",     "pantalon_droit"),
+        ("short",        "short_taille_haute"),
+        ("legging",      "legging_cuir_sculptant"),
+        ("combinaison",  "combinaison_pantalon_droite"),
+        ("robe",         "robe_droite"),
+        ("blazer",       "blazer_cintre"),
+        ("trench",       "trench_long_ceinture_uni"),
+        ("manteau",      "manteau_droit"),
+        ("cardigan",     "cardigan_laine"),
+        ("gilet",        "gilet_long"),
+        ("veste",        "veste_blazer_droite"),
+        ("blouse",       "blouse_droite_satinee"),
+        ("chemise",      "chemise_droite_fluide"),
+        ("tunique",      "tunique_sombre"),
+        ("pull",         "pull_col_rond"),
+        ("debardeur",    "debardeur_long"),
+        ("body",         "body_noir_bretelles"),
+        ("top",          "top_fluide"),
+        ("escarpin",     "escarpins_pointus"),
+        ("bottine",      "bottines_talon_fin_velours"),
+        ("botte",        "bottes_talons_cuir"),
+        ("sandale",      "sandales_fines_talons_dorees"),
+        ("ballerine",    "ballerines_daim_classiques"),
+        ("mocassin",     "mocassins"),
+        ("sneaker",      "sneakers_fines_minimalistes"),
+        ("mule",         "mules_plates_cuir"),
+        ("sac",          "sac_a_main_moyen_cuir_souple"),
+        ("ceinture",     "ceinture_fine"),
+        ("collier",      "collier_mi_long"),
+        ("boucle",       "boucles_d_oreilles_pendantes"),
+        ("bracelet",     "bracelet_souple"),
+        ("foulard",      "foulard_noue_cou"),
+        ("chapeau",      "chapeau_tresse"),
+    ]
  
 
     @staticmethod
@@ -1460,10 +1501,16 @@ class PDFDataMapper:
         if not allow_fallback:
             return ""
  
-        # Fallback uniquement si allow_fallback=True
+        # Repli 1 : par nom de pièce (jupe → jupe, pas pantalon)
+        for noun, noun_key in PDFDataMapper.MORPHO_MVP_NOUN_FALLBACK:
+            if noun in name_norm:
+                print(f"   📦 FALLBACK NOM [{supabase_category}] '{name[:40]}' → key='{noun_key}'")
+                return noun_key
+
+        # Repli 2 : par catégorie
         fallback_key = PDFDataMapper.MORPHO_MVP_FALLBACK.get(supabase_category, "")
         if fallback_key:
-            print(f"   📦 FALLBACK [{supabase_category}] '{name[:40]}' → key='{fallback_key}'")
+            print(f"   📦 FALLBACK CAT [{supabase_category}] '{name[:40]}' → key='{fallback_key}'")
             return fallback_key
         return ""
  
@@ -1495,6 +1542,7 @@ class PDFDataMapper:
         for mvp_cat, supabase_cats in CATEGORY_MAP.items():
             items = PDFDataMapper._safe_list(essentials.get(mvp_cat, []))
             enriched_items = []
+            seen_urls = set()
  
             for item in items:
                 if not isinstance(item, dict):
@@ -1525,12 +1573,20 @@ class PDFDataMapper:
                     except Exception as e:
                         print(f"⚠️ visuals_service.get_url('{visual_key}'): {e}")
  
+                # Déduplication : deux pièces d'une même catégorie ne doivent
+                # jamais partager le même visuel (ex. haut_cintre / top_cintre).
+                if visual_url and visual_url in seen_urls:
+                    print(f"   🔁 DOUBLON VISUEL [{mvp_cat}] '{name}' → key='{visual_key}' — pièce écartée")
+                    continue
+                if visual_url:
+                    seen_urls.add(visual_url)
+
                 enriched_item = {**item, "visual_key": visual_key, "visual_url": visual_url}
                 enriched_items.append(enriched_item)
- 
+
                 status = "✅" if visual_url else "⚠️ NO IMG"
                 print(f"   {status} MVP [{mvp_cat}] '{name}' → key='{visual_key}'")
- 
+
             enriched[mvp_cat] = enriched_items
  
         return enriched
