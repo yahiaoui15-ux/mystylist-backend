@@ -142,13 +142,19 @@ CONTRAINTES
 ══════════════════════════════════════════
 - tops : EXACTEMENT 4 items (hauts uniquement, sans couleur dans name)
 - dresses : EXACTEMENT 2 items (robes ou combinaisons uniquement, sans couleur dans name)
-- jackets : EXACTEMENT 3 items (vestes, blazers, manteaux uniquement, sans couleur dans name)
+- jackets : EXACTEMENT 3 items — obligatoirement 2 vestes/blazers + 1 MANTEAU
+  (manteau, trench ou cape). Sans couleur dans name.
 - bottoms : EXACTEMENT 3 items (pantalons, jupes, jeans uniquement, sans couleur dans name)
 - shoes_accessories : EXACTEMENT 3 items
 - avoid_by_category : pièces STRICTEMENT de leur catégorie
 - style_notes : format "nom — explication courte"
 - Strings max 130 caractères. Zéro texte hors JSON.
-
+- INTERDICTION DES DOUBLONS : dans une même catégorie, deux pièces ne doivent
+  jamais désigner la même coupe sous des noms différents.
+  ✗ "Blazer cintré" et "Blazer ajusté" dans jackets
+  ✗ "Top cintré" et "Haut ajusté" dans tops
+  Chaque item doit être une coupe distincte et reconnaissable.
+  
 JSON ATTENDU:
 
 {{

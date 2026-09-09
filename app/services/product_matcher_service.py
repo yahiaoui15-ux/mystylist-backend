@@ -754,6 +754,40 @@ class ProductMatcherService:
             kw = kw[: self.MAX_TOKEN_LEN]
         return kw
 
+    # Rakuten écrit "cache-coeur" (tiret) et "cintrée" (accent).
+    # Nos mots-clés sont normalisés sans tiret ni accent, or ILIKE compare
+    # littéralement : il faut donc essayer plusieurs graphies.
+    _ILIKE_VARIANTS = {
+        "cache coeur": ["cache-coeur", "cache coeur"],
+        "cintre":      ["cintrée", "cintré", "cintre"],
+        "cintree":     ["cintrée", "cintre"],
+        "ceinture":    ["ceinturée", "ceinturé", "ceinture"],
+        "ceinturee":   ["ceinturée", "ceinture"],
+        "evase":       ["évasée", "évasé", "evase"],
+        "evasee":      ["évasée", "evase"],
+        "trapeze":     ["trapèze", "trapeze"],
+        "drape":       ["drapée", "drapé", "drape"],
+        "plisse":      ["plissée", "plissé", "plisse"],
+        "fronce":      ["froncée", "froncé", "fronce"],
+        "epaulettes":  ["épaulettes", "epaulettes"],
+        "denudees":    ["dénudées", "denudees"],
+        "ajuste":      ["ajustée", "ajusté", "ajuste"],
+        "structure":   ["structurée", "structuré", "structure"],
+    }
+
+    def _ilike_variants(self, token: str) -> List[str]:
+        """Retourne les graphies à essayer pour un mot-clé normalisé."""
+        t = (token or "").strip().lower()
+        if not t:
+            return []
+        if t in self._ILIKE_VARIANTS:
+            return self._ILIKE_VARIANTS[t]
+        for key, variants in self._ILIKE_VARIANTS.items():
+            if key in t:
+                base = [t.replace(key, v) for v in variants]
+                return list(dict.fromkeys(base))
+        return [t]
+    
     def _ilike_pattern(self, token: str) -> str:
         t = (token or "").strip()
         if not t:
@@ -978,18 +1012,21 @@ class ProductMatcherService:
                 alt_compound = " ".join([alt_noun] + kws[1:2]) if len(kws) >= 2 else alt_noun
                 alt_safe = self._normalize_kw_for_ilike(alt_compound)
                 if len(alt_safe) >= 5:
-                    try:
-                        pattern = self._ilike_pattern(alt_safe)
-                        q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
-                        resp = self._execute(q)
-                        data = getattr(resp, "data", None) or []
-                        filtered = [r for r in data if self._category_match(r, category)]
-                        _add_rows(filtered)
-                        if filtered:
-                            print(f"✅ SYNONYM+CAT [{category}] '{alt_safe}': {len(filtered)}")
-                    except Exception as e:
-                        print(f"⚠️ SYNONYM query failed: {e}")
-                        
+                    for variant in self._ilike_variants(kw_safe):
+                        if len(collected) >= limit:
+                            break
+                        try:
+                            pattern = self._ilike_pattern(variant)
+                            q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                            resp = self._execute(q)
+                            data = getattr(resp, "data", None) or []
+                            filtered = [r for r in data if self._category_match(r, category)]
+                            _add_rows(filtered)
+                            if filtered:
+                                print(f"✅ KW+CAT [{category}] '{variant}': {len(filtered)}")
+                        except Exception as e:
+                            print(f"⚠️ KW+CAT query failed: {e}")
+                            
         # ────────────────────────────────────────────────────────
         # PHASE 1 — Mot-clé COMPOSÉ (nom + coupe) + filtre catégorie  ← NEW
         # Ex: "pantalon palazzo", "robe portefeuille", "jupe trapeze"
