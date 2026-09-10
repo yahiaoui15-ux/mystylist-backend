@@ -128,8 +128,22 @@ def _allocate_counts(style_mix: List[Dict[str, Any]], total: int = 9) -> List[Di
         if name and pct > 0:
             cleaned.append({"style": name, "pct": pct})
 
+    # Filet : si les pourcentages sont absents ou nuls, répartir équitablement
+    # entre les styles nommés plutôt que de retomber sur Casual, qui n'a
+    # aucun rapport avec la cliente.
     if not cleaned:
-        return [{"style": "Casual", "n": total}]
+        named = [
+            (s.get("style") or "").strip()
+            for s in (style_mix or [])
+            if isinstance(s, dict) and (s.get("style") or "").strip()
+        ]
+        if named:
+            print(f"⚠️ style_mix sans pourcentages — répartition équitable sur {named}")
+            equal = round(100.0 / len(named), 2)
+            cleaned = [{"style": n, "pct": equal} for n in named]
+        else:
+            print("⚠️ style_mix vide — repli sur Casual")
+            return [{"style": "Casual", "n": total}]
 
     # base: floors
     base = []

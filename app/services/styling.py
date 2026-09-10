@@ -469,6 +469,80 @@ class StylingService:
         out[0]["pct"] += diff
         return out
 
+    # Libellé long -> slug attendu par style_images.label et
+    # style_piece_visuals.style_primary. Défini localement pour éviter
+    # une dépendance d'import vers style_pieces_selector.
+    _STYLE_LABEL_TO_SLUG: Dict[str, str] = {
+        "Style Classique / Intemporel": "classique",
+        "Style Chic / Élégant":         "chic",
+        "Style Minimaliste":            "minimaliste",
+        "Style Casual / Décontracté":   "casual",
+        "Style Bohème":                 "boheme",
+        "Style Romantique":             "romantique",
+        "Style Glamour":                "chic",
+        "Style Rock":                   "rock",
+        "Style Urbain / Streetwear":    "sportswear",
+        "Style Sporty Chic":            "sportswear",
+        "Style Preppy":                 "classique",
+        "Style Vintage":                "vintage",
+        "Style Moderne / Contemporain": "moderne",
+        "Style Artistique / Créatif":   "rock",
+        "Style Ethnique":               "boheme",
+        "Style Féminin Moderne":        "moderne",
+        "Style Sexy Assumé":            "moderne",
+        "Style Naturel / Authentique":  "boheme",
+    }
+
+    def _compute_style_mix_deterministic(
+        self,
+        style_preferences: List[str],
+        brand_preferences: Dict[str, Any],
+        color_preferences: Dict[str, Any],
+        pattern_preferences: Dict[str, Any],
+        personality_data: Dict[str, Any],
+        max_styles: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """
+        Calcule style_mix sans OpenAI : archétypes -> styles -> pourcentages,
+        conversion en slugs, fusion des doublons, re-normalisation à 100.
+        GPT rédige les textes, il ne calcule plus les poids.
+        """
+        arch_scores = self._score_archetypes(personality_data)
+        arch_main, arch_secondary = self._top_archetypes(arch_scores)
+
+        stylescore = self._score_styles(
+            style_preferences=style_preferences,
+            brand_preferences=brand_preferences,
+            color_preferences=color_preferences,
+            pattern_preferences=pattern_preferences,
+            archetypes_main=arch_main,
+            archetypes_secondary=arch_secondary,
+        )
+
+        ranked = self._pick_top_styles_with_percentages(stylescore, max_styles=max_styles)
+
+        # Deux libellés peuvent donner le même slug (Glamour et Chic -> chic).
+        merged: Dict[str, int] = {}
+        for item in ranked:
+            slug = self._STYLE_LABEL_TO_SLUG.get(item.get("style", ""))
+            if not slug:
+                continue
+            merged[slug] = merged.get(slug, 0) + int(item.get("pct", 0))
+
+        out = [{"style": s, "pct": p} for s, p in merged.items() if p > 0]
+        if not out:
+            return []
+
+        out.sort(key=lambda x: x["pct"], reverse=True)
+
+        total = sum(x["pct"] for x in out) or 1
+        for x in out:
+            x["pct"] = int(round((x["pct"] / total) * 100))
+        diff = 100 - sum(x["pct"] for x in out)
+        out[0]["pct"] += diff
+
+        return out
+
     # ---------------------------------------------------------------------
     # 3) Génération des 3 paragraphes (150+ mots, parse-safe)
     # ---------------------------------------------------------------------
@@ -1139,6 +1213,21 @@ JSON À CORRIGER :
                 return out
 
             part1 = await _call_part("PART1", STYLING_PART1_SYSTEM_PROMPT, STYLING_PART1_USER_PROMPT, max_tokens=2200)
+
+            # ── style_mix déterministe : GPT rédige, il ne calcule pas ─────────
+            _computed_mix = self._compute_style_mix_deterministic(
+                style_preferences=style_preferences,
+                brand_preferences=brand_preferences,
+                color_preferences=color_preferences,
+                pattern_preferences=pattern_preferences,
+                personality_data=personality_data,
+            )
+            if _computed_mix and isinstance(part1, dict) and isinstance(part1.get("page17"), dict):
+                print(f"🎨 style_mix GPT     : {part1['page17'].get('style_mix')}")
+                print(f"🎨 style_mix calculé : {_computed_mix}")
+                part1["page17"]["style_mix"] = _computed_mix
+            else:
+                print(f"⚠️ style_mix déterministe indisponible — sortie GPT conservée")
             part2 = await _call_part("PART2", STYLING_PART2_SYSTEM_PROMPT, STYLING_PART2_USER_PROMPT, max_tokens=3000)
             part3 = await _call_part("PART3", STYLING_PART3_SYSTEM_PROMPT, STYLING_PART3_USER_PROMPT, max_tokens=3200)
             part4 = await _call_part("PART4", STYLING_PART4_SYSTEM_PROMPT, STYLING_PART4_USER_PROMPT, max_tokens=6000)
