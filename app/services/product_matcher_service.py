@@ -1061,17 +1061,20 @@ class ProductMatcherService:
                 kw_safe = self._normalize_kw_for_ilike(kw)
                 if len(kw_safe) < 3:
                     continue
-                try:
-                    pattern = self._ilike_pattern(kw_safe)
-                    q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
-                    resp = self._execute(q)
-                    data = getattr(resp, "data", None) or []
-                    filtered = [r for r in data if self._category_match(r, category)]
-                    _add_rows(filtered)
-                    if filtered:
-                        print(f"✅ KW+CAT [{category}] '{kw_safe}': {len(filtered)}")
-                except Exception as e:
-                    print(f"⚠️ KW+CAT query failed: {e}")
+                for variant in self._ilike_variants(kw_safe):
+                    if len(collected) >= limit:
+                        break
+                    try:
+                        pattern = self._ilike_pattern(variant)
+                        q = self._base_query(select_fields).ilike("product_name", pattern).limit(40)
+                        resp = self._execute(q)
+                        data = getattr(resp, "data", None) or []
+                        filtered = [r for r in data if self._category_match(r, category)]
+                        _add_rows(filtered)
+                        if filtered:
+                            print(f"✅ KW+CAT [{category}] '{variant}': {len(filtered)}")
+                    except Exception as e:
+                        print(f"⚠️ KW+CAT query failed: {e}")
 
         # ────────────────────────────────────────────────────────
         # PHASE 2 — Mot-clé composé SANS filtre catégorie
