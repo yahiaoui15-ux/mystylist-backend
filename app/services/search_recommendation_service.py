@@ -870,8 +870,16 @@ class SearchRecommendationService:
         self, title: str, source_description: str, ai_profile: Dict[str, Any],
     ) -> Tuple[float, str]:
         """Pénalise fortement un produit portant un motif ou une couleur refusés."""
-        avoided = [self._normalize_text(x) for x in (ai_profile.get("pattern_avoid") or []) if x]
-        avoided += [self._normalize_text(x) for x in (ai_profile.get("colors_avoid") or []) if x]
+        def _as_label(x) -> str:
+            # pattern_avoid est un text[] (chaînes), colors_avoid un jsonb
+            # contenant des dicts {"name": ..., "displayName": ...}.
+            if isinstance(x, dict):
+                x = x.get("displayName") or x.get("name") or ""
+            return self._normalize_text(x) if isinstance(x, str) else ""
+
+        avoided = [_as_label(x) for x in (ai_profile.get("pattern_avoid") or [])]
+        avoided += [_as_label(x) for x in (ai_profile.get("colors_avoid") or [])]
+        avoided = [a for a in avoided if a]
         if not avoided:
             return 0, "Aucun refus déclaré"
 
