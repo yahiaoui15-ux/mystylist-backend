@@ -1012,7 +1012,7 @@ class ProductMatcherService:
                 alt_compound = " ".join([alt_noun] + kws[1:2]) if len(kws) >= 2 else alt_noun
                 alt_safe = self._normalize_kw_for_ilike(alt_compound)
                 if len(alt_safe) >= 5:
-                    for variant in self._ilike_variants(kw_safe):
+                    for variant in self._ilike_variants(alt_safe):
                         if len(collected) >= limit:
                             break
                         try:
