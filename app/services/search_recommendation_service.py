@@ -715,10 +715,14 @@ class SearchRecommendationService:
             secondary_category=secondary_category, source_description=source_description,
             search_row=search_row,
         )
+        avoid_score, avoid_reason = self._compute_avoid_penalty(
+            title=title, source_description=source_description, ai_profile=ai_profile,
+        )
 
         total_score = (
             10 + color_score + style_score + morphology_score + budget_score
             + brand_score + season_score + category_specificity_score + office_visual_score
+            + avoid_score
         )
 
         reasons_json = {
@@ -729,7 +733,8 @@ class SearchRecommendationService:
             "confidence_score": confidence_score, "secondary_category": secondary_category,
             "subtype": subtype, "color_match_sql": color_match_sql,
             "office_visual": office_visual_reason,
-        }
+            "avoid": avoid_reason,
+        }        
 
         return {
             "merchant_id": merchant_id, "product_id": product_id, "title": title, "brand": brand,
@@ -846,6 +851,44 @@ class SearchRecommendationService:
         if price <= budget: return 20, f"Dans le budget ({price} <= {budget})"
         if price <= budget * 1.15: return -6, f"Légèrement au-dessus ({price} > {budget})"
         return -24, f"Hors budget ({price} > {budget})"
+
+    # Motifs et couleurs explicitement refusés par la cliente dans l'onboarding.
+    # Variantes de recherche : GPT et les marchands n'écrivent pas pareil.
+    _AVOID_VARIANTS = {
+        "imprimes animaliers": ["animalier", "leopard", "zebre", "python", "serpent", "tigre"],
+        "imprimes leopard":    ["leopard", "guepard"],
+        "imprimes floraux":    ["floral", "fleur", "liberty"],
+        "imprimes geometriques": ["geometrique", "graphique"],
+        "imprimes abstraits":  ["abstrait"],
+        "rayures":             ["raye", "rayure", "marin"],
+        "pois":                ["pois", "polka"],
+        "carreaux":            ["carreau", "vichy", "tartan", "ecossais"],
+        "broderies":           ["brode", "broderie"],
+    }
+
+    def _compute_avoid_penalty(
+        self, title: str, source_description: str, ai_profile: Dict[str, Any],
+    ) -> Tuple[float, str]:
+        """Pénalise fortement un produit portant un motif ou une couleur refusés."""
+        avoided = [self._normalize_text(x) for x in (ai_profile.get("pattern_avoid") or []) if x]
+        avoided += [self._normalize_text(x) for x in (ai_profile.get("colors_avoid") or []) if x]
+        if not avoided:
+            return 0, "Aucun refus déclaré"
+
+        hay = self._normalize_text(f"{title} {source_description}")
+        hits: List[str] = []
+
+        for label in avoided:
+            terms = self._AVOID_VARIANTS.get(label, [label])
+            for term in terms:
+                t = self._normalize_text(term)
+                if t and len(t) >= 4 and t in hay:
+                    hits.append(label)
+                    break
+
+        if not hits:
+            return 0, "Aucun refus détecté"
+        return -60.0 * len(hits), f"Refusé par la cliente: {', '.join(hits[:3])}"
 
     def _compute_brand_score(self, brand: str, ai_profile: Dict[str, Any]) -> Tuple[float, str]:
         preferred = [self._normalize_text(x) for x in (ai_profile.get("preferred_brands") or []) if x]

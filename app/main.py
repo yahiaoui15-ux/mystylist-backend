@@ -357,6 +357,47 @@ async def generate_search_recommendations(search_id: str, user_id: str = Depends
             },
         )
 
+@app.post("/api/profile/build-minimal")
+async def build_minimal_profile(user_id: str = Depends(get_current_user_id)):
+    """
+    Construit un profil IA minimal (déterministe, sans OpenAI) à partir des
+    seules données d'onboarding. Appelé à la création du compte pour que la
+    Recherche et la Garde-robe puissent personnaliser leurs résultats avant
+    tout achat.
+    Idempotent : un appel répété écrase le profil existant.
+    """
+    try:
+        profile_resp = supabase.query(
+            "user_profiles",
+            select_fields="onboarding_data, onboarding_completed",
+            filters={"user_id": user_id},
+        )
+        if not profile_resp.data:
+            return JSONResponse(status_code=404, content={"ok": False, "error": "profile_not_found"})
+
+        row = profile_resp.data[0]
+        if not row.get("onboarding_completed"):
+            return JSONResponse(status_code=400, content={"ok": False, "error": "onboarding_not_completed"})
+
+        onboarding_data = row.get("onboarding_data") or {}
+        if isinstance(onboarding_data, str):
+            try:
+                onboarding_data = json.loads(onboarding_data)
+            except Exception:
+                onboarding_data = {}
+
+        user_data = {"user_id": user_id, "profile": {"onboarding_data": onboarding_data}}
+
+        log(f"[MINIMAL_PROFILE] Start for user_id={user_id}")
+        result = report_generator.build_minimal_ai_profile(user_id=user_id, user_data=user_data)
+        log(f"[MINIMAL_PROFILE] Done for user_id={user_id}: {result}")
+
+        return {"ok": True, **result}
+
+    except Exception as e:
+        log(f"[MINIMAL_PROFILE] Exception for user_id={user_id}: {e}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+    
 @app.post("/api/wardrobe/{item_id}/analyze")
 async def analyze_wardrobe_item(item_id: str, user_id: str = Depends(get_current_user_id)):
     """

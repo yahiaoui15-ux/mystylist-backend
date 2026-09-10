@@ -461,6 +461,8 @@ class ReportGenerator:
             colors_best = _ensure_list_json(color.get("palette_personnalisee"))
             colors_ok = _ensure_list_json(color.get("couleurs_prudence")) + _ensure_list_json(color.get("couleurs_generiques"))
             colors_avoid = _ensure_list_json(color.get("couleurs_eviter")) + _ensure_list_json(color.get("unwanted_colors"))
+            # Les couleurs refusées par la cliente sont ajoutées plus bas,
+            # après lecture de onboarding_data (voir colors_disliked).
 
             # keywords text[] dérivés des displayName/name
             color_keywords = _uniq(
@@ -498,9 +500,31 @@ class ReportGenerator:
             if user_data:
                 onboarding = ((user_data.get("profile") or {}).get("onboarding_data") or {})
 
-            # Adapte ces clés EXACTES à ton schéma onboarding
-            preferred_brands = onboarding.get("preferred_brands") or onboarding.get("brands") or []
-            pattern_avoid = onboarding.get("pattern_avoid") or onboarding.get("disliked_patterns") or []
+            # Structure réelle de onboarding_data (vérifiée en base le 10/09) :
+            #   brand_preferences   = {"selected_brands": [...], "custom_brands": [...]}
+            #   pattern_preferences = {"disliked_patterns": [...]}
+            #   color_preferences   = {"disliked_colors": [...]}
+            #   morphology_goals    = {"body_parts_to_highlight": [...], "body_parts_to_minimize": [...]}
+            _brand_prefs = onboarding.get("brand_preferences") or {}
+            _pattern_prefs = onboarding.get("pattern_preferences") or {}
+            _color_prefs = onboarding.get("color_preferences") or {}
+
+            preferred_brands = (
+                (_brand_prefs.get("selected_brands") or [])
+                + (_brand_prefs.get("custom_brands") or [])
+                if isinstance(_brand_prefs, dict)
+                else (onboarding.get("preferred_brands") or [])
+            )
+            pattern_avoid = (
+                (_pattern_prefs.get("disliked_patterns") or [])
+                if isinstance(_pattern_prefs, dict)
+                else (onboarding.get("pattern_avoid") or [])
+            )
+            colors_disliked = (
+                (_color_prefs.get("disliked_colors") or [])
+                if isinstance(_color_prefs, dict)
+                else []
+            )
             style_keywords = onboarding.get("style_preferences") or onboarding.get("styles") or []
 
             preferred_brands = preferred_brands if isinstance(preferred_brands, list) else []
@@ -523,8 +547,21 @@ class ReportGenerator:
             # ---------------------------
             color_season = color.get("saison_confirmee") or color.get("season")
             undertone = color.get("sous_ton_detecte")
-            body_parts_highlight = morph.get("body_parts_to_highlight") or morph.get("body_parts_highlight") or []
-            body_parts_minimize = morph.get("body_parts_to_minimize") or morph.get("body_parts_minimize") or []
+            _morpho_goals = onboarding.get("morphology_goals") or {}
+            if not isinstance(_morpho_goals, dict):
+                _morpho_goals = {}
+            body_parts_highlight = (
+                morph.get("body_parts_to_highlight")
+                or morph.get("body_parts_highlight")
+                or _morpho_goals.get("body_parts_to_highlight")
+                or []
+            )
+            body_parts_minimize = (
+                morph.get("body_parts_to_minimize")
+                or morph.get("body_parts_minimize")
+                or _morpho_goals.get("body_parts_to_minimize")
+                or []
+            )
             body_parts_highlight = body_parts_highlight if isinstance(body_parts_highlight, list) else []
             body_parts_minimize = body_parts_minimize if isinstance(body_parts_minimize, list) else []
             silhouette_type = (
@@ -535,7 +572,9 @@ class ReportGenerator:
 
             colors_best = _ensure_list_json(colors_best)
             colors_ok = _ensure_list_json(colors_ok)
-            colors_avoid = _ensure_list_json(colors_avoid)
+            colors_avoid = _ensure_list_json(colors_avoid) + [
+                {"name": c, "displayName": c} for c in colors_disliked if isinstance(c, str) and c.strip()
+            ]
             color_keywords = _ensure_list_text(color_keywords)
 
             cuts_recommended = _ensure_list_json(cuts_recommended)
@@ -591,5 +630,90 @@ class ReportGenerator:
             client = supabase.get_client()
             client.table("user_ai_profiles").upsert(record, on_conflict="user_id").execute()
             print("✅ user_ai_profiles upsert OK (with derived columns)")
+
+    def build_minimal_ai_profile(self, user_id: str, user_data: dict) -> dict:
+        """
+        Construit un profil IA minimal SANS aucun appel OpenAI, à partir des
+        seules données d'onboarding. Permet à la Recherche et à la Garde-robe
+        de personnaliser leurs résultats pour une cliente qui n'a pas encore
+        acheté de rapport.
+
+        Réutilise _upsert_user_ai_profile : aucun code dupliqué. Un achat
+        ultérieur écrasera ce profil (upsert on_conflict=user_id).
+        """
+        from app.services.colorimetry_declarative import analyze_declarative
+
+        onboarding = ((user_data.get("profile") or {}).get("onboarding_data") or {})
+        colo_decl = onboarding.get("colorimetry_declarative") or {}
+
+        # ── Colorimétrie déterministe ────────────────────────────────────
+        colo = analyze_declarative(
+            skin_depth=colo_decl.get("skin_depth") or "unknown",
+            sun_reaction=colo_decl.get("sun_reaction") or "unknown",
+            metal=colo_decl.get("metal") or "unknown",
+            veins=colo_decl.get("veins") or "unknown",
+            hair_color=onboarding.get("hair_color") or "unknown",
+            eye_color=onboarding.get("eye_color") or "unknown",
+        )
+        season = (colo.get("saison_confirmee") or "").lower()
+
+        # ── Palette depuis color_season_keywords ─────────────────────────
+        palette, avoid = [], []
+        try:
+            client = supabase.get_client()
+            rows = (
+                client.table("color_season_keywords")
+                .select("type, keyword")
+                .eq("saison", season)
+                .execute()
+            ).data or []
+            for r in rows:
+                entry = {"name": r.get("keyword"), "displayName": r.get("keyword")}
+                if r.get("type") == "include":
+                    palette.append(entry)
+                elif r.get("type") == "exclude":
+                    avoid.append(entry)
+            print(f"   🎨 Palette minimale [{season}]: {len(palette)} couleurs, {len(avoid)} à éviter")
+        except Exception as e:
+            print(f"   ⚠️ color_season_keywords indisponible: {e}")
+
+        colorimetry_result = {
+            **colo,
+            "palette_personnalisee": palette,
+            "couleurs_eviter": avoid,
+        }
+
+        # ── Morphologie : silhouette déclarée ────────────────────────────
+        morphology_result = {
+            "silhouette_type": (onboarding.get("silhouette_declaree") or "").strip().upper()[:1],
+        }
+
+        # ── Style : mix déterministe ─────────────────────────────────────
+        style_mix = []
+        try:
+            from app.services.styling import styling_service
+            style_mix = styling_service._compute_style_mix_deterministic(
+                style_preferences=onboarding.get("style_preferences") or [],
+                brand_preferences=onboarding.get("brand_preferences") or {},
+                color_preferences=onboarding.get("color_preferences") or {},
+                pattern_preferences=onboarding.get("pattern_preferences") or {},
+                personality_data=onboarding.get("personality_data") or {},
+            )
+            print(f"   🎨 style_mix minimal: {style_mix}")
+        except Exception as e:
+            print(f"   ⚠️ style_mix minimal indisponible: {e}")
+
+        styling_result = {"page17": {"style_mix": style_mix}} if style_mix else {}
+
+        self._upsert_user_ai_profile(
+            user_id=user_id,
+            colorimetry_result=colorimetry_result,
+            morphology_result=morphology_result,
+            styling_result=styling_result,
+            user_data=user_data,
+        )
+        print(f"✅ Profil IA minimal construit pour {user_id} (saison={season or 'inconnue'})")
+        return {"ok": True, "season": season, "style_mix": style_mix}
+
 
 report_generator = ReportGenerator()
