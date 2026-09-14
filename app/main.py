@@ -688,9 +688,11 @@ async def process_checkout_session_job(
                 log(f">>>    -> Assigne comme BODY")
         
         # Fallback
-        if not face_photo_url and len(photos) > 0:
+        if not face_photo_url and len(photos) > 0 and not body_photo_url:
             face_photo_url = photos[0].get("cloudinary_url", "")
-            log(f">>> Fallback: 1ere photo comme FACE")
+            log(f">>> Fallback: 1ere photo comme FACE (aucun type reconnu)")
+        elif not face_photo_url:
+            log(f">>> Pas de photo de visage - chemin declaratif")
         if not body_photo_url and len(photos) > 1:
             body_photo_url = photos[1].get("cloudinary_url", "")
             log(f">>> Fallback: 2eme photo comme BODY")
