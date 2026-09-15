@@ -980,7 +980,7 @@ class PDFDataMapper:
             (["top court droit asymetrique"], "top_court_droit_asymetrique"),  # NOUVEAU AUDIT — doit précéder "top court" générique ci-dessous
             (["top court", "haut court"], "top_court"),  # NOUVEAU AUDIT
             (["haut volumineux", "top volumineux"], "haut_volumineux"),  # NOUVEAU AUDIT
-            (["epaulettes", "epaulette", "epaule structur"], "haut_epaulettes"),
+            (["epaulettes", "epaulette", "epaule structur"], "top_a_epaulettes"),
             # ── Manches bouffantes ──
             (["blouse imprimee manches bouffantes"], "blouse_imprimee_manches_bouffantes"),
             (["top manches longues bouffantes", "manches longues bouffantes"], "top_manches_longues_bouffantes"),
@@ -1008,7 +1008,7 @@ class PDFDataMapper:
             # ── Encolure américaine ──  ← NOUVEAU
             (["encolure americaine", "dos nu", "dos nageur"], "top_encolure_americaine"),
             # ── Cintrés ──
-            (["haut cintre"], "haut_cintre"),
+            (["haut cintre"], "top_cintre"),
             (["top cintre manches courtes", "top cintre"], "top_cintre"),
             # ── Chemises / blouses ──
             (["chemise cintree", "chemisier cintre"], "chemise_cintree"),
