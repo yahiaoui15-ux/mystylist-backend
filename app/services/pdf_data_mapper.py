@@ -2140,13 +2140,9 @@ class PDFDataMapper:
         shopping_priorities_raw = PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", []))
         print(f"   📋 shopping_priorities raw: {shopping_priorities_raw}")  # ← AJOUTER
 
-        shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(
-            shopping_priorities_raw,
-            colors_to_avoid=_colors_to_avoid,
-            colors_best=_colors_best,
-        )
- 
         # ── FALLBACK : dériver depuis essentials si GPT-4 a retourné [] ──────────
+        # DOIT tourner AVANT l'enrichissement produits, sinon celui-ci
+        # travaille sur une liste vide.
         if not shopping_priorities_raw:
             _essentials_for_sp = PDFDataMapper._safe_dict(morphology_mvp.get("essentials", {}))
             _sp_fallback = []
@@ -2160,7 +2156,13 @@ class PDFDataMapper:
                     break
             shopping_priorities_raw = _sp_fallback
             print(f"⚠️ shopping_priorities vide — fallback depuis essentials: {_sp_fallback}")
-# ─────────────────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────────
+
+        shopping_priorities_enriched = PDFDataMapper._enrich_shopping_priorities_with_products(
+            shopping_priorities_raw,
+            colors_to_avoid=_colors_to_avoid,
+            colors_best=_colors_best,
+        )
 
         # ✅ Extraction avoid_by_category (items à éviter par catégorie, pour page 9)
         # ✅ avoid_by_category — shoes et accessories séparés (v5)
@@ -2267,7 +2269,7 @@ class PDFDataMapper:
                 "avoid":                      PDFDataMapper._safe_list(morphology_mvp.get("avoid", [])),
                 "avoid_by_category":              avoid_by_category,
                 "outfit_formulas":            outfit_formulas_enriched,
-                "shopping_priorities":        PDFDataMapper._safe_list(morphology_mvp.get("shopping_priorities", [])),
+                "shopping_priorities":        shopping_priorities_raw,
                 "shopping_priorities_enriched": shopping_priorities_enriched,
                 "shopping_products_flat":       shopping_products_flat,
                 "style_notes": PDFDataMapper._safe_dict(morphology_mvp.get("style_notes", {
