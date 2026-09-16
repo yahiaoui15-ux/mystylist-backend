@@ -1561,6 +1561,21 @@ class PDFDataMapper:
                     continue
  
                 name = item.get("name", "")
+
+                # Le selecteur deterministe a deja choisi la coupe ET son visuel.
+                # Dans ce cas on ne recalcule rien.
+                impose = (item.get("visual_key") or "").strip()
+                impose_url = (item.get("visual_url") or "").strip()
+                if impose and impose_url:
+                    if impose_url in seen_urls:
+                        print(f"   🔁 DOUBLON VISUEL [{mvp_cat}] '{name}' — conservee sans image")
+                        enriched_items.append({**item, "visual_key": "", "visual_url": ""})
+                    else:
+                        seen_urls.add(impose_url)
+                        enriched_items.append({**item, "visual_key": impose, "visual_url": impose_url})
+                        print(f"   🎯 IMPOSE [{mvp_cat}] '{name}' → key='{impose}'")
+                    continue
+
                 visual_key = ""
  
                 # Passe 1 : chercher un vrai match sans fallback sur toutes les catégories

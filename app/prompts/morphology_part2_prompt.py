@@ -32,12 +32,17 @@ la silhouette de la cliente et des zones qu'elle souhaite valoriser ou
 dissimuler. Elles sont IMPOSÉES.
 
 {coupes_imposees}
-
 TA MISSION EST UNIQUEMENT DE RÉDIGER.
 Pour chaque coupe imposée, tu recopies son nom À L'IDENTIQUE dans le champ
 "name" et tu rédiges le champ "why" : une phrase qui explique pourquoi cette
-coupe fonctionne pour CETTE cliente, en t'appuyant sur les effets indiqués
-entre parenthèses et sur ses zones à valoriser ou à minimiser.
+coupe fonctionne, en t'appuyant sur les effets indiqués entre parenthèses.
+
+TON ET ADRESSE — RÈGLE ABSOLUE
+Tu t'adresses DIRECTEMENT à la lectrice, en la vouvoyant.
+✓ "Cette coupe marque votre taille et estompe le ventre."
+✗ "Cette coupe convient à la cliente." — INTERDIT
+Le mot "cliente" ne doit apparaître NULLE PART dans ta réponse.
+Cette règle vaut pour tous les champs : why, why_it_works, avoid, style_notes.
 
 INTERDIT ABSOLU :
 - proposer une coupe qui n'est pas dans la liste ci-dessus
