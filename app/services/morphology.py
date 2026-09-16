@@ -16,7 +16,7 @@ from app.prompts.morphology_part1_prompt import (
     MORPHOLOGY_PART1_NOPHOTO_USER_PROMPT,
 )
 from app.prompts.morphology_part2_prompt import MORPHOLOGY_PART2_SYSTEM_PROMPT, MORPHOLOGY_PART2_USER_PROMPT
-
+from app.services.cut_selector import cut_selector
 
 def normalize_french(text: str) -> str:
     """Corrige quelques coquilles FR courantes sans modifier la casse globale."""
@@ -297,12 +297,40 @@ class MorphologyService:
             self.openai.set_context("Morphology Part 2", "PART 2: Morphology MVP")
             self.openai.set_system_prompt(MORPHOLOGY_PART2_SYSTEM_PROMPT)
 
+            # ── SELECTION DETERMINISTE DES COUPES ─────────────────────────
+            # Les souhaits de la cliente priment sur ceux devines par GPT.
+            selection_highlight = self.merge_body_parts(
+                onboarding_highlight_parts, body_parts_highlight
+            )
+            selection_minimize = self.merge_body_parts(
+                onboarding_minimize_parts, body_parts_minimize
+            )
+
+            try:
+                taille_cm = int(user_data.get("height") or 0) or None
+            except (TypeError, ValueError):
+                taille_cm = None
+
+            coupes_selectionnees = cut_selector.selectionner_rapport(
+                silhouette=silhouette,
+                a_minimiser=selection_minimize,
+                a_valoriser=selection_highlight,
+                taille_cm=taille_cm,
+            )
+            print("\n🎯 COUPES SELECTIONNEES PAR LE CODE (zero GPT)")
+            for cat, items in coupes_selectionnees.items():
+                noms = ", ".join(i["name"] for i in items) or "aucune"
+                print(f"   • {cat}: {noms}")
+
+            coupes_imposees = self._formater_coupes_pour_prompt(coupes_selectionnees)
+
             user_prompt_part2 = self.safe_format(
                 MORPHOLOGY_PART2_USER_PROMPT,
                 silhouette_type=silhouette,
                 styling_objectives=", ".join(styling_objectives),
-                body_parts_to_highlight=", ".join(body_parts_highlight),
-                body_parts_to_minimize=", ".join(body_parts_minimize),
+                body_parts_to_highlight=", ".join(selection_highlight),
+                body_parts_to_minimize=", ".join(selection_minimize),
+                coupes_imposees=coupes_imposees,
             )
 
             response_part2 = await self.openai.call_chat(
@@ -336,6 +364,10 @@ class MorphologyService:
                 except Exception as fix_err:
                     print(f"   ❌ Correction Part 2 échouée: {fix_err}")
                     part2_result = self._generate_default_morphology_mvp(silhouette)
+
+            # Les noms et visuels viennent du code, pas de GPT.
+            # Seul le texte "why" rédigé par GPT est conservé.
+            part2_result = self._imposer_coupes(part2_result, coupes_selectionnees)
 
             # ====================================================================
             # FUSION ONBOARDING + OPENAI POUR PAGE 8
@@ -437,6 +469,66 @@ class MorphologyService:
                 ),
             }
 
+    @staticmethod
+    def _formater_coupes_pour_prompt(selection: dict) -> str:
+        """Texte lisible des coupes imposees, insere dans le prompt Part 2."""
+        libelles = {"haut": "HAUTS", "bas": "BAS", "robe": "ROBES ET COMBINAISONS",
+                    "veste": "VESTES", "manteau": "MANTEAUX"}
+        lignes = []
+        for cat, titre in libelles.items():
+            items = selection.get(cat) or []
+            if not items:
+                continue
+            lignes.append(f"{titre} :")
+            for it in items:
+                effets = []
+                if it.get("flatte"):
+                    effets.append("met en valeur : " + ", ".join(it["flatte"]))
+                if it.get("attenue"):
+                    effets.append("attenue : " + ", ".join(it["attenue"]))
+                suffixe = f"  ({' | '.join(effets)})" if effets else ""
+                lignes.append(f"  - {it['name']}{suffixe}")
+        return "\n".join(lignes)
+
+    @staticmethod
+    def _imposer_coupes(part2: dict, selection: dict) -> dict:
+        """Remplace les noms choisis par GPT par ceux selectionnes par le code,
+        en conservant le texte 'why' redige par GPT."""
+        if not isinstance(part2, dict):
+            return part2
+        essentials = part2.get("essentials")
+        if not isinstance(essentials, dict):
+            return part2
+
+        # jackets du rapport = vestes + manteaux du catalogue
+        par_categorie = {
+            "tops": list(selection.get("haut") or []),
+            "bottoms": list(selection.get("bas") or []),
+            "dresses": list(selection.get("robe") or []),
+            "jackets": list(selection.get("veste") or []) + list(selection.get("manteau") or []),
+        }
+
+        for cle_mvp, coupes in par_categorie.items():
+            if not coupes:
+                continue
+            anciens = essentials.get(cle_mvp)
+            anciens = anciens if isinstance(anciens, list) else []
+            nouveaux = []
+            for i, c in enumerate(coupes):
+                why = ""
+                if i < len(anciens) and isinstance(anciens[i], dict):
+                    why = anciens[i].get("why") or ""
+                nouveaux.append({
+                    "name": c["name"],
+                    "why": why,
+                    "visual_key": c["visual_key"],
+                    "visual_url": c["visual_url"],
+                })
+            essentials[cle_mvp] = nouveaux
+
+        part2["essentials"] = essentials
+        return part2
+    
     def _format_highlights_for_page8(self, parties: list, silhouette_explanation: str,
                                      onboarding_parties: list, openai_parties: list) -> dict:
         """

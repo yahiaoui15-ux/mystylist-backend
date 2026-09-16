@@ -25,8 +25,34 @@ Objectifs styling: {styling_objectives}
 À minimiser: {body_parts_to_minimize}
 
 ══════════════════════════════════════════
+LES COUPES SONT DÉJÀ CHOISIES — TU NE LES CHOISIS PAS
+══════════════════════════════════════════
+Les coupes ci-dessous ont été sélectionnées par notre moteur à partir de
+la silhouette de la cliente et des zones qu'elle souhaite valoriser ou
+dissimuler. Elles sont IMPOSÉES.
+
+{coupes_imposees}
+
+TA MISSION EST UNIQUEMENT DE RÉDIGER.
+Pour chaque coupe imposée, tu recopies son nom À L'IDENTIQUE dans le champ
+"name" et tu rédiges le champ "why" : une phrase qui explique pourquoi cette
+coupe fonctionne pour CETTE cliente, en t'appuyant sur les effets indiqués
+entre parenthèses et sur ses zones à valoriser ou à minimiser.
+
+INTERDIT ABSOLU :
+- proposer une coupe qui n'est pas dans la liste ci-dessus
+- modifier, reformuler ou traduire un nom de coupe
+- changer l'ordre des coupes
+- ajouter ou retirer un item dans tops, bottoms, dresses ou jackets
+
+Les catégories shoes_accessories, avoid, avoid_by_category, outfit_formulas,
+style_notes et shopping_priorities restent de ton ressort.
+
+══════════════════════════════════════════
 RÈGLE ABSOLUE SUR LES NOMS DE PIÈCES
 ══════════════════════════════════════════
+Cette règle ne s'applique plus qu'aux catégories dont tu as encore la charge
+(chaussures, accessoires, pièces à éviter, formules).
 INTERDIT : inclure des couleurs dans les noms de pièces.
 ✗ "Top col en V noir", "Blouse fluide bleue", "Pantalon palazzo beige"
 ✓ "Top col en V", "Blouse fluide", "Pantalon palazzo"
@@ -42,8 +68,11 @@ Les noms de pièces doivent utiliser le vocabulaire français de la mode.
 Un nom en anglais ne correspond à aucun produit dans le catalogue et casse la recherche.
 
 ══════════════════════════════════════════
-RÈGLES OBLIGATOIRES PAR SILHOUETTE
+RÉFÉRENCE MORPHOLOGIQUE
 ══════════════════════════════════════════
+Ces principes ne servent PLUS à choisir les coupes des essentials — elles
+sont déjà imposées. Ils te servent à rédiger des "why" justes, et à choisir
+les chaussures, accessoires et pièces à éviter.
 
 SILHOUETTE A (poire — hanches > épaules)
 Objectif : élargir visuellement la ligne d'épaules, marquer la taille,
@@ -140,11 +169,10 @@ Exemple pour silhouette O :
 ══════════════════════════════════════════
 CONTRAINTES
 ══════════════════════════════════════════
-- tops : EXACTEMENT 4 items (hauts uniquement, sans couleur dans name)
-- dresses : EXACTEMENT 2 items (robes ou combinaisons uniquement, sans couleur dans name)
-- jackets : EXACTEMENT 3 items — obligatoirement 2 vestes/blazers + 1 MANTEAU
-  (manteau, trench ou cape). Sans couleur dans name.
-- bottoms : EXACTEMENT 3 items (pantalons, jupes, jeans uniquement, sans couleur dans name)
+- tops, bottoms, dresses, jackets : recopie EXACTEMENT les coupes imposées,
+  dans l'ordre donné, une entrée par coupe. Ne complète pas, ne retire rien.
+  Si une catégorie imposée contient moins d'items que le gabarit JSON,
+  renvoie seulement le nombre d'items imposés.
 - shoes_accessories : EXACTEMENT 3 items
 - avoid_by_category : pièces STRICTEMENT de leur catégorie
 - style_notes : format "nom — explication courte"
@@ -247,8 +275,9 @@ JSON ATTENDU:
 }}
 
 RAPPEL FINAL:
-- AUCUNE couleur dans les champs "name" des essentials.
-- shopping_priorities : 5 coupes précises issues de tes essentials, PAS de généralités.
-- tops=4, dresses=2, jackets=3, bottoms=3. Chaque formule=4 pièces exactement.
+- Les "name" de tops, bottoms, dresses et jackets sont RECOPIÉS À L'IDENTIQUE
+  depuis la liste des coupes imposées. Tu ne rédiges que les "why".
+- shopping_priorities : 5 coupes précises issues des coupes imposées.
+- Chaque formule = 4 pièces exactement.
 - Zéro texte hors JSON.
 """
