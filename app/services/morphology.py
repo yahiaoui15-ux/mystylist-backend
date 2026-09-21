@@ -491,6 +491,23 @@ class MorphologyService:
         return "\n".join(lignes)
 
     @staticmethod
+    def _why_de_secours(coupe: dict) -> str:
+        """Texte deterministe si GPT n'a rien redige pour cette coupe."""
+        articles = {"taille": "votre taille", "ventre": "votre ventre",
+                    "poitrine": "votre poitrine", "decollete": "votre décolleté",
+                    "hanches": "vos hanches", "jambes": "vos jambes",
+                    "epaules": "vos épaules", "bras": "vos bras"}
+        fl = [articles.get(z, z) for z in coupe.get("flatte") or []]
+        at = [articles.get(z, z) for z in coupe.get("attenue") or []]
+        if fl and at:
+            return f"Cette coupe met en valeur {' et '.join(fl)} tout en atténuant {' et '.join(at)}."
+        if fl:
+            return f"Cette coupe met en valeur {' et '.join(fl)}."
+        if at:
+            return f"Cette coupe atténue {' et '.join(at)}."
+        return "Une coupe adaptée à votre silhouette."
+    
+    @staticmethod
     def _imposer_coupes(part2: dict, selection: dict) -> dict:
         """Remplace les noms choisis par GPT par ceux selectionnes par le code,
         en conservant le texte 'why' redige par GPT."""
@@ -513,11 +530,20 @@ class MorphologyService:
                 continue
             anciens = essentials.get(cle_mvp)
             anciens = anciens if isinstance(anciens, list) else []
+            # GPT recopie les noms a l'identique : on retrouve son texte par
+            # le nom, et seulement a defaut par la position.
+            par_nom = {}
+            for a in anciens:
+                if isinstance(a, dict) and a.get("name"):
+                    par_nom[a["name"].strip().lower()] = a.get("why") or ""
+
             nouveaux = []
             for i, c in enumerate(coupes):
-                why = ""
-                if i < len(anciens) and isinstance(anciens[i], dict):
+                why = par_nom.get(c["name"].strip().lower(), "")
+                if not why and i < len(anciens) and isinstance(anciens[i], dict):
                     why = anciens[i].get("why") or ""
+                if not why:
+                    why = MorphologyService._why_de_secours(c)
                 nouveaux.append({
                     "name": c["name"],
                     "why": why,

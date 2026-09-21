@@ -71,6 +71,8 @@ class ProductMatcherService:
         "wide leg",      # 108 produits ✅ terme anglais utilisé par Rakuten
         "cargo",         # 94 produits  ✅
         "ceintur",   # racine générique : couvre ceinture / ceinturé / ceinturée
+        "rayure",    # un haut a rayures sans rayures est une erreur visible
+        "motard",    # idem : blouson motard != blouson quelconque
     }
     # Supprimés vs version précédente :
     # "empire" (6 produits), "fourreau" (8), "col v", "col u", "col bateau",
@@ -121,6 +123,8 @@ class ProductMatcherService:
         # Anglicismes présents dans la base Rakuten
         "wide":             ["wide leg", "large"],
         "flare":            ["evase", "trapeze"],
+        "rayure":           ["rayure", "raye", "mariniere"],
+        "motard":           ["motard", "perfecto", "biker"],
     }
  
     # ── Aliases simples pour la recherche keyword ─────────────────────────────
@@ -147,6 +151,41 @@ class ProductMatcherService:
     # ── Synonymes de noms de pièce — la base nomme parfois différemment ──────
     _NOUN_SYNONYMS: Dict[str, List[str]] = {
         "blazer": ["blazer", "veste"],
+    }
+
+    # ── Porte "nom de piece" ─────────────────────────────────────────────
+    # Le produit DOIT etre un equivalent du vetement demande. Un blouson
+    # ne peut jamais etre illustre par un tee-shirt tombe par repli.
+    # Compare sur le libelle SANS la marque ("Des Petits Hauts" contient
+    # "hauts" et passait sinon tous les filtres).
+    _NOUN_GATE: Dict[str, List[str]] = {
+        "blouson":     ["blouson", "perfecto", "bomber"],
+        "doudoune":    ["doudoune", "parka"],
+        "duffle":      ["duffle"],
+        "manteau":     ["manteau", "caban", "duffle"],
+        "trench":      ["trench"],
+        "veste":       ["veste", "blazer", "blouson"],
+        "blazer":      ["blazer", "veste"],
+        "cape":        ["cape", "poncho"],
+        "poncho":      ["poncho", "cape"],
+        "gilet":       ["gilet", "cardigan"],
+        "cardigan":    ["cardigan", "gilet"],
+        "haut":        ["top", "haut", "t-shirt", "tee-shirt", "blouse", "pull",
+                        "chemise", "mariniere", "debardeur", "sweat", "maille"],
+        "top":         ["top", "haut", "t-shirt", "tee-shirt", "debardeur"],
+        "pull":        ["pull", "maille", "sweat"],
+        "blouse":      ["blouse", "chemise", "top"],
+        "chemise":     ["chemise", "blouse"],
+        "tunique":     ["tunique", "blouse"],
+        "body":        ["body"],
+        "robe":        ["robe"],
+        "combinaison": ["combinaison", "combi"],
+        "jupe":        ["jupe"],
+        "pantalon":    ["pantalon"],
+        "jean":        ["jean"],
+        "short":       ["short", "bermuda"],
+        "bermuda":     ["bermuda", "short"],
+        "legging":     ["legging"],
     }
 
     # ── Mapping styles styling → tags enrichment ──────────────────────────
@@ -641,6 +680,16 @@ class ProductMatcherService:
         # Termes structurels présents dans le titre de la pièce
         _title_norm = self._strip_accents((piece_title or "").lower())
         _required = [t for t in self._STRUCTURAL_TERMS if t in _title_norm]
+
+        # Nom de piece demande : le premier qui apparait dans le titre
+        # ("Robe chemise" -> robe, pas chemise)
+        _noun_ok: List[str] = []
+        _pos_min = None
+        for _noun, _equiv in self._NOUN_GATE.items():
+            _m = re.search(rf"\b{re.escape(_noun)}\b", _title_norm)
+            if _m and (_pos_min is None or _m.start() < _pos_min):
+                _pos_min = _m.start()
+                _noun_ok = _equiv
  
  
         out: List[Dict[str, Any]] = []
@@ -680,10 +729,14 @@ class ProductMatcherService:
             if img_base:
                 seen_images.add(img_base)
 
+            # Porte "nom de piece" : un blouson doit etre un blouson
+            _name_norm = self._nom_sans_marque(c)
+            if _noun_ok and not any(eq in _name_norm for eq in _noun_ok):
+                continue
+
             # Filtre terme structurel avec aliases
             # Ex: pièce "trapèze" → accepte "trapeze" ET "evase" ET "patineuse"
             if _required:
-                _name_norm = self._strip_accents((raw_name or "").lower())
                 _passed = False
                 for req_term in _required:
                     # Récupérer tous les alias acceptables pour ce terme
@@ -734,6 +787,15 @@ class ProductMatcherService:
     # -------------------------
     # Text helpers
     # -------------------------
+
+    def _nom_sans_marque(self, c: Dict[str, Any]) -> str:
+        """Libelle normalise, amputé de la marque en tete."""
+        name = self._strip_accents((c.get("product_name") or "").lower())
+        brand = self._strip_accents((c.get("brand") or "").lower()).strip()
+        if brand and name.startswith(brand):
+            name = name[len(brand):].lstrip(" -–")
+        return name
+    
     def _strip_accents(self, s: str) -> str:
         s = s or ""
         s = s.replace("œ", "oe").replace("Œ", "OE").replace("æ", "ae").replace("Æ", "AE")
@@ -1028,9 +1090,37 @@ class ProductMatcherService:
                             print(f"⚠️ KW+CAT query failed: {e}")
                             
         # ────────────────────────────────────────────────────────
-        # PHASE 1 — Mot-clé COMPOSÉ (nom + coupe) + filtre catégorie  ← NEW
-        # Ex: "pantalon palazzo", "robe portefeuille", "jupe trapeze"
         # ────────────────────────────────────────────────────────
+        # PHASE 0b — Termes structurels exiges
+        # Si la piece exige "motard", on cherche "perfecto", "biker"...
+        # AVANT la recherche composee : sinon le panier se remplit de
+        # produits qui ne portent pas le terme, et le filtre final vide tout.
+        # ────────────────────────────────────────────────────────
+        _title_norm_s = self._strip_accents((piece_title or "").lower())
+        for _term in self._STRUCTURAL_TERMS:
+            if _term not in _title_norm_s or len(collected) >= limit:
+                continue
+            for _alias in self._STRUCTURAL_TERM_ALIASES.get(_term, [_term]):
+                a_safe = self._normalize_kw_for_ilike(_alias)
+                if len(a_safe) < 4:
+                    continue
+                for variant in self._ilike_variants(a_safe):
+                    if len(collected) >= limit:
+                        break
+                    try:
+                        q = self._base_query(select_fields).ilike(
+                            "product_name", self._ilike_pattern(variant)).limit(40)
+                        resp = self._execute(q)
+                        data = getattr(resp, "data", None) or []
+                        filtered = [r for r in data if self._category_match(r, category)]
+                        _add_rows(filtered)
+                        if filtered:
+                            print(f"✅ STRUCT+CAT [{category}] '{variant}': {len(filtered)}")
+                    except Exception as e:
+                        print(f"⚠️ STRUCT query failed: {e}")
+
+        # ────────────────────────────────────────────────────────
+        # PHASE 1 — Mot-clé COMPOSÉ (nom + coupe) + filtre catégorie  ← NEW
         if kws and len(collected) < limit:
             # kws est trié [nouns, cuts, colors, rest]
             # On compose le premier nom + le premier qualificatif de coupe

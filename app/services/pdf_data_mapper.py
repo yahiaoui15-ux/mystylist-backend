@@ -1730,7 +1730,9 @@ class PDFDataMapper:
             return "shoes"
 
         # Vêtements vérifiés AVANT les accessoires (ex: "ceinturée" contient "ceinture")
-        if any(k in n for k in ["veste", "blazer", "manteau", "trench", "trenchcoat"]):
+        if any(k in n for k in ["veste", "blazer", "manteau", "trench", "trenchcoat",
+                                "blouson", "perfecto", "bomber", "doudoune",
+                                "parka", "duffle", "caban"]) or "cape" in words:
             return "outerwear"
         if any(k in n for k in ["robe", "combinaison", "jumpsuit"]):
             return "dresses_playsuits"
