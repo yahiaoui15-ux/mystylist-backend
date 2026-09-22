@@ -182,17 +182,18 @@ class CutSelector:
             if silhouette and silhouette in c["deco"]:
                 continue
 
-            # 2. veto exposition
+            # 2. veto : on n'expose ni n'accentue une zone a dissimuler
             if c["expose"] & minim_cat:
+                continue
+            if c["flatte"] & minim_cat:
                 continue
 
             # 2 bis. veto manches : bras a dissimuler
             if "bras" in minim_cat and c["manches"] == "sans":
                 continue
 
-            # 3. stature
-            if not self._stature_ok(c, taille_cm):
-                continue
+            # 3. stature — souple : classe apres, n'exclut pas
+            niveau = 0 if self._stature_ok(c, taille_cm) else 2
 
             # 4. score
             score = (3 * len(c["attenue"] & minim_cat)
@@ -204,21 +205,22 @@ class CutSelector:
                 elif c["manches"] == "trois_quarts":
                     score += 1
 
-            # 5. seuil
+            # 5. seuil — souple : une coupe sous le seuil ne sort que si
+            # le quota ne peut pas etre rempli autrement
             if not aucun_souhait and score < 2:
-                continue
+                niveau = max(niveau, 1)
 
-            candidats.append((score, c))
+            candidats.append((niveau, score, c))
 
-        # tri deterministe : score puis ordre alphabetique
-        candidats.sort(key=lambda x: (-x[0], x[1]["cle"]))
+        # tri deterministe : niveau, puis score, puis ordre alphabetique
+        candidats.sort(key=lambda x: (x[0], -x[1], x[2]["cle"]))
 
         # 6. deduplication par image ET par famille de coupe
         retenues, urls, familles = [], set(deja), set()
         for passe in (1, 2):
             if len(retenues) >= nombre:
                 break
-            for score, c in candidats:
+            for niveau, score, c in candidats:
                 if len(retenues) >= nombre:
                     break
                 if c["url"] in urls:

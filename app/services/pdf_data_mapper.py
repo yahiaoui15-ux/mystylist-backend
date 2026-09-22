@@ -1668,7 +1668,7 @@ class PDFDataMapper:
  
  
     @staticmethod
-    def _enrich_outfit_formulas_with_visuals(outfit_formulas: list) -> list:
+    def _enrich_outfit_formulas_with_visuals(outfit_formulas: list, visuels_imposes: Optional[dict] = None) -> list:
         """
         Transforme chaque formula.pieces de list[str] en list[dict]:
           {"name": str, "visual_key": str, "visual_url": str}
@@ -1694,6 +1694,12 @@ class PDFDataMapper:
                 visual_key = ""
                 visual_url = ""
  
+                # Meme visuel que la page des meilleures coupes si la piece y figure
+                impose = (visuels_imposes or {}).get(name.lower())
+                if impose:
+                    enriched_pieces.append({"name": name, "visual_key": impose[0], "visual_url": impose[1]})
+                    continue
+
                 # Deviner la catégorie Supabase depuis le nom
                 cats = PDFDataMapper._guess_supabase_cats_for_piece(name)
                 for cat in cats:
@@ -2130,8 +2136,13 @@ class PDFDataMapper:
         # ✅ Enrichissement formules de tenues avec visuels
         print("\n🎨 Enrichissement formules de tenues...")
         outfit_formulas_raw = PDFDataMapper._safe_list(morphology_mvp.get("outfit_formulas", []))
-        outfit_formulas_enriched = PDFDataMapper._enrich_outfit_formulas_with_visuals(outfit_formulas_raw)
-
+        # Visuels deja choisis pour les essentiels : les formules les reprennent
+        _visuels_imposes = {}
+        for _items in PDFDataMapper._safe_dict(essentials_enriched).values():
+            for _it in PDFDataMapper._safe_list(_items):
+                if isinstance(_it, dict) and _it.get("visual_key") and _it.get("visual_url"):
+                    _visuels_imposes[(_it.get("name") or "").strip().lower()] = (_it["visual_key"], _it["visual_url"])
+        outfit_formulas_enriched = PDFDataMapper._enrich_outfit_formulas_with_visuals(outfit_formulas_raw, _visuels_imposes)
         # ✅ Visuels lingerie + maillots page 10
         silhouette_type_for_p10 = morphology_raw.get("silhouette_type", "O") or "O"
         print(f"\n👙 Construction visuels lingerie/maillots page 10 (silhouette={silhouette_type_for_p10})...")

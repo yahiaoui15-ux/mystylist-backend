@@ -73,6 +73,7 @@ class ProductMatcherService:
         "ceintur",   # racine générique : couvre ceinture / ceinturé / ceinturée
         "rayure",    # un haut a rayures sans rayures est une erreur visible
         "motard",    # idem : blouson motard != blouson quelconque
+        "volumin",   # un haut volumineux doit avoir du volume visible
     }
     # Supprimés vs version précédente :
     # "empire" (6 produits), "fourreau" (8), "col v", "col u", "col bateau",
@@ -125,6 +126,7 @@ class ProductMatcherService:
         "flare":            ["evase", "trapeze"],
         "rayure":           ["rayure", "raye", "mariniere"],
         "motard":           ["motard", "perfecto", "biker"],
+        "volumin":          ["volumineu", "bouffant", "ballon", "volant"],
     }
  
     # ── Aliases simples pour la recherche keyword ─────────────────────────────
