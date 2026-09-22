@@ -29,6 +29,11 @@ from app.utils.supabase_client import supabase
 # Zones qui ne filtrent rien : elles ne designent pas une zone habillable
 ZONES_JOKER = {"silhouette", "visage"}
 
+# Zones ou "flatte" signifie "met en avant, elargit" : a proscrire si la
+# cliente veut les dissimuler. Sur jambes et taille, "flatte" signifie
+# "affine, allonge", ce qui lui convient au contraire.
+ZONES_ACCENTUEES = {"epaules", "hanches", "poitrine", "decollete", "bras"}
+
 # Quelles zones ont un sens pour quelle categorie
 ZONES_PAR_CATEGORIE = {
     "haut":    {"ventre", "taille", "poitrine", "decollete", "epaules", "bras"},
@@ -185,7 +190,7 @@ class CutSelector:
             # 2. veto : on n'expose ni n'accentue une zone a dissimuler
             if c["expose"] & minim_cat:
                 continue
-            if c["flatte"] & minim_cat:
+            if c["flatte"] & minim_cat & ZONES_ACCENTUEES:
                 continue
 
             # 2 bis. veto manches : bras a dissimuler
